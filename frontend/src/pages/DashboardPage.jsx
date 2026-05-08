@@ -1,0 +1,210 @@
+import { useState, useEffect } from 'react'
+import { Link } from 'react-router-dom'
+import Sidebar from '../components/Sidebar'
+
+// ── Style tokens for summary cards ──────────────────────────────────────────
+
+const CARD_STYLES = [
+  { label: 'Today',     key: 'today_interviews',    bg: 'bg-tint-mint',  countColor: 'text-mint-600',  labelColor: 'text-mint-700',  unitColor: 'text-mint-500'  },
+  { label: 'Completed', key: 'completed_interviews', bg: 'bg-tint-sky',   countColor: 'text-sky-500',   labelColor: 'text-sky-700',   unitColor: 'text-sky-400'   },
+  { label: 'Up-coming', key: 'upcoming_interviews',  bg: 'bg-tint-coral', countColor: 'text-coral-500', labelColor: 'text-coral-700', unitColor: 'text-coral-400' },
+]
+
+// ── Sub-components ───────────────────────────────────────────────────────────
+
+function SearchBar({ placeholder }) {
+  return (
+    <div className="flex items-center gap-2 border border-neutral-200 rounded-pill px-3 py-1.5 bg-neutral-0 text-sm text-neutral-400">
+      <input
+        placeholder={placeholder}
+        className="outline-none border-none bg-transparent text-sm text-neutral-500 placeholder:text-neutral-400 w-28"
+      />
+      <svg className="shrink-0" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <circle cx="11" cy="11" r="8" /><path d="m21 21-4.35-4.35" />
+      </svg>
+    </div>
+  )
+}
+
+function FilterBtn({ label }) {
+  return (
+    <button className="flex items-center gap-1 text-xs font-medium text-neutral-500 hover:text-neutral-700 transition-colors">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />
+      </svg>
+      {label}
+    </button>
+  )
+}
+
+function SortBtn() {
+  return (
+    <button className="flex items-center gap-1 text-xs font-medium text-neutral-500 hover:text-neutral-700 transition-colors">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <path d="M3 6h18M6 12h12M9 18h6" />
+      </svg>
+      Sort
+    </button>
+  )
+}
+
+// ── Page ────────────────────────────────────────────────────────────────────
+
+export default function DashboardPage() {
+  const today = new Date().toLocaleDateString('en-GB').replace(/\//g, '/')
+
+  const [summary,    setSummary]    = useState(null)
+  const [jobs,       setJobs]       = useState([])
+  const [candidates, setCandidates] = useState([])
+  const [loading,    setLoading]    = useState(true)
+  const [error,      setError]      = useState(null)
+
+  useEffect(() => {
+    async function load() {
+      try {
+        const [sumRes, jobsRes, candsRes] = await Promise.all([
+          fetch('/api/dashboard/summary'),
+          fetch('/api/jobs'),
+          fetch('/api/candidates'),
+        ])
+        setSummary(await sumRes.json())
+        setJobs(await jobsRes.json())
+        setCandidates(await candsRes.json())
+      } catch (err) {
+        console.error('Dashboard fetch failed:', err)
+        setError('Failed to load dashboard data.')
+      } finally {
+        setLoading(false)
+      }
+    }
+    load()
+  }, [])
+
+  if (loading) return (
+    <div className="flex h-screen items-center justify-center bg-neutral-50 font-sans">
+      <p className="text-sm text-neutral-400">Loading...</p>
+    </div>
+  )
+
+  if (error) return (
+    <div className="flex h-screen items-center justify-center bg-neutral-50 font-sans">
+      <p className="text-sm text-coral-500">{error}</p>
+    </div>
+  )
+
+  return (
+    <div className="flex h-screen bg-neutral-50 font-sans">
+      <Sidebar />
+
+      <main className="flex-1 overflow-y-auto px-10 py-8">
+
+        {/* Header */}
+        <div className="mb-6">
+          <h1 className="text-4xl font-extrabold tracking-tight text-neutral-800">
+            Hello, <em className="italic">John Doe</em>
+          </h1>
+          <p className="mt-1 text-sm font-medium text-primary-500">{today}</p>
+        </div>
+
+        {/* Summary */}
+        <section className="mb-7">
+          <h2 className="text-base font-bold text-neutral-800">Summary</h2>
+          <p className="text-xs text-neutral-400 mb-4">Overview of your recruitment pipeline</p>
+
+          <div className="grid grid-cols-3 gap-4">
+            {CARD_STYLES.map((card) => (
+              <div key={card.label} className={`${card.bg} rounded-2xl px-6 py-5`}>
+                <p className={`text-sm font-semibold ${card.labelColor}`}>{card.label}</p>
+                <p className={`text-5xl font-extrabold mt-2 ${card.countColor}`}>{summary?.[card.key] ?? 0}</p>
+                <p className={`text-sm font-medium mt-1 ${card.unitColor}`}>interview</p>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <hr className="border-neutral-200 mb-6" />
+
+        {/* Jobs & Candidates */}
+        <div className="grid grid-cols-2 gap-10">
+
+          {/* Jobs */}
+          <section>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-base font-bold text-neutral-800">Jobs</h2>
+              <div className="flex items-center gap-3">
+                <SearchBar placeholder="Position Name" />
+                <FilterBtn label="Filter" />
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-2.5">
+              {jobs.map((job, i) => (
+                <div
+                  key={i}
+                  className="flex items-center justify-between bg-neutral-0 border border-neutral-200 rounded-xl px-4 py-3 hover:shadow-sm transition-shadow"
+                >
+                  <div>
+                    <p className="text-sm font-semibold text-neutral-800">{job.title}</p>
+                    <p className="text-xs text-neutral-400 mt-0.5">
+                      Candidates: {job.candidates_filled}/{job.candidates_total}
+                    </p>
+                  </div>
+                  <span className="bg-primary-500 text-white text-xs font-semibold px-3 py-1 rounded-pill">
+                    {job.status}
+                  </span>
+                </div>
+              ))}
+            </div>
+
+            <div className="text-right mt-3">
+              <Link to="/jobs" className="text-sm font-semibold text-primary-500 hover:text-primary-600">
+                &gt; View All
+              </Link>
+            </div>
+          </section>
+
+          {/* Candidates */}
+          <section>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-base font-bold text-neutral-800">Candidates</h2>
+              <div className="flex items-center gap-3">
+                <SearchBar placeholder="Candidate Name" />
+                <SortBtn />
+                <FilterBtn label="Filter" />
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-2.5">
+              {candidates.map((c, i) => (
+                <div
+                  key={i}
+                  className="flex items-center justify-between bg-neutral-0 border border-neutral-200 rounded-xl px-4 py-3 hover:shadow-sm transition-shadow"
+                >
+                  <div>
+                    <p className="text-sm font-semibold text-neutral-800">{c.name}</p>
+                    <p className="text-xs text-neutral-400 mt-0.5">
+                      {c.scheduled_at} | {c.position}
+                    </p>
+                  </div>
+                  <button
+                    className={`text-xs font-semibold px-4 py-1.5 rounded-lg transition-opacity hover:opacity-80 text-white
+                      ${c.action === 'Start' ? 'bg-primary-500' : 'bg-neutral-400'}`}
+                  >
+                    {c.action}
+                  </button>
+                </div>
+              ))}
+            </div>
+
+            <div className="text-right mt-3">
+              <Link to="/candidates" className="text-sm font-semibold text-primary-500 hover:text-primary-600">
+                &gt; View All
+              </Link>
+            </div>
+          </section>
+
+        </div>
+      </main>
+    </div>
+  )
+}
