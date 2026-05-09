@@ -2,15 +2,42 @@
 @tailwind components;
 @tailwind utilities;
 
-html,
-body,
-#root {
-  height: 100%;
+@layer base {
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    scroll-behavior: smooth;
+  }
+  body {
+    @apply font-sans bg-bg text-ink;
+  }
 }
 
-body {
-  font-family: 'Plus Jakarta Sans', Inter, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
-  color: theme('colors.ink');
-  background: theme('colors.bg');
-  -webkit-font-smoothing: antialiased;
+@layer components {
+  .container-page {
+    @apply mx-auto w-full max-w-[1200px] px-gutter lg:px-gutterLg;
+  }
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 rounded-pill bg-primary-500 px-7 py-3.5
+           text-base font-semibold text-white shadow-glow transition-transform duration-200
+           hover:-translate-y-0.5 hover:bg-primary-600 active:translate-y-0;
+  }
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-2 rounded-pill border border-neutral-200
+           bg-white px-6 py-3 text-sm font-semibold text-neutral-700 transition-colors
+           hover:border-primary-300 hover:text-primary-600;
+  }
+  .link-quiet {
+    @apply text-sm text-primary-600 underline underline-offset-4 hover:text-primary-700;
+  }
+  .eyebrow {
+    @apply inline-flex items-center gap-2 rounded-pill bg-primary-50 px-3 py-1
+           text-xs font-semibold uppercase tracking-wider text-primary-700;
+  }
+}
+
+/* Subtle grid texture used behind feature cards */
+.bg-dotted {
+  background-image: radial-gradient(rgba(15, 23, 42, 0.06) 1px, transparent 1px);
+  background-size: 18px 18px;
 }
