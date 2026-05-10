@@ -99,7 +99,7 @@ export default function DashboardPage() {
 
   return (
     <div className="flex h-screen bg-neutral-50 font-sans">
-      // If me hasn't loaded, pass undefined to Sidebar to show skeleton instead of user info
+      {/* If me hasn't loaded, pass undefined to Sidebar to show skeleton instead of user info */}
       <Sidebar user={me ?? undefined} />
 
       <main className="flex-1 overflow-y-auto px-10 py-8">
