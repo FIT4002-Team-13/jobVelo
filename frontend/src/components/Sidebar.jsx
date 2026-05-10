@@ -28,21 +28,13 @@ export default function Sidebar({ user = { name: 'John Doe', role: 'Interviewer'
       <Link
         key={item.path}
         to={item.path}
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: '10px',
-          padding: '9px 14px',
-          borderRadius: '8px',
-          fontSize: '14px',
-          fontWeight:  isActive ? '600'     : '400',          // Make active menu item bolder
-          color:       isActive ? '#2563EB' : '#64748B',      // Highlight active item in blue
-          background:  isActive ? '#EFF6FF' : 'transparent',  // Add light blue background for active item
-          textDecoration: 'none',
-          transition: 'all 0.15s',
-        }}
+        className={`flex items-center gap-2.5 px-3.5 py-2.5 rounded-md text-sm no-underline transition-all ${
+          isActive
+            ? 'font-semibold text-primary-500 bg-primary-50'
+            : 'font-normal text-neutral-500 bg-transparent'
+        }`}
       >
-        <span style={{ color: isActive ? '#2563EB' : '#94A3B8' }}> 
+        <span className={isActive ? 'text-primary-500' : 'text-neutral-400'}>
           {item.icon}
         </span>
         {item.label}
@@ -51,66 +43,36 @@ export default function Sidebar({ user = { name: 'John Doe', role: 'Interviewer'
   };
 
   return (
-    <aside style={{
-      width: '180px',
-      flexShrink: 0,
-      background: '#FFFFFF',
-      borderRight: '1px solid #E2E8F0',
-      display: 'flex',
-      flexDirection: 'column',
-      height: '100vh',
-      position: 'sticky',
-      top: 0,
-    }}>
+    <aside className="w-[180px] shrink-0 bg-neutral-0 border-r border-neutral-200 flex flex-col h-screen sticky top-0">
       {/* Logo */}
-      <div style={{ padding: '20px 16px 24px' }}>
-        <img src={logoFull} alt="Logo" style={{ height: '32px', width: 'auto' }} />
+      <div className="pt-5 px-4 pb-6">
+        <img src={logoFull} alt="Logo" className="h-8 w-auto" />
       </div>
 
       {/* Nav */}
-      <nav style={{ flex: 1, padding: '0 8px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
-        <span style={{ fontSize: '10px', fontWeight: '700', color: '#94A3B8', letterSpacing: '0.08em', padding: '0 8px 6px' }}>MAIN</span>
+      <nav className="flex-1 px-2 flex flex-col gap-1">
+        <span className="text-xs font-bold text-neutral-400 tracking-[0.08em] px-2 pb-1.5">MAIN</span>
         {mainItems.map(navLink)}
 
-        <span style={{ fontSize: '10px', fontWeight: '700', color: '#94A3B8', letterSpacing: '0.08em', padding: '16px 8px 6px' }}>GROUP</span>
+        <span className="text-xs font-bold text-neutral-400 tracking-[0.08em] px-2 pt-4 pb-1.5">GROUP</span>
         {groupItems.map(navLink)}
       </nav>
 
       {/* User + Logout */}
-      <div style={{ padding: '16px', borderTop: '1px solid #E2E8F0' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px' }}>
-
-          <div style={{
-            width: '36px', height: '36px', borderRadius: '50%',
-            background: 'linear-gradient(135deg, #2563EB, #06B6D4)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            color: 'white', fontWeight: '700', fontSize: '13px', flexShrink: 0,
-          }}>
+      <div className="p-4 border-t border-neutral-200">
+        <div className="flex items-center gap-2.5 mb-3">
+          <div className="w-9 h-9 rounded-pill bg-brand-gradient flex items-center justify-center text-white font-bold text-sm shrink-0">
             {initials}
           </div>
-
           <div>
-            <div style={{ fontSize: '13px', fontWeight: '600', color: '#1E293B' }}>{user.name}</div>
-            <div style={{ fontSize: '11px', color: '#94A3B8' }}>{user.role}</div>
+            <div className="text-sm font-semibold text-neutral-800">{user.name}</div>
+            <div className="text-xs text-neutral-400">{user.role}</div>
           </div>
         </div>
-        
+
         <button
           onClick={() => navigate('/')}
-          style={{
-            width: '100%',
-            padding: '8px',
-            background: '#FEF2F2',
-            color: '#EF4444',
-            border: '1px solid #FECACA',
-            borderRadius: '8px',
-            fontSize: '13px',
-            fontWeight: '500',
-            cursor: 'pointer',
-            transition: 'background 0.15s',
-          }}
-          onMouseEnter={e => e.target.style.background = '#FEE2E2'} // Darker red background when hovering
-          onMouseLeave={e => e.target.style.background = '#FEF2F2'} // Reset background when mouse leaves
+          className="w-full py-2 bg-coral-50 text-coral-500 border border-coral-200 rounded-md text-sm font-medium cursor-pointer hover:bg-coral-100 transition-colors"
         >
           Log Out
         </button>

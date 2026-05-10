@@ -6,14 +6,14 @@ import JobFormModal from '../components/JobFormModal'
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const STATUS_STYLES = {
-  Pending:       'bg-red-100 text-red-500',
-  Completed:     'bg-green-100 text-green-600',
-  'In Progress': 'bg-blue-100 text-blue-600',
+  Pending:       'bg-coral-100 text-coral-500',
+  Completed:     'bg-mint-100 text-mint-600',
+  'In Progress': 'bg-sky-100 text-sky-600',
 }
 
 const AVATAR_COLORS = [
-  'bg-blue-500','bg-orange-400','bg-green-500',
-  'bg-purple-500','bg-teal-500','bg-pink-500','bg-yellow-500',
+  'bg-primary-500', 'bg-sky-500', 'bg-mint-500', 'bg-coral-500',
+  'bg-primary-700', 'bg-sky-700', 'bg-mint-700',
 ]
 
 // ── Sub-components ────────────────────────────────────────────────────────────
@@ -22,7 +22,7 @@ function Avatar({ name, index }) {
   const initials = name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()
   return (
     <div title={name}
-      className={`w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-bold border-2 border-white -ml-2 first:ml-0 ${AVATAR_COLORS[index % AVATAR_COLORS.length]}`}>
+      className={`w-7 h-7 rounded-pill flex items-center justify-center text-white text-xs font-bold border-2 border-white -ml-2 first:ml-0 ${AVATAR_COLORS[index % AVATAR_COLORS.length]}`}>
       {initials}
     </div>
   )
@@ -57,7 +57,7 @@ function CardMenu({ onEdit, onDelete }) {
             Edit
           </button>
           <button onClick={e => { e.stopPropagation(); setOpen(false); onDelete() }}
-            className="w-full text-left px-4 py-2 text-sm text-red-500 hover:bg-red-50 flex items-center gap-2">
+            className="w-full text-left px-4 py-2 text-sm text-coral-500 hover:bg-coral-50 flex items-center gap-2">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/>
               <path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/>
@@ -81,7 +81,7 @@ function JobCard({ job, onEdit, onDelete }) {
       <div className="flex items-start justify-between gap-2">
         <h3 className="text-sm font-bold text-neutral-800 flex-1">{job.title}</h3>
         <div className="flex items-center gap-1.5 shrink-0">
-          <span className={`text-xs font-semibold px-3 py-1 rounded-full whitespace-nowrap ${STATUS_STYLES[job.status] ?? 'bg-neutral-100 text-neutral-500'}`}>
+          <span className={`text-xs font-semibold px-3 py-1 rounded-pill whitespace-nowrap ${STATUS_STYLES[job.status] ?? 'bg-neutral-100 text-neutral-500'}`}>
             {job.status}
           </span>
           <CardMenu onEdit={() => onEdit(job)} onDelete={() => onDelete(job)} />
@@ -100,7 +100,7 @@ function JobCard({ job, onEdit, onDelete }) {
       <div className="flex items-center">
         {visibleAvatars.map((name, i) => <Avatar key={i} name={name} index={i} />)}
         {overflow > 0 && (
-          <div className="w-7 h-7 rounded-full bg-neutral-200 flex items-center justify-center text-xs font-bold text-neutral-500 border-2 border-white -ml-2">
+          <div className="w-7 h-7 rounded-pill bg-neutral-200 flex items-center justify-center text-xs font-bold text-neutral-500 border-2 border-white -ml-2">
             +{overflow}
           </div>
         )}
@@ -135,9 +135,9 @@ function DeleteConfirmModal({ job, onClose, onDeleted }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
-      <div className="bg-white rounded-2xl w-full max-w-sm shadow-2xl p-6">
-        <div className="flex items-center justify-center w-12 h-12 rounded-full bg-red-100 mx-auto mb-4">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2">
+      <div className="bg-white rounded-2xl w-full max-w-sm shadow-xl p-6">
+        <div className="flex items-center justify-center w-12 h-12 rounded-pill bg-coral-100 mx-auto mb-4">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-coral-500">
             <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/>
             <path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/>
           </svg>
@@ -146,14 +146,14 @@ function DeleteConfirmModal({ job, onClose, onDeleted }) {
         <p className="text-sm text-neutral-500 text-center mb-6">
           Are you sure you want to delete <span className="font-semibold text-neutral-700">"{job.title}"</span>? This cannot be undone.
         </p>
-        {error && <p className="text-xs text-red-500 text-center mb-3">{error}</p>}
+        {error && <p className="text-xs text-coral-500 text-center mb-3">{error}</p>}
         <div className="flex gap-3">
           <button onClick={onClose}
             className="flex-1 py-2 rounded-lg border border-neutral-300 text-sm font-medium text-neutral-600 hover:bg-neutral-50">
             Cancel
           </button>
           <button onClick={handleDelete} disabled={deleting}
-            className="flex-1 py-2 rounded-lg bg-red-500 text-white text-sm font-semibold hover:bg-red-600 disabled:opacity-60">
+            className="flex-1 py-2 rounded-lg bg-coral-500 text-white text-sm font-semibold hover:bg-coral-600 disabled:opacity-60">
             {deleting ? 'Deleting…' : 'Delete'}
           </button>
         </div>
@@ -206,7 +206,7 @@ export default function JobsPage() {
             <p className="text-sm text-neutral-400 mt-1">Manage your open positions</p>
           </div>
           <button onClick={() => setFormModal('create')}
-            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold px-4 py-2.5 rounded-xl transition-colors">
+            className="flex items-center gap-2 bg-primary-500 hover:bg-primary-600 text-white text-sm font-semibold px-4 py-2.5 rounded-xl transition-colors">
             <span className="text-lg leading-none">+</span> Create Job
           </button>
         </div>
@@ -228,7 +228,7 @@ export default function JobsPage() {
         </div>
 
         {loading && <p className="text-sm text-neutral-400">Loading…</p>}
-        {error   && <p className="text-sm text-red-500">{error}</p>}
+        {error   && <p className="text-sm text-coral-500">{error}</p>}
 
         {!loading && !error && (
           filtered.length === 0
