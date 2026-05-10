@@ -2,7 +2,9 @@ import React from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { LayoutDashboard, CalendarDays, Briefcase, Users } from 'lucide-react';
 import logoFull from '../assets/logo-full.png';
+
 export default function Sidebar() {
+  const location = useLocation();
   const navigate = useNavigate();
 
   const navItems = [
@@ -14,6 +16,35 @@ export default function Sidebar() {
 
   const mainItems  = navItems.filter(i => i.group === 'MAIN');
   const groupItems = navItems.filter(i => i.group === 'GROUP');
+
+
+  const navLink = (item) => {
+    const isActive = location.pathname === item.path;
+    return (
+      <Link
+        key={item.path}
+        to={item.path}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '10px',
+          padding: '9px 14px',
+          borderRadius: '8px',
+          fontSize: '14px',
+          fontWeight:  isActive ? '600'     : '400',          // Make active menu item bolder
+          color:       isActive ? '#2563EB' : '#64748B',      // Highlight active item in blue
+          background:  isActive ? '#EFF6FF' : 'transparent',  // Add light blue background for active item
+          textDecoration: 'none',
+          transition: 'all 0.15s',
+        }}
+      >
+        <span style={{ color: isActive ? '#2563EB' : '#94A3B8' }}> 
+          {item.icon}
+        </span>
+        {item.label}
+      </Link>
+    );
+  };
 
   return (
     <aside style={{
@@ -35,48 +66,10 @@ export default function Sidebar() {
       {/* Nav */}
       <nav style={{ flex: 1, padding: '0 8px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
         <span style={{ fontSize: '10px', fontWeight: '700', color: '#94A3B8', letterSpacing: '0.08em', padding: '0 8px 6px' }}>MAIN</span>
-        {mainItems.map((item) => (
-          <Link
-            key={item.path}
-            to={item.path}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '10px',
-              padding: '9px 14px',
-              borderRadius: '8px',
-              fontSize: '14px',
-              fontWeight: '400',
-              color: '#64748B',
-              textDecoration: 'none',
-            }}
-          >
-            <span style={{ color: '#94A3B8' }}>{item.icon}</span>
-            {item.label}
-          </Link>
-        ))}
+        {mainItems.map(navLink)}   
 
         <span style={{ fontSize: '10px', fontWeight: '700', color: '#94A3B8', letterSpacing: '0.08em', padding: '16px 8px 6px' }}>GROUP</span>
-        {groupItems.map((item) => (
-          <Link
-            key={item.path}
-            to={item.path}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '10px',
-              padding: '9px 14px',
-              borderRadius: '8px',
-              fontSize: '14px',
-              fontWeight: '400',
-              color: '#64748B',
-              textDecoration: 'none',
-            }}
-          >
-            <span style={{ color: '#94A3B8' }}>{item.icon}</span>
-            {item.label}
-          </Link>
-        ))}
+        {groupItems.map(navLink)}  
       </nav>
 
       {/* User + Logout */}
@@ -96,7 +89,10 @@ export default function Sidebar() {
             fontSize: '13px',
             fontWeight: '500',
             cursor: 'pointer',
+            transition: 'background 0.15s',
           }}
+          onMouseEnter={e => e.target.style.background = '#FEE2E2'} // Darker red background when hovering
+          onMouseLeave={e => e.target.style.background = '#FEF2F2'} // Reset background when mouse leaves
         >
           Log Out
         </button>
