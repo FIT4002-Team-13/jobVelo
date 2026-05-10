@@ -51,8 +51,10 @@ function SortBtn() {
 // ── Page ────────────────────────────────────────────────────────────────────
 
 export default function DashboardPage() {
+  // toLocaleDateString return dd/mm/yyy, replace keeps the slashes as is but ensures it's always in the same format regardless of user locale.
   const today = new Date().toLocaleDateString('en-GB').replace(/\//g, '/')
 
+  const [me,         setMe]         = useState(null)
   const [summary,    setSummary]    = useState(null)
   const [jobs,       setJobs]       = useState([])
   const [candidates, setCandidates] = useState([])
@@ -62,11 +64,14 @@ export default function DashboardPage() {
   useEffect(() => {
     async function load() {
       try {
-        const [sumRes, jobsRes, candsRes] = await Promise.all([
+        // Fetch all dashboard data in parallel to minimize loading time
+        const [meRes, sumRes, jobsRes, candsRes] = await Promise.all([
+          fetch('/api/me'),
           fetch('/api/dashboard/summary'),
           fetch('/api/jobs'),
           fetch('/api/candidates'),
         ])
+        setMe(await meRes.json())
         setSummary(await sumRes.json())
         setJobs(await jobsRes.json())
         setCandidates(await candsRes.json())
@@ -94,14 +99,15 @@ export default function DashboardPage() {
 
   return (
     <div className="flex h-screen bg-neutral-50 font-sans">
-      <Sidebar />
+      // If me hasn't loaded, pass undefined to Sidebar to show skeleton instead of user info
+      <Sidebar user={me ?? undefined} />
 
       <main className="flex-1 overflow-y-auto px-10 py-8">
 
         {/* Header */}
         <div className="mb-6">
           <h1 className="text-4xl font-extrabold tracking-tight text-neutral-800">
-            Hello, <em className="italic">John Doe</em>
+            Hello, <em className="italic">{me?.name}</em>
           </h1>
           <p className="mt-1 text-sm font-medium text-primary-500">{today}</p>
         </div>
