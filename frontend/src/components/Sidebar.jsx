@@ -3,9 +3,13 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { LayoutDashboard, CalendarDays, Briefcase, Users } from 'lucide-react';
 import logoFull from '../assets/logo-full.png';
 
-export default function Sidebar() {
+//Mock user data for now - in a real app, this would come from context or props
+export default function Sidebar({ user = { name: 'John Doe', role: 'Interviewer' } }) {
   const location = useLocation();
   const navigate = useNavigate();
+
+
+  const initials = user.name.split(' ').map(n => n[0]).join('');
 
   const navItems = [
     { label: 'Dashboard',  path: '/dashboard',  icon: <LayoutDashboard size={16} />, group: 'MAIN'  },
@@ -66,17 +70,31 @@ export default function Sidebar() {
       {/* Nav */}
       <nav style={{ flex: 1, padding: '0 8px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
         <span style={{ fontSize: '10px', fontWeight: '700', color: '#94A3B8', letterSpacing: '0.08em', padding: '0 8px 6px' }}>MAIN</span>
-        {mainItems.map(navLink)}   
+        {mainItems.map(navLink)}
 
         <span style={{ fontSize: '10px', fontWeight: '700', color: '#94A3B8', letterSpacing: '0.08em', padding: '16px 8px 6px' }}>GROUP</span>
-        {groupItems.map(navLink)}  
+        {groupItems.map(navLink)}
       </nav>
 
       {/* User + Logout */}
       <div style={{ padding: '16px', borderTop: '1px solid #E2E8F0' }}>
-        <div style={{ fontSize: '13px', fontWeight: '600', color: '#1E293B', marginBottom: '12px' }}>
-          John Doe
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px' }}>
+
+          <div style={{
+            width: '36px', height: '36px', borderRadius: '50%',
+            background: 'linear-gradient(135deg, #2563EB, #06B6D4)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            color: 'white', fontWeight: '700', fontSize: '13px', flexShrink: 0,
+          }}>
+            {initials}
+          </div>
+
+          <div>
+            <div style={{ fontSize: '13px', fontWeight: '600', color: '#1E293B' }}>{user.name}</div>
+            <div style={{ fontSize: '11px', color: '#94A3B8' }}>{user.role}</div>
+          </div>
         </div>
+        
         <button
           onClick={() => navigate('/')}
           style={{
