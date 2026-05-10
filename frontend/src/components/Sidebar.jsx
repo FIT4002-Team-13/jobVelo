@@ -2,12 +2,8 @@ import React from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { LayoutDashboard, CalendarDays, Briefcase, Users } from 'lucide-react';
 import logoFull from '../assets/logo-full.png';
-
-export default function Sidebar({ user = { name: 'John Doe', role: 'Interviewer' } }) {
-  const location = useLocation();
+export default function Sidebar() {
   const navigate = useNavigate();
-
-  const initials = user.name.split(' ').map(n => n[0]).join('');
 
   const navItems = [
     { label: 'Dashboard',  path: '/dashboard',  icon: <LayoutDashboard size={16} />, group: 'MAIN'  },
@@ -18,32 +14,6 @@ export default function Sidebar({ user = { name: 'John Doe', role: 'Interviewer'
 
   const mainItems  = navItems.filter(i => i.group === 'MAIN');
   const groupItems = navItems.filter(i => i.group === 'GROUP');
-
-  const navLink = (item) => {
-    const isActive = location.pathname === item.path;
-    return (
-      <Link
-        key={item.path}
-        to={item.path}
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: '10px',
-          padding: '9px 14px',
-          borderRadius: '8px',
-          fontSize: '14px',
-          fontWeight: isActive ? '600' : '400',
-          color: isActive ? '#2563EB' : '#64748B',
-          background: isActive ? '#EFF6FF' : 'transparent',
-          textDecoration: 'none',
-          transition: 'all 0.15s',
-        }}
-      >
-        <span style={{ color: isActive ? '#2563EB' : '#94A3B8' }}>{item.icon}</span>
-        {item.label}
-      </Link>
-    );
-  };
 
   return (
     <aside style={{
@@ -65,27 +35,54 @@ export default function Sidebar({ user = { name: 'John Doe', role: 'Interviewer'
       {/* Nav */}
       <nav style={{ flex: 1, padding: '0 8px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
         <span style={{ fontSize: '10px', fontWeight: '700', color: '#94A3B8', letterSpacing: '0.08em', padding: '0 8px 6px' }}>MAIN</span>
-        {mainItems.map(navLink)}
+        {mainItems.map((item) => (
+          <Link
+            key={item.path}
+            to={item.path}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '10px',
+              padding: '9px 14px',
+              borderRadius: '8px',
+              fontSize: '14px',
+              fontWeight: '400',
+              color: '#64748B',
+              textDecoration: 'none',
+            }}
+          >
+            <span style={{ color: '#94A3B8' }}>{item.icon}</span>
+            {item.label}
+          </Link>
+        ))}
 
         <span style={{ fontSize: '10px', fontWeight: '700', color: '#94A3B8', letterSpacing: '0.08em', padding: '16px 8px 6px' }}>GROUP</span>
-        {groupItems.map(navLink)}
+        {groupItems.map((item) => (
+          <Link
+            key={item.path}
+            to={item.path}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '10px',
+              padding: '9px 14px',
+              borderRadius: '8px',
+              fontSize: '14px',
+              fontWeight: '400',
+              color: '#64748B',
+              textDecoration: 'none',
+            }}
+          >
+            <span style={{ color: '#94A3B8' }}>{item.icon}</span>
+            {item.label}
+          </Link>
+        ))}
       </nav>
 
       {/* User + Logout */}
       <div style={{ padding: '16px', borderTop: '1px solid #E2E8F0' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px' }}>
-          <div style={{
-            width: '36px', height: '36px', borderRadius: '50%',
-            background: 'linear-gradient(135deg, #2563EB, #06B6D4)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            color: 'white', fontWeight: '700', fontSize: '13px', flexShrink: 0,
-          }}>
-            {initials}
-          </div>
-          <div>
-            <div style={{ fontSize: '13px', fontWeight: '600', color: '#1E293B' }}>{user.name}</div>
-            <div style={{ fontSize: '11px', color: '#94A3B8' }}>{user.role}</div>
-          </div>
+        <div style={{ fontSize: '13px', fontWeight: '600', color: '#1E293B', marginBottom: '12px' }}>
+          John Doe
         </div>
         <button
           onClick={() => navigate('/')}
@@ -99,10 +96,7 @@ export default function Sidebar({ user = { name: 'John Doe', role: 'Interviewer'
             fontSize: '13px',
             fontWeight: '500',
             cursor: 'pointer',
-            transition: 'background 0.15s',
           }}
-          onMouseEnter={e => e.target.style.background = '#FEE2E2'}
-          onMouseLeave={e => e.target.style.background = '#FEF2F2'}
         >
           Log Out
         </button>
