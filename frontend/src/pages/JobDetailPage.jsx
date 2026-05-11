@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import Sidebar from '../components/Sidebar'
 import JobFormModal from '../components/JobFormModal'
+import { flex, card, badge, form, button, modal, page } from '../styles/layout'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -56,7 +57,7 @@ function Avatar({ name, size = 'md' }) {
   const sz = size === 'sm' ? 'w-7 h-7 text-xs' : 'w-8 h-8 text-xs'
   return (
     <div title={name}
-      className={`${sz} rounded-pill flex items-center justify-center text-white font-bold border-2 border-white -ml-2 first:ml-0 ${avatarColor(name)}`}>
+      className={`${sz} rounded-pill ${flex.rowCenter} text-white font-bold border-2 border-neutral-0 -ml-2 first:ml-0 ${avatarColor(name)}`}>
       {initials(name)}
     </div>
   )
@@ -65,7 +66,7 @@ function Avatar({ name, size = 'md' }) {
 // ── Add Candidate Modal ───────────────────────────────────────────────────────
 
 function AddCandidateModal({ jobId, onClose, onAdded }) {
-  const [form, setForm] = useState({ name: '', interviewer: '', scheduled_at: '' })
+  const [form_state, setForm] = useState({ name: '', interviewer: '', scheduled_at: '' })
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState(null)
 
@@ -73,9 +74,9 @@ function AddCandidateModal({ jobId, onClose, onAdded }) {
 
   async function handleSubmit(e) {
     e.preventDefault()
-    if (!form.name.trim())        return setError('Candidate name is required.')
-    if (!form.interviewer.trim()) return setError('Interviewer name is required.')
-    if (!form.scheduled_at)       return setError('Scheduled date/time is required.')
+    if (!form_state.name.trim())        return setError('Candidate name is required.')
+    if (!form_state.interviewer.trim()) return setError('Interviewer name is required.')
+    if (!form_state.scheduled_at)       return setError('Scheduled date/time is required.')
 
     setError(null)
     setSubmitting(true)
@@ -83,7 +84,7 @@ function AddCandidateModal({ jobId, onClose, onAdded }) {
       const res = await fetch(`/api/jobs/${jobId}/candidates`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...form, status: 'SCHEDULED', score: null }),
+        body: JSON.stringify({ ...form_state, status: 'SCHEDULED', score: null }),
       })
       if (!res.ok) throw new Error('Failed to add candidate.')
       onAdded(await res.json())
@@ -95,36 +96,36 @@ function AddCandidateModal({ jobId, onClose, onAdded }) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
-      <div className="bg-white rounded-2xl w-full max-w-md shadow-xl p-6 relative">
+    <div className={modal.overlay}>
+      <div className={`${modal.panel} max-w-md`}>
         <button onClick={onClose} className="absolute top-4 right-4 text-neutral-400 hover:text-neutral-700 text-xl leading-none">×</button>
         <h2 className="text-xl font-bold text-neutral-800 mb-1">Add Candidate</h2>
         <p className="text-xs text-neutral-400 mb-5">Required fields are indicated with a asterisk *</p>
 
-        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+        <form onSubmit={handleSubmit} className={`${flex.col} gap-4`}>
           <div>
-            <label className="block text-xs font-bold text-neutral-600 mb-1.5 tracking-wide uppercase">Candidate Name *</label>
-            <input value={form.name} onChange={e => set('name', e.target.value)}
+            <label className={form.label}>Candidate Name *</label>
+            <input value={form_state.name} onChange={e => set('name', e.target.value)}
               placeholder="eg. John Doe"
-              className="w-full border border-neutral-300 rounded-lg px-3 py-2 text-sm text-neutral-700 focus:outline-none focus:ring-2 focus:ring-primary-300" />
+              className={form.input} />
           </div>
           <div>
-            <label className="block text-xs font-bold text-neutral-600 mb-1.5 tracking-wide uppercase">Interviewer *</label>
-            <input value={form.interviewer} onChange={e => set('interviewer', e.target.value)}
+            <label className={form.label}>Interviewer *</label>
+            <input value={form_state.interviewer} onChange={e => set('interviewer', e.target.value)}
               placeholder="eg. Jane Smith"
-              className="w-full border border-neutral-300 rounded-lg px-3 py-2 text-sm text-neutral-700 focus:outline-none focus:ring-2 focus:ring-primary-300" />
+              className={form.input} />
           </div>
           <div>
-            <label className="block text-xs font-bold text-neutral-600 mb-1.5 tracking-wide uppercase">Scheduled Date & Time *</label>
-            <input type="datetime-local" value={form.scheduled_at} onChange={e => set('scheduled_at', e.target.value)}
-              className="w-full border border-neutral-300 rounded-lg px-3 py-2 text-sm text-neutral-700 focus:outline-none focus:ring-2 focus:ring-primary-300" />
+            <label className={form.label}>Scheduled Date & Time *</label>
+            <input type="datetime-local" value={form_state.scheduled_at} onChange={e => set('scheduled_at', e.target.value)}
+              className={form.input} />
           </div>
 
-          {error && <p className="text-xs text-coral-500">{error}</p>}
+          {error && <p className={form.error}>{error}</p>}
 
           <div className="flex justify-end gap-3 pt-1">
             <button type="button" onClick={onClose}
-              className="px-6 py-2 rounded-lg border border-neutral-300 text-sm font-medium text-neutral-600 hover:bg-neutral-50">
+              className={`${button.cancel} px-6 py-2`}>
               Cancel
             </button>
             <button type="submit" disabled={submitting}
@@ -157,7 +158,7 @@ function InterviewStatusPanel({ candidates, job }) {
   )]
 
   return (
-    <div className="bg-white border border-neutral-200 rounded-2xl p-6 flex flex-col gap-4">
+    <div className={`${card.base} ${flex.col} gap-4`}>
       <h2 className="text-sm font-bold text-neutral-800">Interview Status</h2>
 
       <div className="text-center">
@@ -165,9 +166,9 @@ function InterviewStatusPanel({ candidates, job }) {
         <p className="text-5xl font-extrabold text-primary-500">{total}</p>
       </div>
 
-      <div className="flex flex-col gap-1.5">
+      <div className={`${flex.col} gap-1.5`}>
         {Object.entries(counts).map(([status, count]) => (
-          <div key={status} className="flex items-center justify-between text-sm">
+          <div key={status} className={`${flex.rowBetween} text-sm`}>
             <span className="text-neutral-500 font-medium">{status}</span>
             <span className="font-bold text-neutral-700">{count}</span>
           </div>
@@ -176,15 +177,15 @@ function InterviewStatusPanel({ candidates, job }) {
 
       <hr className="border-neutral-100" />
 
-      <div className="flex items-center justify-between">
+      <div className={flex.rowBetween}>
         <div>
           <p className="text-xs text-neutral-400 mb-2">Interviewer</p>
-          <div className="flex items-center">
+          <div className={flex.row}>
             {uniqueInterviewers.slice(0, 5).map((name, i) => (
               <Avatar key={i} name={name} size="sm" />
             ))}
             {uniqueInterviewers.length > 5 && (
-              <div className="w-7 h-7 rounded-pill bg-neutral-200 flex items-center justify-center text-xs font-bold text-neutral-500 border-2 border-white -ml-2">
+              <div className={`w-7 h-7 rounded-pill bg-neutral-200 ${flex.rowCenter} text-xs font-bold text-neutral-500 border-2 border-neutral-0 -ml-2`}>
                 +{uniqueInterviewers.length - 5}
               </div>
             )}
@@ -214,15 +215,15 @@ function CandidatesTable({ candidates, tab }) {
 
   return (
     <div>
-      <div className="flex justify-end items-center gap-3 mb-4">
-        <div className="flex items-center gap-2 border border-neutral-200 rounded-xl px-3 py-1.5 bg-white">
+      <div className={`${flex.rowEnd} gap-3 mb-4`}>
+        <div className={`${flex.row} gap-2 border border-neutral-200 rounded-xl px-3 py-1.5 bg-neutral-0`}>
           <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Position Name"
             className="outline-none border-none bg-transparent text-sm text-neutral-600 placeholder:text-neutral-400 w-32" />
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-neutral-400">
             <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
           </svg>
         </div>
-        <button className="flex items-center gap-1 text-xs font-medium text-neutral-500 hover:text-neutral-700">
+        <button className={`${flex.row} gap-1 text-xs font-medium text-neutral-500 hover:text-neutral-700`}>
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/>
           </svg>
@@ -230,7 +231,7 @@ function CandidatesTable({ candidates, tab }) {
         </button>
       </div>
 
-      <div className="bg-white border border-neutral-200 rounded-2xl overflow-hidden">
+      <div className={`${card.flat} overflow-hidden`}>
         <table className="w-full text-sm">
           <thead>
             <tr className="bg-neutral-50 border-b border-neutral-100">
@@ -250,8 +251,8 @@ function CandidatesTable({ candidates, tab }) {
               <tr key={c.id ?? i} className="border-b border-neutral-100 last:border-0 hover:bg-neutral-50 transition-colors">
                 {/* Candidate */}
                 <td className="px-4 py-3">
-                  <div className="flex items-center gap-3">
-                    <div className={`w-8 h-8 rounded-pill flex items-center justify-center text-white text-xs font-bold shrink-0 ${avatarColor(c.name)}`}>
+                  <div className={`${flex.row} gap-3`}>
+                    <div className={`w-8 h-8 rounded-pill ${flex.rowCenter} text-white text-xs font-bold shrink-0 ${avatarColor(c.name)}`}>
                       {initials(c.name)}
                     </div>
                     <span className="font-medium text-neutral-800">{c.name}</span>
@@ -259,7 +260,7 @@ function CandidatesTable({ candidates, tab }) {
                 </td>
                 {/* Status */}
                 <td className="px-4 py-3">
-                  <span className={`text-xs font-semibold px-2.5 py-1 rounded-md ${CANDIDATE_STATUS_STYLES[c.status] ?? 'bg-neutral-100 text-neutral-500'}`}>
+                  <span className={`${badge.sm} ${CANDIDATE_STATUS_STYLES[c.status] ?? 'bg-neutral-100 text-neutral-500'}`}>
                     {c.status}
                   </span>
                 </td>
@@ -273,8 +274,8 @@ function CandidatesTable({ candidates, tab }) {
                 </td>
                 {/* Interviewer */}
                 <td className="px-4 py-3">
-                  <div className="flex items-center gap-2">
-                    <div className={`w-7 h-7 rounded-pill flex items-center justify-center text-white text-xs font-bold shrink-0 ${avatarColor(c.interviewer)}`}>
+                  <div className={`${flex.row} gap-2`}>
+                    <div className={`w-7 h-7 rounded-pill ${flex.rowCenter} text-white text-xs font-bold shrink-0 ${avatarColor(c.interviewer)}`}>
                       {initials(c.interviewer)}
                     </div>
                     <span className="text-neutral-600">{c.interviewer}</span>
@@ -282,14 +283,14 @@ function CandidatesTable({ candidates, tab }) {
                 </td>
                 {/* Actions */}
                 <td className="px-4 py-3">
-                  <div className="flex items-center gap-2">
-                    <button className="flex items-center gap-1.5 bg-neutral-100 hover:bg-neutral-200 text-neutral-600 text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors whitespace-nowrap">
+                  <div className={`${flex.row} gap-2`}>
+                    <button className={`${flex.row} gap-1.5 bg-neutral-100 hover:bg-neutral-200 text-neutral-600 text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors whitespace-nowrap`}>
                       <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor">
                         <polygon points="5 3 19 12 5 21 5 3"/>
                       </svg>
                       Start Interview
                     </button>
-                    <button className="w-7 h-7 flex items-center justify-center rounded-lg text-neutral-400 hover:bg-neutral-100 hover:text-neutral-600 transition-colors">
+                    <button className={`w-7 h-7 ${flex.rowCenter} rounded-lg text-neutral-400 hover:bg-neutral-100 hover:text-neutral-600 transition-colors`}>
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                         <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
                       </svg>
@@ -350,27 +351,27 @@ export default function JobDetailPage() {
   }
 
   if (loading) return (
-    <div className="flex h-screen items-center justify-center bg-neutral-50 font-sans">
+    <div className={page.loading}>
       <p className="text-sm text-neutral-400">Loading…</p>
     </div>
   )
 
   if (error) return (
-    <div className="flex h-screen items-center justify-center bg-neutral-50 font-sans">
+    <div className={page.loading}>
       <p className="text-sm text-coral-500">{error}</p>
     </div>
   )
 
   return (
-    <div className="flex h-screen bg-neutral-50 font-sans">
+    <div className={page.shell}>
       <Sidebar />
 
-      <main className="flex-1 overflow-y-auto px-10 py-8">
+      <main className={page.main}>
         {/* Header */}
         <div className="flex items-start justify-between mb-6">
           <div>
             <button onClick={() => navigate('/jobs')}
-              className="flex items-center gap-1.5 text-xs text-neutral-400 hover:text-neutral-600 mb-2 transition-colors">
+              className={`${flex.row} gap-1.5 text-xs text-neutral-400 hover:text-neutral-600 mb-2 transition-colors`}>
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/>
               </svg>
@@ -381,11 +382,11 @@ export default function JobDetailPage() {
           </div>
           <div className="flex gap-3">
             <button onClick={() => setShowAddCandidate(true)}
-              className="flex items-center gap-2 border border-primary-500 text-primary-500 hover:bg-primary-50 text-sm font-semibold px-4 py-2.5 rounded-xl transition-colors">
+              className={`${flex.row} gap-2 ${button.outline}`}>
               + Add Candidate
             </button>
             <button onClick={() => navigate('/jobs')}
-              className="flex items-center gap-2 bg-primary-500 hover:bg-primary-600 text-white text-sm font-semibold px-4 py-2.5 rounded-xl transition-colors">
+              className={`${flex.row} gap-2 ${button.primary}`}>
               + Create Job
             </button>
           </div>
@@ -394,23 +395,23 @@ export default function JobDetailPage() {
         {/* Top panels */}
         <div className="grid grid-cols-3 gap-5 mb-6">
           {/* Job Info */}
-          <div className="col-span-2 bg-white border border-neutral-200 rounded-2xl p-6">
+          <div className={`col-span-2 ${card.base}`}>
             <div className="flex items-start justify-between mb-3">
               <div>
                 <h2 className="text-lg font-bold text-neutral-800">{job.title}</h2>
-                <p className="text-xs text-neutral-400 mt-0.5 flex items-center gap-1">
+                <p className={`text-xs text-neutral-400 mt-0.5 ${flex.row} gap-1`}>
                   <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                     <circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>
                   </svg>
                   Last Update {new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                 </p>
               </div>
-              <div className="flex items-center gap-2">
+              <div className={`${flex.row} gap-2`}>
                 <button onClick={() => setShowEdit(true)}
                   className="text-xs font-medium text-neutral-500 border border-neutral-200 px-3 py-1 rounded-lg hover:bg-neutral-50 transition-colors">
                   Edit
                 </button>
-                <span className={`text-xs font-semibold px-3 py-1 rounded-pill ${STATUS_STYLES[job.status] ?? 'bg-neutral-100 text-neutral-500'}`}>
+                <span className={`${badge.base} ${STATUS_STYLES[job.status] ?? 'bg-neutral-100 text-neutral-500'}`}>
                   {job.status}
                 </span>
               </div>
@@ -424,14 +425,14 @@ export default function JobDetailPage() {
             {job.employment_type?.length > 0 && (
               <div className="flex flex-wrap gap-2 mb-4">
                 {job.employment_type.map(t => (
-                  <span key={t} className="text-xs font-semibold px-3 py-1 rounded-pill bg-sky-100 text-sky-600">
+                  <span key={t} className={`${badge.base} bg-sky-100 text-sky-600`}>
                     {t}
                   </span>
                 ))}
               </div>
             )}
 
-            <div className="flex items-center gap-8 text-xs text-neutral-500">
+            <div className={`${flex.row} gap-8 text-xs text-neutral-500`}>
               <div>
                 <span className="block text-neutral-400 font-medium uppercase tracking-wide mb-0.5">Start</span>
                 <span className="font-semibold text-neutral-700">{formatDate(job.recruitment_start)}</span>
@@ -456,9 +457,9 @@ export default function JobDetailPage() {
         </div>
 
         {/* Candidates section */}
-        <div className="bg-white border border-neutral-200 rounded-2xl p-6">
+        <div className={card.base}>
           {/* Tabs */}
-          <div className="flex items-center gap-2 mb-5">
+          <div className={`${flex.row} gap-2 mb-5`}>
             {['SCHEDULES', 'RANKINGS'].map(t => (
               <button key={t} onClick={() => setTab(t)}
                 className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-colors ${
