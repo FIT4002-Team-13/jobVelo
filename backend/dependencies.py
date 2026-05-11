@@ -54,7 +54,7 @@ def require_role(*allowed: str):
         user = Depends(require_role("admin"))
     """
     async def _checker(user: dict = Depends(get_current_user)) -> dict:
-        if user.get("user_type") not in allowed:
+        if user.get("role") not in allowed:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail=f"Requires role: {', '.join(allowed)}",

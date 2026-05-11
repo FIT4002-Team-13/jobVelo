@@ -12,7 +12,6 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Annotated
 
-from bson import ObjectId
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from pydantic import BaseModel, EmailStr, ValidationError
 from pymongo.errors import DuplicateKeyError
@@ -34,14 +33,10 @@ def _user_out(doc: dict) -> UserOut:
     return UserOut(
         userid=str(doc["_id"]),
         username=doc["username"],
+        full_name=doc["full_name"],
         email=doc["email"],
-        position=doc.get("position"),
+        role=doc["role"],
         comp_id=str(doc["comp_id"]) if doc.get("comp_id") else None,
-        user_type=doc.get("user_type"),
-        strengths=doc.get("strengths", []),
-        weaknesses=doc.get("weaknesses", []),
-        total_interview=doc.get("total_interview", 0),
-        average_score=doc.get("average_score", 0.0),
         created_at=doc["created_at"],
     )
 
@@ -65,7 +60,7 @@ def _mint_token(user_doc: dict) -> str:
         subject=str(user_doc["_id"]),
         extra_claims={
             "username": user_doc["username"],
-            "user_type": user_doc.get("user_type"),
+            "role":     user_doc.get("role"),
         },
     )
 
@@ -107,6 +102,7 @@ async def signup_company(
     comp_logo:        Annotated[UploadFile,  File(description="Company logo (png/jpg/webp)")],
     # Admin fields
     username:         Annotated[str,         Form(min_length=3, max_length=40)],
+    full_name:        Annotated[str,         Form(min_length=1, max_length=100)],
     email:            Annotated[EmailStr,    Form()],
     password:         Annotated[str,         Form(min_length=8, max_length=128)],
     # Optional company fields
@@ -122,7 +118,12 @@ async def signup_company(
     # Validate admin half via the Pydantic model so password strength + email
     # format are enforced consistently with the rest of the codebase.
     try:
-        admin_payload = AdminCreate(username=username, email=email, password=password)
+        admin_payload = AdminCreate(
+            username=username,
+            full_name=full_name,
+            email=email,
+            password=password,
+        )
     except ValidationError as e:
         raise HTTPException(status_code=422, detail=e.errors())
 
@@ -159,15 +160,11 @@ async def signup_company(
     # 3. Insert the admin user pointing at the new company.
     user_doc = {
         "username":      admin_payload.username.strip(),
+        "full_name":     admin_payload.full_name.strip(),
         "email":         admin_payload.email.lower(),
         "password_hash": hash_password(admin_payload.password),
-        "position":      "Admin",
-        "comp_id":       comp_res.inserted_id,
-        "user_type":     "admin",
-        "strengths":     [],
-        "weaknesses":    [],
-        "total_interview": 0,
-        "average_score": 0.0,
+        "comp_id":    comp_res.inserted_id,
+        "role":          "admin",
         "created_at":    now,
     }
     try:
@@ -227,8 +224,9 @@ async def signup(payload: UserCreate) -> UserOut:
     both succeed. Only then do we insert the user. If user creation fails,
     we release the invitation back to active.
 
-    On success the invitation's user_id is updated to point at the new user
-    so admins can later identify who used which code.
+    The role is taken from the form (UserCreate.role) - we let the
+    invitee pick their own role from the non-admin set. comp_id is
+    always taken from the invitation, never from the request body.
     """
     db = get_db()
     code = payload.invitation_code.strip()
@@ -243,15 +241,11 @@ async def signup(payload: UserCreate) -> UserOut:
 
     doc = {
         "username":      payload.username.strip(),
+        "full_name":     payload.full_name.strip(),
         "email":         payload.email.lower(),
         "password_hash": hash_password(payload.password),
-        "position":      payload.position.strip(),
-        "comp_id":       inv["comp_id"],
-        "user_type":     inv.get("user_type", "interviewer"),
-        "strengths":     [],
-        "weaknesses":    [],
-        "total_interview": 0,
-        "average_score": 0.0,
+        "comp_id":    inv["comp_id"],
+        "role":          payload.role,
         "created_at":    datetime.now(timezone.utc),
     }
     try:

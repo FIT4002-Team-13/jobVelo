@@ -27,7 +27,7 @@ export default function LoginPage() {
     setSubmitting(true)
     try {
       const user = await login(form.identifier.trim(), form.password)
-      const target = fromPath || (user?.user_type === 'admin' ? '/admin/dashboard' : '/dashboard')
+      const target = fromPath || (user?.role === 'admin' ? '/admin/dashboard' : '/dashboard')
       navigate(target, { replace: true })
     } catch (err) {
       if (err instanceof ApiError) {

@@ -6,10 +6,18 @@ import AuthField from '../components/auth/AuthField.jsx'
 import { api, ApiError } from '../lib/api.js'
 import { checkPassword, isPasswordStrong } from '../lib/password.js'
 
+// Roles the invitee can pick. "admin" isn't here on purpose - that role is
+// reserved for the user who created the company.
+const ROLE_OPTIONS = [
+  { value: 'interviewer',    label: 'Interviewer' },
+  { value: 'hiring_manager', label: 'Hiring Manager' },
+  { value: 'recruiter',      label: 'Recruiter' },
+]
+
 // Two-step signup for invited teammates:
 //   step 1 - enter invitation code, validate against backend
-//   step 2 - fill the rest of the form; submit creates the user with comp_id
-//            taken from the validated invitation (not the form).
+//   step 2 - fill the rest of the form; submit creates the user with
+//            company_id taken from the validated invitation (not the form).
 export default function SignupPage() {
   const navigate = useNavigate()
   const [step, setStep] = useState(1)
@@ -18,8 +26,9 @@ export default function SignupPage() {
 
   const [form, setForm] = useState({
     username: '',
+    full_name: '',
     email: '',
-    position: '',
+    role: 'interviewer',
     password: '',
     confirm: '',
   })
@@ -68,10 +77,11 @@ export default function SignupPage() {
     try {
       await api.signup({
         invitation_code: code.trim(),
-        username: form.username.trim(),
-        email: form.email.trim().toLowerCase(),
-        position: form.position.trim(),
-        password: form.password,
+        username:        form.username.trim(),
+        full_name:       form.full_name.trim(),
+        email:           form.email.trim().toLowerCase(),
+        role:            form.role,
+        password:        form.password,
       })
       navigate('/login', { replace: true, state: { justSignedUp: true } })
     } catch (err) {
@@ -158,9 +168,18 @@ export default function SignupPage() {
         </div>
 
         <AuthField
+          label="Full name"
+          name="full_name"
+          placeholder="eg. Jane Doe"
+          autoComplete="name"
+          value={form.full_name}
+          onChange={update}
+          required
+        />
+        <AuthField
           label="Username"
           name="username"
-          placeholder="eg. johndoe23"
+          placeholder="eg. janedoe23"
           autoComplete="username"
           value={form.username}
           onChange={update}
@@ -176,15 +195,16 @@ export default function SignupPage() {
           onChange={update}
           required
         />
-        <AuthField
-          label="Position"
-          name="position"
-          placeholder="eg. Recruiter, Hiring Manager, Engineer"
-          autoComplete="organization-title"
-          value={form.position}
+
+        <Select
+          label="Role"
+          name="role"
+          value={form.role}
           onChange={update}
+          options={ROLE_OPTIONS}
           required
         />
+
         <AuthField
           label="Password"
           type="password"
@@ -241,5 +261,28 @@ export default function SignupPage() {
         </p>
       </form>
     </AuthLayout>
+  )
+}
+
+// Inline select component - matches AuthField's visual style. If we end up
+// using it on more pages, lift to components/auth/AuthSelect.jsx.
+function Select({ label, name, value, onChange, options, required }) {
+  return (
+    <label className="block">
+      <span className="block text-sm font-semibold text-neutral-700 mb-1.5">{label}</span>
+      <select
+        name={name}
+        value={value}
+        onChange={onChange}
+        required={required}
+        className="w-full rounded-xl border border-neutral-200 bg-white px-4 py-3 text-base text-ink
+                   outline-none transition-all
+                   focus:border-primary-400 focus:ring-4 focus:ring-primary-100"
+      >
+        {options.map((o) => (
+          <option key={o.value} value={o.value}>{o.label}</option>
+        ))}
+      </select>
+    </label>
   )
 }
