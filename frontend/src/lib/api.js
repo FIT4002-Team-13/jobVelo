@@ -13,21 +13,25 @@ export class ApiError extends Error {
   }
 }
 
+// Auto-detects JSON vs FormData bodies:
+// - plain object → JSON encoded with Content-Type: application/json
+// - FormData     → sent raw (browser sets the multipart boundary header)
 async function request(path, { method = 'GET', body, headers, auth = false } = {}) {
-  const finalHeaders = {
-    'Content-Type': 'application/json',
-    ...headers,
-  }
+  const isFormData = body instanceof FormData
+  const finalHeaders = { ...(headers || {}) }
   if (auth) {
     const token = getToken()
     if (token) finalHeaders.Authorization = `Bearer ${token}`
   }
+  if (body && !isFormData) finalHeaders['Content-Type'] = 'application/json'
 
   const res = await fetch(`${BASE}${path}`, {
     method,
     headers: finalHeaders,
-    body: body ? JSON.stringify(body) : undefined,
+    body: isFormData ? body : body ? JSON.stringify(body) : undefined,
   })
+
+  if (res.status === 204) return null
 
   let data = null
   try {
@@ -52,7 +56,19 @@ async function request(path, { method = 'GET', body, headers, auth = false } = {
 }
 
 export const api = {
-  signup: (payload) => request('/auth/signup', { method: 'POST', body: payload }),
-  login:  (payload) => request('/auth/login',  { method: 'POST', body: payload }),
-  me:     ()        => request('/auth/me',     { auth: true }),
+  // ---------- auth ------------------------------------------------------
+  // Invited-teammate signup. payload includes the invitation_code.
+  signup:        (payload)   => request('/auth/signup',         { method: 'POST', body: payload }),
+  // Company + admin signup. Takes FormData (logo file + all company fields).
+  // Returns { access_token, user, company }.
+  signupCompany: (formData)  => request('/auth/signup-company', { method: 'POST', body: formData }),
+  // Validate an invitation code before showing the signup form.
+  checkCode:     (code)      => request(`/auth/check-code/${encodeURIComponent(code)}`),
+  login:         (payload)   => request('/auth/login',          { method: 'POST', body: payload }),
+  me:            ()          => request('/auth/me',             { auth: true }),
+
+  // ---------- invitations (admin only) ----------------------------------
+  listInvitations:  ()       => request('/invitations',       { auth: true }),
+  createInvitation: ()       => request('/invitations',       { method: 'POST', auth: true }),
+  deleteInvitation: (id)     => request(`/invitations/${id}`, { method: 'DELETE', auth: true }),
 }
