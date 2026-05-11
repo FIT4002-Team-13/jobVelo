@@ -21,6 +21,7 @@ export default function CreateCompanyPage() {
     comp_website: '',
     comp_description: '',
     username: '',
+    full_name: '',
     email: '',
     password: '',
     confirm: '',
@@ -58,6 +59,7 @@ export default function CreateCompanyPage() {
     if (form.comp_description) fd.append('comp_description', form.comp_description.trim())
     fd.append('comp_logo',     logoFile)
     fd.append('username',      form.username.trim())
+    fd.append('full_name',     form.full_name.trim())
     fd.append('email',         form.email.trim().toLowerCase())
     fd.append('password',      form.password)
 
@@ -156,9 +158,18 @@ export default function CreateCompanyPage() {
 
         <SectionLabel>Your admin account</SectionLabel>
         <AuthField
+          label="Full name"
+          name="full_name"
+          placeholder="eg. Jane Doe"
+          autoComplete="name"
+          value={form.full_name}
+          onChange={update}
+          required
+        />
+        <AuthField
           label="Username"
           name="username"
-          placeholder="eg. johndoe23"
+          placeholder="eg. janedoe23"
           autoComplete="username"
           value={form.username}
           onChange={update}

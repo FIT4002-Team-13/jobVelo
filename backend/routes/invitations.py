@@ -45,8 +45,7 @@ def _serialize(doc: dict) -> InvitationOut:
 
 @router.get("", response_model=list[InvitationOut])
 async def list_invitations(admin=Depends(require_role("admin"))) -> list[InvitationOut]:
-    """List every invitation generated for the admin's company,
-    newest-first."""
+    """List every invitation generated for the admin's company, newest-first."""
     db = get_db()
     cursor = db.invitations.find({"comp_id": admin["comp_id"]}).sort("created_at", -1)
     return [_serialize(doc) async for doc in cursor]
@@ -57,6 +56,7 @@ async def create_invitation(admin=Depends(require_role("admin"))) -> InvitationO
     """Generate a fresh invitation code for the admin's company.
 
     Retries on the rare collision against an existing code (~10^12 space).
+    The invitation doesn't carry a role - the invitee picks one on signup.
     """
     db = get_db()
     now = datetime.now(timezone.utc)
@@ -64,10 +64,9 @@ async def create_invitation(admin=Depends(require_role("admin"))) -> InvitationO
     for _ in range(5):
         code = _generate_code()
         doc = {
-            "comp_id":    admin["comp_id"],
+            "comp_id": admin["comp_id"],
             "code":       code,
             "status":     "active",
-            "user_type":  "interviewer",   # default; admin can promote post-signup
             "user_id":    None,
             "created_at": now,
             "used_at":    None,
@@ -101,7 +100,9 @@ async def delete_invitation(
         raise HTTPException(status_code=400, detail="Invalid invitation id")
     db = get_db()
 
-    inv = await db.invitations.find_one({"_id": ObjectId(inv_id), "comp_id": admin["comp_id"]})
+    inv = await db.invitations.find_one(
+        {"_id": ObjectId(inv_id), "comp_id": admin["comp_id"]}
+    )
     if not inv:
         raise HTTPException(status_code=404, detail="Invitation not found")
 
@@ -109,7 +110,7 @@ async def delete_invitation(
     # delete an admin via this mechanism - prevents accidental self-lockout.
     if inv.get("user_id"):
         target_user = await db.users.find_one({"_id": inv["user_id"]})
-        if target_user and target_user.get("user_type") == "admin":
+        if target_user and target_user.get("role") == "admin":
             raise HTTPException(
                 status_code=409,
                 detail="Can't delete an admin via invitation removal",
