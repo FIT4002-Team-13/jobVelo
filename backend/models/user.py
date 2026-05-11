@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing_extensions import Literal
 
 from pydantic import BaseModel, EmailStr, Field, field_validator
 
@@ -17,9 +18,10 @@ class UserCreate(BaseModel):
         pattern=r"^[A-Za-z0-9_.\-]+$",
         description="Letters, digits, dot, underscore or hyphen.",
     )
+    full_name: str = Field(..., min_length=1, max_length=100)
     email: EmailStr
     password: str = Field(..., min_length=8, max_length=128)
-    position: str = Field(..., min_length=1, max_length=80)
+    role: Literal["recruiter", "interviewer", "hiring_manager", "admin"]
 
     @field_validator("password")
     @classmethod
@@ -31,13 +33,18 @@ class UserCreate(BaseModel):
 class UserOut(BaseModel):
     """Safe public representation of a user - never includes the password hash."""
 
-    userid: str
+    id: str
     username: str
     email: EmailStr
-    position: str
+    role: Literal["recruiter", "interviewer", "hiring_manager", "admin"]
+    total_interview: int
+    company_id: str | None = None
+    full_name: str
+    creation_date: datetime
+
+    #maybe make the below fields into separate models?
     strengths: list[str]
     weaknesses: list[str]
-    total_interview: int
     average_score: float
     created_at: datetime
 
