@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { flex, form as f, button, modal } from '../styles/layout'
 
 const EMPLOYMENT_TYPES = ['Full-time', 'Part-time', 'Casual', 'Internship']
 const STATUS_OPTIONS   = ['Pending', 'In Progress', 'Completed']
@@ -33,7 +34,7 @@ export function jobToForm(job) {
 function DateSelect({ label, prefix, values, onChange }) {
   return (
     <div className="flex-1">
-      <label className="block text-xs font-bold text-neutral-600 mb-1.5 tracking-wide uppercase">{label} *</label>
+      <label className={f.label}>{label} *</label>
       <div className="flex gap-1">
         {[['dd', DAYS], ['mm', MONTHS], ['yyyy', YEARS]].map(([unit, opts]) => (
           <select key={unit} value={values[`${prefix}_${unit}`]}
@@ -54,14 +55,14 @@ export default function JobFormModal({ initialJob, onClose, onSaved }) {
   const [submitting, setSubmitting] = useState(false)
   const [error, setError]       = useState(null)
 
-  function set(key, val) { setForm(f => ({ ...f, [key]: val })) }
+  function set(key, val) { setForm(prev => ({ ...prev, [key]: val })) }
 
   function toggleType(type) {
-    setForm(f => ({
-      ...f,
-      employment_type: f.employment_type.includes(type)
-        ? f.employment_type.filter(t => t !== type)
-        : [...f.employment_type, type],
+    setForm(prev => ({
+      ...prev,
+      employment_type: prev.employment_type.includes(type)
+        ? prev.employment_type.filter(t => t !== type)
+        : [...prev.employment_type, type],
     }))
   }
 
@@ -100,24 +101,24 @@ export default function JobFormModal({ initialJob, onClose, onSaved }) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
-      <div className="bg-white rounded-2xl w-full max-w-lg shadow-xl p-6 relative max-h-[90vh] overflow-y-auto">
+    <div className={modal.overlay}>
+      <div className={`${modal.panel} max-w-lg max-h-[90vh] overflow-y-auto`}>
         <button onClick={onClose} className="absolute top-4 right-4 text-neutral-400 hover:text-neutral-700 text-xl leading-none">×</button>
         <h2 className="text-xl font-bold text-neutral-800 mb-1">{isEdit ? 'Edit Job Posting' : 'Create Job Posting'}</h2>
         <p className="text-xs text-neutral-400 mb-5">Required fields are indicated with a asterisk *</p>
 
-        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+        <form onSubmit={handleSubmit} className={`${flex.col} gap-4`}>
           <div>
-            <label className="block text-xs font-bold text-neutral-600 mb-1.5 tracking-wide uppercase">Job Title *</label>
+            <label className={f.label}>Job Title *</label>
             <input value={form.title} onChange={e => set('title', e.target.value)}
               placeholder="eg. Senior Software Engineer"
-              className="w-full border border-neutral-300 rounded-lg px-3 py-2 text-sm text-neutral-700 focus:outline-none focus:ring-2 focus:ring-primary-300" />
+              className={f.input} />
           </div>
 
           <div>
-            <label className="block text-xs font-bold text-neutral-600 mb-1.5 tracking-wide uppercase">Description</label>
+            <label className={f.label}>Description</label>
             <textarea value={form.description} onChange={e => set('description', e.target.value)} rows={3}
-              className="w-full border border-neutral-300 rounded-lg px-3 py-2 text-sm text-neutral-700 focus:outline-none focus:ring-2 focus:ring-primary-300 resize-none" />
+              className={`${f.input} resize-none`} />
           </div>
 
           <div className="flex gap-4">
@@ -126,10 +127,10 @@ export default function JobFormModal({ initialJob, onClose, onSaved }) {
           </div>
 
           <div>
-            <label className="block text-xs font-bold text-neutral-600 mb-2 tracking-wide uppercase">Employment Type *</label>
+            <label className={f.label}>Employment Type *</label>
             <div className="flex flex-wrap gap-4">
               {EMPLOYMENT_TYPES.map(type => (
-                <label key={type} className="flex items-center gap-1.5 text-sm text-neutral-600 cursor-pointer">
+                <label key={type} className={`${flex.row} gap-1.5 text-sm text-neutral-600 cursor-pointer`}>
                   <input type="checkbox" checked={form.employment_type.includes(type)}
                     onChange={() => toggleType(type)} className="w-4 h-4 accent-primary-500" />
                   {type}
@@ -140,9 +141,9 @@ export default function JobFormModal({ initialJob, onClose, onSaved }) {
 
           {isEdit && (
             <div>
-              <label className="block text-xs font-bold text-neutral-600 mb-1.5 tracking-wide uppercase">Status</label>
+              <label className={f.label}>Status</label>
               <select value={form.status} onChange={e => set('status', e.target.value)}
-                className="w-full border border-neutral-300 rounded-lg px-3 py-2 text-sm text-neutral-700 focus:outline-none focus:ring-2 focus:ring-primary-300">
+                className={f.input}>
                 {STATUS_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
               </select>
             </div>
@@ -150,21 +151,21 @@ export default function JobFormModal({ initialJob, onClose, onSaved }) {
 
           <div className="flex gap-4">
             <div className="w-36">
-              <label className="block text-xs font-bold text-neutral-600 mb-1.5 tracking-wide uppercase">No. of Candidates *</label>
+              <label className={f.label}>No. of Candidates *</label>
               <input type="number" min={1} value={form.candidates_total}
                 onChange={e => set('candidates_total', e.target.value)}
-                className="w-full border border-neutral-300 rounded-lg px-3 py-2 text-sm text-neutral-700 focus:outline-none focus:ring-2 focus:ring-primary-300" />
+                className={f.input} />
             </div>
             <div className="flex-1">
-              <label className="block text-xs font-bold text-neutral-600 mb-1.5 tracking-wide uppercase">Salary</label>
-              <div className="flex gap-2 items-center">
-                <div className="flex items-center border border-neutral-300 rounded-lg overflow-hidden flex-1">
+              <label className={f.label}>Salary</label>
+              <div className={`${flex.row} gap-2`}>
+                <div className={`${flex.row} border border-neutral-300 rounded-lg overflow-hidden flex-1`}>
                   <span className="px-2 text-sm text-neutral-400 bg-neutral-50 border-r border-neutral-300 py-2">$</span>
                   <input value={form.salary} onChange={e => set('salary', e.target.value)} placeholder="100k"
                     className="flex-1 px-2 py-2 text-sm text-neutral-700 focus:outline-none" />
                 </div>
                 {['Hourly', 'Yearly'].map(t => (
-                  <label key={t} className="flex items-center gap-1 text-sm text-neutral-600 cursor-pointer whitespace-nowrap">
+                  <label key={t} className={`${flex.row} gap-1 text-sm text-neutral-600 cursor-pointer whitespace-nowrap`}>
                     <input type="radio" name="salary_type" value={t} checked={form.salary_type === t}
                       onChange={e => set('salary_type', e.target.value)} className="accent-primary-500" />
                     {t}
@@ -174,11 +175,11 @@ export default function JobFormModal({ initialJob, onClose, onSaved }) {
             </div>
           </div>
 
-          {error && <p className="text-xs text-coral-500">{error}</p>}
+          {error && <p className={f.error}>{error}</p>}
 
           <div className="flex justify-end gap-3 pt-1">
             <button type="button" onClick={onClose}
-              className="px-6 py-2 rounded-lg border border-neutral-300 text-sm font-medium text-neutral-600 hover:bg-neutral-50">
+              className={`${button.cancel} px-6 py-2`}>
               Cancel
             </button>
             <button type="submit" disabled={submitting}
