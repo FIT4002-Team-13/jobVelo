@@ -5,7 +5,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     mongodb_uri: str = "mongodb://localhost:27017"
-    mongodb_db: str = "smart_recruit"
+    mongodb_db: str = "jobvelo"
     cors_origins: str = "http://localhost:5173"
 
     # JWT — set JWT_SECRET in .env for any deployment beyond local dev.
