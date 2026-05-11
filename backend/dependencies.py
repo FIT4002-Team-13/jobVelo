@@ -44,3 +44,21 @@ async def get_current_user(token: str | None = Depends(oauth2_scheme)) -> dict:
     if not user:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User no longer exists")
     return user
+
+
+def require_role(*allowed: str):
+    """Build a dependency that 403s unless the current user has one of `allowed`
+    roles. Use as `Depends(require_role("admin"))` on admin-only routes.
+
+    Returns the user dict so the route can also accept it directly:
+        user = Depends(require_role("admin"))
+    """
+    async def _checker(user: dict = Depends(get_current_user)) -> dict:
+        if user.get("user_type") not in allowed:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Requires role: {', '.join(allowed)}",
+            )
+        return user
+
+    return _checker

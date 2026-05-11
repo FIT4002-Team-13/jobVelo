@@ -29,6 +29,11 @@ class Settings(BaseSettings):
     gemini_api_key: str = ""
     gemini_cv_model: str = "gemini-2.0-flash"
 
+    # Where uploaded files (company logos today; CVs etc. later) are stored.
+    # Relative paths resolve against the backend working directory. Swap the
+    # implementation in services/file_storage.py to move to S3 later.
+    uploads_dir: str = "uploads"
+
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
     @property
