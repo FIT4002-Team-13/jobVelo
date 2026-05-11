@@ -1,7 +1,5 @@
 // Layout patterns — reusable className strings for common UI structures.
 // Import into components to keep class strings consistent across the app.
-// Tailwind scans this file via content: ['./src/**/*.{js,jsx}'] so all
-// classes are included in the build — no purging issues.
 
 //  Flex 
 // Base flex directional and alignment combos.
