@@ -6,6 +6,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from config import settings
 from database import close_mongo_connection, connect_to_mongo, ensure_indexes
 
+from routes import interview, user_interview
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -36,6 +38,8 @@ app.add_middleware(
 # app.include_router(auth.router)
 # app.include_router(interview.router)
 # app.include_router(cv.router)
+app.include_router(interview.router)
+app.include_router(user_interview.router)
 
 
 @app.get("/api/health")

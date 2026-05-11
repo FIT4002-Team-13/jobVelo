@@ -32,6 +32,17 @@ async def ensure_indexes() -> None:
     Add index definitions here as collections are introduced — keeping them
     in one place means a fresh deploy always provisions the right indexes.
     """
-    _db = get_db()
+    db = get_db()
     # Example:
     # await _db.users.create_index("email", unique=True)
+
+    # Interviews - common lookups by candidate and job.
+    await db.interviews.create_index("cand_id")
+    await db.interviews.create_index("job_id")
+    await db.interviews.create_index("intv_status")
+    await db.interviews.create_index("intv_date_time")
+
+    # Interview-Users - one user can only be linked once to the same interview.
+    await db.user_interviews.create_index([("user_id", 1), ("intv_id", 1)], unique=True)
+    await db.user_interviews.create_index("intv_id")
+    await db.user_interviews.create_index("user_id")
