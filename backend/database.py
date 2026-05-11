@@ -47,10 +47,10 @@ async def ensure_indexes() -> None:
     await db.invitations.create_index("code", unique=True)
     await db.invitations.create_index([("comp_id", 1), ("created_at", -1)])
 
-    # Candidates 
-    await db.candidates.create_index([("email", 1), ("comp_id", 1)], unique=True)
+    # Candidates
+    await db.candidates.create_index([("cand_email", 1), ("comp_id", 1)], unique=True)
     await db.candidates.create_index("comp_id")
 
     # Job-Candidates
-    await db.job_candidates.create_index([("candidate_id", 1), ("job_id", 1)], unique=True)
+    await db.job_candidates.create_index([("cand_id", 1), ("job_id", 1)], unique=True)
     await db.job_candidates.create_index("job_id")

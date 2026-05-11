@@ -16,9 +16,9 @@ async def main():
     result = await db.candidates.delete_many(
         {
             "$or": [
-                {"email": None},
+                {"cand_email": None},
                 {"comp_id": None},
-                {"email": {"$exists": False}},
+                {"cand_email": {"$exists": False}},
                 {"comp_id": {"$exists": False}},
             ]
         }
