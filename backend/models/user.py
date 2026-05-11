@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from typing import Literal
+from typing_extensions import Literal
 
 from pydantic import BaseModel, EmailStr, Field, field_validator
 
@@ -20,8 +21,10 @@ class _UserCredentials(BaseModel):
         pattern=r"^[A-Za-z0-9_.\-]+$",
         description="Letters, digits, dot, underscore or hyphen.",
     )
+    full_name: str = Field(..., min_length=1, max_length=100)
     email: EmailStr
     password: str = Field(..., min_length=8, max_length=128)
+    role: Literal["recruiter", "interviewer", "hiring_manager", "admin"]
 
     @field_validator("password")
     @classmethod
@@ -53,16 +56,22 @@ class UserOut(BaseModel):
     docs created before this schema landed; every new user has them set.
     """
 
-    userid: str
+    id: str
     username: str
     email: EmailStr
     position: str | None = None
     comp_id: str | None = None
     user_type: UserType | None = None
-    strengths: list[str] = []
-    weaknesses: list[str] = []
-    total_interview: int = 0
-    average_score: float = 0.0
+    role: Literal["recruiter", "interviewer", "hiring_manager", "admin"]
+    total_interview: int
+    company_id: str | None = None
+    full_name: str
+    creation_date: datetime
+
+    #maybe make the below fields into separate models?
+    strengths: list[str]
+    weaknesses: list[str]
+    average_score: float
     created_at: datetime
 
 
