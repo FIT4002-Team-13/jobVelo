@@ -1,0 +1,31 @@
+from motor.motor_asyncio import AsyncIOMotorClient
+from dotenv import load_dotenv
+import os
+import asyncio
+
+load_dotenv()
+
+MONGODB_URI = os.getenv("MONGODB_URI")
+MONGODB_DB = os.getenv("MONGODB_DB", "jobvelo")
+
+
+async def main():
+    client = AsyncIOMotorClient(MONGODB_URI)
+    db = client[MONGODB_DB]
+
+    result = await db.candidates.delete_many(
+        {
+            "$or": [
+                {"email": None},
+                {"comp_id": None},
+                {"email": {"$exists": False}},
+                {"comp_id": {"$exists": False}},
+            ]
+        }
+    )
+
+    print(f"Deleted {result.deleted_count} bad candidate documents.")
+    client.close()
+
+
+asyncio.run(main())
