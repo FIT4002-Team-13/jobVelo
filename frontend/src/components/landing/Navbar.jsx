@@ -43,14 +43,19 @@ export default function Navbar() {
           <div className="flex items-center gap-3">
             <div className="hidden sm:flex items-center gap-2.5">
               <span className="grid h-9 w-9 place-items-center rounded-pill bg-primary-100 text-primary-700 text-sm font-bold">
-                {(user?.username || '?').slice(0, 1).toUpperCase()}
+                {(user?.full_name || user?.username || '?').slice(0, 1).toUpperCase()}
               </span>
               <div className="leading-tight">
-                <div className="text-sm font-semibold text-ink">{user?.username}</div>
-                <div className="text-xs text-neutral-500">{user?.position}</div>
+                <div className="text-sm font-semibold text-ink">{user?.full_name || user?.username}</div>
+                <div className="text-xs text-neutral-500">{formatRole(user?.role)}</div>
               </div>
             </div>
-            <Link to="/dashboard" className="btn-primary !py-2.5 !px-5 !text-sm">Dashboard</Link>
+            <Link
+              to={user?.role === 'admin' ? '/admin/dashboard' : '/dashboard'}
+              className="btn-primary !py-2.5 !px-5 !text-sm"
+            >
+              Dashboard
+            </Link>
             <button onClick={onLogout} className="btn-ghost !py-2 !px-4 !text-sm gap-1.5" type="button">
               <LogOut size={14} /> Log out
             </button>
@@ -69,4 +74,11 @@ export default function Navbar() {
       </div>
     </motion.header>
   )
+}
+
+// "hiring_manager" → "Hiring Manager" etc. Kept inline because it's only
+// used here; lift if other pages start needing it.
+function formatRole(role) {
+  if (!role) return ''
+  return role.split('_').map((w) => w[0].toUpperCase() + w.slice(1)).join(' ')
 }

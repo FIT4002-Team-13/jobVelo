@@ -1,39 +1,27 @@
+"""Company model.
+
+A company is created together with its first admin via /api/auth/signup-company
+(multipart, because the logo file comes along). All invitations and users are
+scoped to a single company via comp_id.
+
+comp_logo stores the *relative path* under settings.uploads_dir (e.g.
+"company_logos/68f3a4...png"). Fetch the binary via GET /api/files/{path}.
+"""
+
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Optional
-from typing_extensions import Literal
 
-from pydantic import BaseModel, EmailStr, Field, HttpUrl, field_validator
+from pydantic import BaseModel, EmailStr, Field
 
-from security import validate_password_strength
-
-class CompanyCreate(BaseModel):
-
-    name: str = Field(..., min_length=1, max_length=120)
-    industry: str = Field(..., min_length=1, max_length=80)
-    logo_url: Optional[HttpUrl] = None
-    description: Optional[str] = Field(default=None, max_length=1000)
-    contact_email: Optional[str] = Field(default=None, max_length=120)
-    contact_phone: Optional[str] = Field(default=None, max_length=30)
-
-class CompanyUpdate(BaseModel):
-
-    name: Optional[str] = Field(default=None, min_length=1, max_length=120)
-    industry: Optional[str] = Field(default=None, min_length=1, max_length=80)
-    logo_url: Optional[HttpUrl] = None
-    description: Optional[str] = Field(default=None, max_length=1000)
-    contact_email: Optional[str] = Field(default=None, max_length=120)
-    contact_phone: Optional[str] = Field(default=None, max_length=30)
 
 class CompanyOut(BaseModel):
-
-    id: str
-    name: str
-    industry: str
-    logo_url: Optional[HttpUrl] = None
-    description: Optional[str] = Field(default=None, max_length=1000)
-    contact_email: Optional[str] = Field(default=None, max_length=120)
-    contact_phone: Optional[str] = Field(default=None, max_length=30)
-    creation_date: datetime
-    update_date: datetime
+    comp_id: str
+    comp_name: str
+    comp_email: EmailStr
+    comp_industry: str
+    comp_contact: str
+    comp_website: str | None = None
+    comp_description: str | None = None
+    comp_logo: str | None = None
+    created_at: datetime

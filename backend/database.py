@@ -33,6 +33,16 @@ async def ensure_indexes() -> None:
     in one place means a fresh deploy always provisions the right indexes.
     """
     db = get_db()
+
     # Users - unique constraints + fast lookup by either key during login.
     await db.users.create_index("email", unique=True)
     await db.users.create_index("username", unique=True)
+    await db.users.create_index("comp_id")  # list users in a company
+
+    # Companies - email must be unique so we don't create duplicates.
+    await db.companies.create_index("comp_email", unique=True)
+
+    # Invitations - codes are unique, and we look them up constantly during
+    # signup so the index is critical.
+    await db.invitations.create_index("code", unique=True)
+    await db.invitations.create_index([("comp_id", 1), ("created_at", -1)])

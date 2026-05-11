@@ -51,11 +51,14 @@ export default function Hero() {
 
           <motion.div
             variants={fadeUp} initial="hidden" animate="show" custom={5}
-            className="mt-8 flex flex-col sm:flex-row sm:items-center gap-4"
+            className="mt-8 flex flex-col sm:flex-col sm:items-start gap-4"
           >
-            <Link to="/signup" className="btn-primary group">
-              Get Started
+            <Link to="/create-company" className="btn-primary group">
+              Create your company
               <ArrowRight size={18} className="transition-transform group-hover:translate-x-1" />
+            </Link>
+            <Link to="/signup" className="btn-ghost">
+              Join with invitation code
             </Link>
             <Link to="/login" className="link-quiet">Already have an account?</Link>
           </motion.div>

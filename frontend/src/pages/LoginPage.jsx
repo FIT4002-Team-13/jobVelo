@@ -10,7 +10,10 @@ export default function LoginPage() {
   const location = useLocation()
   const { login } = useAuth()
   const justSignedUp = location.state?.justSignedUp
-  const redirectTo = location.state?.from?.pathname || '/dashboard'
+  // Where to send the user post-login. If they were redirected here from
+  // a protected route, send them back. Otherwise pick based on role:
+  // admins → admin dashboard, everyone else → regular dashboard.
+  const fromPath = location.state?.from?.pathname
 
   const [form, setForm] = useState({ identifier: '', password: '' })
   const [submitting, setSubmitting] = useState(false)
@@ -23,8 +26,9 @@ export default function LoginPage() {
     setError(null)
     setSubmitting(true)
     try {
-      await login(form.identifier.trim(), form.password)
-      navigate(redirectTo, { replace: true })
+      const user = await login(form.identifier.trim(), form.password)
+      const target = fromPath || (user?.role === 'admin' ? '/admin/dashboard' : '/dashboard')
+      navigate(target, { replace: true })
     } catch (err) {
       if (err instanceof ApiError) {
         setError(err.status === 401 ? 'Incorrect username/email or password.' : err.message)

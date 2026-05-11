@@ -40,14 +40,21 @@ export function AuthProvider({ children }) {
     return res.user
   }, [])
 
+  // Used by flows that already have a token (e.g. /signup-company auto-logs
+  // the new admin in). Skips the login round-trip.
+  const applySession = useCallback(({ token, user }) => {
+    writeAuth({ token, user })
+    setUser(user)
+  }, [])
+
   const logout = useCallback(() => {
     clearAuth()
     setUser(null)
   }, [])
 
   const value = useMemo(
-    () => ({ user, isAuthenticated: !!user, bootstrapped, login, logout }),
-    [user, bootstrapped, login, logout]
+    () => ({ user, isAuthenticated: !!user, bootstrapped, login, applySession, logout }),
+    [user, bootstrapped, login, applySession, logout]
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
