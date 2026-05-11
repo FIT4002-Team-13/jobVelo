@@ -1,0 +1,74 @@
+// Minimal fetch wrapper for the Smart Recruit backend.
+// The dev server proxies /api/* to http://localhost:8000 (vite.config.js).
+
+import { getToken } from './authStore.js'
+
+const BASE = '/api'
+
+export class ApiError extends Error {
+  constructor(message, { status, detail } = {}) {
+    super(message)
+    this.status = status
+    this.detail = detail
+  }
+}
+
+// Auto-detects JSON vs FormData bodies:
+// - plain object → JSON encoded with Content-Type: application/json
+// - FormData     → sent raw (browser sets the multipart boundary header)
+async function request(path, { method = 'GET', body, headers, auth = false } = {}) {
+  const isFormData = body instanceof FormData
+  const finalHeaders = { ...(headers || {}) }
+  if (auth) {
+    const token = getToken()
+    if (token) finalHeaders.Authorization = `Bearer ${token}`
+  }
+  if (body && !isFormData) finalHeaders['Content-Type'] = 'application/json'
+
+  const res = await fetch(`${BASE}${path}`, {
+    method,
+    headers: finalHeaders,
+    body: isFormData ? body : body ? JSON.stringify(body) : undefined,
+  })
+
+  if (res.status === 204) return null
+
+  let data = null
+  try {
+    data = await res.json()
+  } catch {
+    /* empty body */
+  }
+
+  if (!res.ok) {
+    // FastAPI uses { detail: string | [{loc, msg, type}] }
+    const detail = data?.detail
+    const message =
+      typeof detail === 'string'
+        ? detail
+        : Array.isArray(detail)
+          ? detail.map((d) => d.msg).join(' • ')
+          : `Request failed (${res.status})`
+    throw new ApiError(message, { status: res.status, detail })
+  }
+
+  return data
+}
+
+export const api = {
+  // ---------- auth ------------------------------------------------------
+  // Invited-teammate signup. payload includes the invitation_code.
+  signup:        (payload)   => request('/auth/signup',         { method: 'POST', body: payload }),
+  // Company + admin signup. Takes FormData (logo file + all company fields).
+  // Returns { access_token, user, company }.
+  signupCompany: (formData)  => request('/auth/signup-company', { method: 'POST', body: formData }),
+  // Validate an invitation code before showing the signup form.
+  checkCode:     (code)      => request(`/auth/check-code/${encodeURIComponent(code)}`),
+  login:         (payload)   => request('/auth/login',          { method: 'POST', body: payload }),
+  me:            ()          => request('/auth/me',             { auth: true }),
+
+  // ---------- invitations (admin only) ----------------------------------
+  listInvitations:  ()       => request('/invitations',       { auth: true }),
+  createInvitation: ()       => request('/invitations',       { method: 'POST', auth: true }),
+  deleteInvitation: (id)     => request(`/invitations/${id}`, { method: 'DELETE', auth: true }),
+}

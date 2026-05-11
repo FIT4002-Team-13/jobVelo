@@ -5,7 +5,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     mongodb_uri: str = "mongodb://localhost:27017"
-    mongodb_db: str = "smart_recruit"
+    mongodb_db: str = "jobvelo"
     cors_origins: str = "http://localhost:5173"
 
     # JWT — set JWT_SECRET in .env for any deployment beyond local dev.
@@ -28,6 +28,11 @@ class Settings(BaseSettings):
     # Gemini — CV analysis. Multimodal model so we can ingest PDFs directly.
     gemini_api_key: str = ""
     gemini_cv_model: str = "gemini-2.0-flash"
+
+    # Where uploaded files (company logos today; CVs etc. later) are stored.
+    # Relative paths resolve against the backend working directory. Swap the
+    # implementation in services/file_storage.py to move to S3 later.
+    uploads_dir: str = "uploads"
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
