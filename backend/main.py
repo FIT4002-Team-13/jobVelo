@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from config import settings
 from database import close_mongo_connection, connect_to_mongo, ensure_indexes, seed_mock_data
-from routes import auth, files, invitations, candidates, dashboard, jobs
+from routes import auth, files, invitations, dashboard, jobs, cand, job_cand
 
 
 @asynccontextmanager
@@ -36,11 +36,13 @@ app.add_middleware(
 app.include_router(auth.router)
 app.include_router(invitations.router)
 app.include_router(files.router)
+app.include_router(cand.router)
+app.include_router(job_cand.router)
 # Add more routers here as features land:
 # from routes import interview, cv
 app.include_router(dashboard.router)
 app.include_router(jobs.router)
-app.include_router(candidates.router)
+app.include_router(cand.router)
 
 # Add routers here as features land:
 # from routes import auth, interview, cv

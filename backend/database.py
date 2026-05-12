@@ -49,6 +49,14 @@ async def ensure_indexes() -> None:
     await db.jobs.create_index("title")
     await db.candidates.create_index("name")
 
+    # Candidates
+    await db.candidates.create_index([("cand_email", 1), ("comp_id", 1)], unique=True)
+    await db.candidates.create_index("comp_id")
+
+    # Job-Candidates
+    await db.job_candidates.create_index([("cand_id", 1), ("job_id", 1)], unique=True)
+    await db.job_candidates.create_index("job_id")
+
 # ── Mock data ────────────────────────────────────────────────────────────────
 
 _MOCK_JOBS = [
