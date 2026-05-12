@@ -1,4 +1,10 @@
 import { BrowserRouter, Route, Routes } from 'react-router-dom'
+// import LoginPage from './pages/LoginPage'
+// import CreateAccountPage from './pages/CreateAccountPage'
+// import LoginInlineErrorPage from './pages/LoginInlineErrorPage'
+import DashboardPage from './pages/DashboardPage'
+import JobsPage from './pages/JobsPage'
+import JobDetailPage from './pages/JobDetailPage'
 
 // Add page imports here as they're built, then declare them inside <Routes>.
 // Wrap private routes with a RequireAuth component once auth lands.
@@ -27,6 +33,9 @@ export default function App() {
     <BrowserRouter>
       <Routes>
         <Route path="/" element={<Welcome />} />
+         <Route path="/dashboard" element={<DashboardPage />} />
+         <Route path="/jobs" element={<JobsPage />} />
+         <Route path="/jobs/:id" element={<JobDetailPage />} />
       </Routes>
     </BrowserRouter>
   )
