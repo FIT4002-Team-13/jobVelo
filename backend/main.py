@@ -4,13 +4,15 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from config import settings
-from database import close_mongo_connection, connect_to_mongo, ensure_indexes
+from database import close_mongo_connection, connect_to_mongo, ensure_indexes, seed_mock_data
+from routes import candidates, dashboard, jobs
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await connect_to_mongo()
     await ensure_indexes()
+    await seed_mock_data() 
     yield
     await close_mongo_connection()
 
@@ -30,6 +32,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+app.include_router(dashboard.router)
+app.include_router(jobs.router)
+app.include_router(candidates.router)
 
 # Add routers here as features land:
 # from routes import auth, interview, cv
