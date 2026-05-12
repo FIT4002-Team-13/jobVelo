@@ -1,9 +1,8 @@
 name: CI
 
 on:
-  #Only on push to the main branch
+  #On all pushes
   push:
-    branches: [main]
   #On all pull requests
   pull_request:
 
