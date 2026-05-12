@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  #Only on push to the main branch
+  push:
+    branches: [main]
+  #On all pull requests
+  pull_request:
+
+jobs:
+  backend:
+    #Creates a fresh virtual machine
+    runs-on: ubuntu-latest
+    steps:
+      #Clones repo onto the runner
+      - uses: actions/checkout@v4
+
+      #Setup python on the runner
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      #install dependencies
+      - run: pip install -r backend/requirements.txt
+      #install the linter
+      - run: pip install ruff
+      #Checks linter against backend code
+      - run: ruff check backend/
+
+      #Uncomment these when tests have been added
+      #- run: pip install pytest
+      #- run: pytest backend/
+
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - run: npm ci --prefix frontend
+      - run: npm run build --prefix frontend
