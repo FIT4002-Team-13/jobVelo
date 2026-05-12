@@ -7,6 +7,7 @@ import SignupPage from './pages/SignupPage.jsx'
 import CreateCompanyPage from './pages/CreateCompanyPage.jsx'
 import DashboardPage from './pages/DashboardPage.jsx'
 import AdminDashboardPage from './pages/AdminDashboardPage.jsx'
+import CandidateTableTestPage from './pages/CandidateTable.jsx'
 
 export default function App() {
   return (
@@ -17,6 +18,7 @@ export default function App() {
           <Route path="/login" element={<LoginPage />} />
           <Route path="/signup" element={<SignupPage />} />
           <Route path="/create-company" element={<CreateCompanyPage />} />
+          <Route path = "/candidate-table" element={<CandidateTableTestPage />} />
           <Route
             path="/dashboard"
             element={
