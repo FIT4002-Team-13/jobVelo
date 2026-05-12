@@ -1,15 +1,21 @@
 import React from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { LayoutDashboard, CalendarDays, Briefcase, Users } from 'lucide-react';
-import logoFull from '../assets/logo-full.png';
+import logoFull from '../assets/logo-final.png';
 
-//Mock user data for now - in a real app, this would come from context or props
-export default function Sidebar({ user = { name: 'John Doe', role: 'Interviewer' } }) {
+// `user` is the shape returned by /api/auth/me (UserOut). It may be undefined
+// briefly while the parent is still fetching - guard for that.
+export default function Sidebar({ user }) {
   const location = useLocation();
   const navigate = useNavigate();
 
-
-  const initials = user.name.split(' ').map(n => n[0]).join('');
+  // Prefer the new full_name field; fall back to legacy `name` (mock user)
+  // or username so a partially-migrated doc still shows something sensible.
+  const displayName = user?.full_name || user?.name || user?.username || '';
+  const initials = displayName
+    ? displayName.split(' ').filter(Boolean).map(n => n[0]).join('').slice(0, 2).toUpperCase()
+    : '?';
+  const roleLabel = formatRole(user?.role);
 
   const navItems = [
     { label: 'Dashboard',  path: '/dashboard',  icon: <LayoutDashboard size={16} />, group: 'MAIN'  },
@@ -65,8 +71,8 @@ export default function Sidebar({ user = { name: 'John Doe', role: 'Interviewer'
             {initials}
           </div>
           <div>
-            <div className="text-sm font-semibold text-neutral-800">{user.name}</div>
-            <div className="text-xs text-neutral-400">{user.role}</div>
+            <div className="text-sm font-semibold text-neutral-800">{displayName || 'Loading…'}</div>
+            <div className="text-xs text-neutral-400">{roleLabel}</div>
           </div>
         </div>
 
@@ -79,4 +85,11 @@ export default function Sidebar({ user = { name: 'John Doe', role: 'Interviewer'
       </div>
     </aside>
   );
+}
+
+// "hiring_manager" -> "Hiring Manager", etc. Inline because Sidebar is the
+// only place that renders the role label right now.
+function formatRole(role) {
+  if (!role) return '';
+  return role.split('_').map(w => w[0].toUpperCase() + w.slice(1)).join(' ');
 }

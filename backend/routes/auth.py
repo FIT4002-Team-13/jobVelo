@@ -29,15 +29,35 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 # ---------- serializers --------------------------------------------------
 
 
+_ALLOWED_ROLES = {"admin", "recruiter", "interviewer", "hiring_manager"}
+
+
 def _user_out(doc: dict) -> UserOut:
+    """Build a UserOut from a Mongo user doc, tolerant of older schema versions.
+
+    The codebase has shipped three user shapes during development:
+      v1 - position / strengths / weaknesses / total_interview / average_score
+      v2 - user_type field (renamed during the role refactor)
+      v3 - current: full_name + role + comp_id
+
+    Old test accounts lack newer fields, so we fall back rather than crash.
+    A fresh database wipe is the proper fix, but for dev convenience this
+    keeps everyone's existing logins working.
+    """
+    # role: prefer 'role' (v3), then 'user_type' (v2), then default. Validate
+    # against the allowed set so Pydantic doesn't reject an unexpected value.
+    role = doc.get("role") or doc.get("user_type") or "interviewer"
+    if role not in _ALLOWED_ROLES:
+        role = "interviewer"
+
     return UserOut(
         userid=str(doc["_id"]),
         username=doc["username"],
-        full_name=doc["full_name"],
+        full_name=doc.get("full_name") or doc["username"],
         email=doc["email"],
-        role=doc["role"],
+        role=role,
         comp_id=str(doc["comp_id"]) if doc.get("comp_id") else None,
-        created_at=doc["created_at"],
+        created_at=doc.get("created_at") or datetime.now(timezone.utc),
     )
 
 

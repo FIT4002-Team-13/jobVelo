@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import Sidebar from '../components/Sidebar'
+import { api } from '../lib/api.js'
 
 // ── Style tokens for summary cards ──────────────────────────────────────────
 
@@ -64,14 +65,17 @@ export default function DashboardPage() {
   useEffect(() => {
     async function load() {
       try {
-        // Fetch all dashboard data in parallel to minimize loading time
-        const [meRes, sumRes, jobsRes, candsRes] = await Promise.all([
-          fetch('/api/me'),
+        // api.me() hits /api/auth/me with the stored JWT and returns the
+        // actual logged-in user (UserOut shape: full_name, role, etc.).
+        // The other fetches still hit unauthenticated mock endpoints for now -
+        // swap them for authenticated calls once those routes gain tenant scoping.
+        const [meData, sumRes, jobsRes, candsRes] = await Promise.all([
+          api.me(),
           fetch('/api/dashboard/summary'),
           fetch('/api/jobs'),
           fetch('/api/candidates'),
         ])
-        setMe(await meRes.json())
+        setMe(meData)
         setSummary(await sumRes.json())
         setJobs(await jobsRes.json())
         setCandidates(await candsRes.json())
@@ -107,7 +111,7 @@ export default function DashboardPage() {
         {/* Header */}
         <div className="mb-6">
           <h1 className="text-4xl font-extrabold tracking-tight text-neutral-800">
-            Hello, <em className="italic">{me?.name}</em>
+            Hello, <em className="italic">{me?.full_name}</em>
           </h1>
           <p className="mt-1 text-sm font-medium text-primary-500">{today}</p>
         </div>
