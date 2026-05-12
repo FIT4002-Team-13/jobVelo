@@ -23,7 +23,7 @@ const steps = [
 
 export default function HowItWorksSection() {
   return (
-    <section id="how" className="py-section bg-gradient-to-b from-white to-primary-50/40">
+    <section id="how" className="py-section scroll-mt-24 bg-gradient-to-b from-white to-primary-50/40">
       <div className="container-page">
         <div className="max-w-2xl mb-14">
           <span className="eyebrow mb-3">How it works</span>

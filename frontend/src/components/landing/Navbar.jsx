@@ -4,9 +4,12 @@ import { Link, useNavigate } from 'react-router-dom'
 import Logo from '../common/Logo.jsx'
 import { useAuth } from '../../lib/AuthContext.jsx'
 
+// Each link's href must match a section id rendered by LandingPage.
+// scroll-mt-24 on each section keeps the heading clear of the sticky navbar.
 const links = [
-  { label: 'Product',      href: '/#features' },
-  { label: 'How it works', href: '/#how' }
+  { label: 'Dashboard',    href: '/#dashboard' },
+  { label: 'Features',     href: '/#features' },
+  { label: 'How it works', href: '/#how' },
 ]
 
 export default function Navbar() {
