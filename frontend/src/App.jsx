@@ -7,6 +7,9 @@ import SignupPage from './pages/SignupPage.jsx'
 import CreateCompanyPage from './pages/CreateCompanyPage.jsx'
 import DashboardPage from './pages/DashboardPage.jsx'
 import AdminDashboardPage from './pages/AdminDashboardPage.jsx'
+import DashboardPage from './pages/DashboardPage'
+import JobsPage from './pages/JobsPage'
+import JobDetailPage from './pages/JobDetailPage'
 
 export default function App() {
   return (
@@ -33,6 +36,9 @@ export default function App() {
               </RequireAuth>
             }
           />
+          <Route path="/dashboard" element={<DashboardPage />} />
+          <Route path="/jobs" element={<JobsPage />} />
+          <Route path="/jobs/:id" element={<JobDetailPage />} />
         </Routes>
       </BrowserRouter>
     </AuthProvider>
