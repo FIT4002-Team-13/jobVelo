@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import Sidebar from '../components/common/Sidebar'
 import JobFormModal from '../components/job-candidate/JobFormModal'
+import StartInterviewModal from '../components/job-candidate/StartInterviewModal'
 import { flex, card, badge, form, button, modal, page } from '../styles/layout'
 import { fontSize } from '../styles/typography'
 
@@ -364,7 +365,7 @@ function InterviewStatusPanel({ candidates, job }) {
 
 // ── Candidates Table ──────────────────────────────────────────────────────────
 
-function CandidatesTable({ candidates, tab, setTab }) {
+function CandidatesTable({ candidates, tab, setTab, onStartInterview }) {
   const [search, setSearch] = useState('')
 
   const sorted = tab === 'RANKINGS'
@@ -468,12 +469,30 @@ function CandidatesTable({ candidates, tab, setTab }) {
                 {/* Actions */}
                 <td className="px-4 py-3">
                   <div className={`${flex.row} gap-2`}>
-                    <button className={`${flex.row} gap-1.5 bg-neutral-100 hover:bg-neutral-200 text-neutral-600 text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors whitespace-nowrap`}>
-                      <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor">
-                        <polygon points="5 3 19 12 5 21 5 3"/>
-                      </svg>
-                      Start Interview
-                    </button>
+                    {/* Only "SCHEDULED" candidates can be started. Anything else
+                        (EVALUATED / HIRED / REJECTED / null) renders the button
+                        as disabled grey so the row still reads visually but the
+                        action is blocked. */}
+                    {(() => {
+                      const canStart = c.status === 'SCHEDULED'
+                      return (
+                        <button
+                          type="button"
+                          disabled={!canStart}
+                          onClick={() => canStart && onStartInterview?.(c)}
+                          className={`${flex.row} gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors whitespace-nowrap ${
+                            canStart
+                              ? 'bg-primary-500 hover:bg-primary-600 text-white'
+                              : 'bg-neutral-100 text-neutral-400 cursor-not-allowed'
+                          }`}
+                        >
+                          <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor">
+                            <polygon points="5 3 19 12 5 21 5 3"/>
+                          </svg>
+                          Start Interview
+                        </button>
+                      )
+                    })()}
                     <button className={`w-7 h-7 ${flex.rowCenter} rounded-lg text-neutral-400 hover:bg-neutral-100 hover:text-neutral-600 transition-colors`}>
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                         <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
@@ -503,6 +522,8 @@ export default function JobDetailPage() {
   const [tab, setTab]               = useState('SCHEDULES')
   const [showEdit, setShowEdit]     = useState(false)
   const [showAddCandidate, setShowAddCandidate] = useState(false)
+  // The candidate row clicked via "Start Interview" - null when no modal is open.
+  const [startTarget, setStartTarget] = useState(null)
 
   useEffect(() => {
     async function load() {
@@ -650,12 +671,28 @@ export default function JobDetailPage() {
         {/* Candidates section - tabs are now inside CandidatesTable so they
             align in the same row as the search + sort + filter controls. */}
         <div className={card.base}>
-          <CandidatesTable candidates={candidates} tab={tab} setTab={setTab} />
+          <CandidatesTable
+            candidates={candidates}
+            tab={tab}
+            setTab={setTab}
+            onStartInterview={(c) => setStartTarget(c)}
+          />
         </div>
       </main>
 
       {showEdit && (
         <JobFormModal initialJob={job} onClose={() => setShowEdit(false)} onSaved={handleJobSaved} />
+      )}
+
+      {startTarget && (
+        <StartInterviewModal
+          candidate={startTarget}
+          jobTitle={job?.title}
+          onClose={() => setStartTarget(null)}
+          // Placeholder for now - eventually this will PATCH the link's
+          // status to EVALUATED and open the live-transcription UI.
+          onConfirm={() => setStartTarget(null)}
+        />
       )}
 
       {showAddCandidate && (
