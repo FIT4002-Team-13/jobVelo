@@ -244,9 +244,9 @@ export default function JobsPage() {
         </div>
 
         <div className="flex justify-end items-center gap-3 mb-5">
-          <div className="flex items-center gap-2 border border-neutral-200 rounded-xl px-3 py-1.5 bg-white">
+          <div className="flex items-center gap-2 border border-neutral-200 rounded-xl px-3 py-1.5 bg-neutral-0">
             <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Position Name"
-              className="outline-none border-none bg-transparent text-sm text-neutral-600 placeholder:text-neutral-400 w-36" />
+              className="outline-none border-none bg-transparent text-sm text-neutral-600 placeholder:text-neutral-400 w-32" />
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-neutral-400">
               <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
             </svg>

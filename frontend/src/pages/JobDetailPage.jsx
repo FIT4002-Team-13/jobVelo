@@ -322,7 +322,7 @@ function InterviewStatusPanel({ candidates, job }) {
 
   return (
     <div className={`${card.base} ${flex.col} gap-4`}>
-      <h2 className="text-sm font-bold text-neutral-800">Interview Status</h2>
+      <h2 className="text-base font-bold text-neutral-800">Interview Status</h2>
 
       <div className="text-center">
         <p className="text-xs text-neutral-400 uppercase tracking-wide mb-1">Total Candidates</p>
@@ -592,7 +592,7 @@ export default function JobDetailPage() {
               </svg>
               Back to Jobs
             </button>
-            <h1 className="text-3xl font-extrabold tracking-tight text-neutral-800">Job Posting</h1>
+            <h1 className="text-4xl font-extrabold tracking-tight text-neutral-800">Job Posting</h1>
             <p className="text-sm text-neutral-400 mt-1">Manage your open positions</p>
           </div>
           <div className="flex gap-3">

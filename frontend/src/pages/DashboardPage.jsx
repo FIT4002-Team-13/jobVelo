@@ -38,12 +38,12 @@ const CARD_STYLES = [
 // same component can power either panel.
 function SearchBar({ placeholder, value, onChange }) {
   return (
-    <div className="flex items-center gap-2 border border-neutral-200 rounded-pill px-3 py-1.5 bg-neutral-0 text-sm text-neutral-400">
+    <div className="flex items-center gap-2 border border-neutral-200 rounded-xl px-3 py-1.5 bg-neutral-0 text-sm text-neutral-400">
       <input
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
-        className="outline-none border-none bg-transparent text-sm text-neutral-500 placeholder:text-neutral-400 w-28"
+        className="outline-none border-none bg-transparent text-sm text-neutral-500 placeholder:text-neutral-400 w-32"
       />
       <svg className="shrink-0" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
         <circle cx="11" cy="11" r="8" /><path d="m21 21-4.35-4.35" />
