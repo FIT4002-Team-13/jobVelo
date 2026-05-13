@@ -22,8 +22,7 @@ const CANDIDATE_STATUS_STYLES = {
 }
 
 const AVATAR_COLORS = [
-  'bg-primary-500', 'bg-sky-500', 'bg-mint-500', 'bg-coral-500',
-  'bg-primary-700', 'bg-sky-700', 'bg-mint-700',
+  'bg-primary-500', 'bg-sky-500', 'bg-mint-500', 'bg-coral-500'
 ]
 
 // ── Helpers ───────────────────────────────────────────────────────────────────

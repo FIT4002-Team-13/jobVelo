@@ -75,25 +75,32 @@ def _validate_oid(job_id: str) -> ObjectId:
 # ---------- routes -----------------------------------------------------------
 
 
-async def _interviewers_for_jobs(db, job_ids: list[str]) -> dict[str, list[str]]:
-    """Return `{job_id_str: [unique interviewer names]}` for the given jobs.
+async def _job_stats(db, job_ids: list[str]) -> dict[str, dict]:
+    """Per-job stats derived live from the job_candidates link table:
+        { job_id_str: { count: N, interviewers: [unique names] } }
 
-    The interviewer name is stashed on the job_candidates link when a
-    candidate is added via POST /api/jobs/{job_id}/candidates. This
-    aggregation reads them back so the JobCard avatar stack on the
-    Jobs page reflects who's actually involved.
-
-    One aggregation query per list_jobs call - no N+1 lookups.
+    Both fields are computed on read so the JobCard never drifts away
+    from reality - e.g. when a candidate row is deleted (or the whole
+    collection nuked), the count + avatar stack catch up immediately
+    on the next request. No stored counter to keep in sync, no need
+    for decrements on cascade-delete.
     """
     if not job_ids:
         return {}
     pipeline = [
-        {"$match": {"job_id": {"$in": job_ids}, "interviewer": {"$nin": [None, ""]}}},
-        {"$group": {"_id": "$job_id", "names": {"$addToSet": "$interviewer"}}},
+        {"$match": {"job_id": {"$in": job_ids}}},
+        {"$group": {
+            "_id": "$job_id",
+            "count": {"$sum": 1},
+            "names": {"$addToSet": "$interviewer"},
+        }},
     ]
-    out: dict[str, list[str]] = {}
+    out: dict[str, dict] = {}
     async for row in db.job_candidates.aggregate(pipeline):
-        out[row["_id"]] = row["names"]
+        out[row["_id"]] = {
+            "count": row["count"],
+            "interviewers": [n for n in row["names"] if n],   # drop None/""
+        }
     return out
 
 
@@ -115,11 +122,13 @@ async def list_jobs(
     query = {"comp_id": _comp_oid(comp_id)} if comp_id else {}
     jobs = await db.jobs.find(query).sort("job_last_update_datetime", -1).to_list(length=200)
 
-    interviewers_by_job = await _interviewers_for_jobs(
-        db, [str(j["_id"]) for j in jobs]
-    )
+    stats = await _job_stats(db, [str(j["_id"]) for j in jobs])
     return [
-        _serialize({**j, "interviewers": interviewers_by_job.get(str(j["_id"]), [])})
+        _serialize({
+            **j,
+            "interviewers":      stats.get(str(j["_id"]), {}).get("interviewers", []),
+            "candidates_filled": stats.get(str(j["_id"]), {}).get("count", 0),
+        })
         for j in jobs
     ]
 
@@ -134,10 +143,16 @@ async def get_job(
     if job is None:
         raise HTTPException(status_code=404, detail="Job not found")
 
-    # distinct() is cleaner than aggregate() for the single-job case.
+    # Count + interviewers both computed on read so a deleted candidate
+    # row (or a dropped collection) doesn't leave the counter stale.
+    count = await db.job_candidates.count_documents({"job_id": job_id})
     raw = await db.job_candidates.distinct("interviewer", {"job_id": job_id})
-    interviewers = [n for n in raw if n]   # drop None / empty strings
-    return _serialize({**job, "interviewers": interviewers})
+    interviewers = [n for n in raw if n]
+    return _serialize({
+        **job,
+        "interviewers": interviewers,
+        "candidates_filled": count,
+    })
 
 
 @router.post("", response_model=JobOut, status_code=status.HTTP_201_CREATED)
@@ -148,12 +163,12 @@ async def create_job(
     now = datetime.now(timezone.utc)
     body = payload.model_dump()
     body["comp_id"] = _comp_oid(body["comp_id"])  # store ObjectId, not string
+    # `candidates_filled` and `interviewers` are NOT stored on the doc -
+    # they're computed live from job_candidates on every read so they can't
+    # drift. _serialize fills them with safe defaults (0 / []) when missing.
     doc = {
         **body,
-        # Server-controlled defaults - never trusted from the client.
         "status": "Pending",
-        "candidates_filled": 0,
-        "interviewers": [],
         "job_created_at": now,
         "job_last_update_datetime": now,
     }
@@ -391,14 +406,20 @@ async def add_candidate_to_job(
         "updated_at": now,
     })
 
+    # No $inc on candidates_filled - it's derived from job_candidates on read.
+    # We just touch job_last_update_datetime so listings re-order correctly.
     updated_job = await db.jobs.find_one_and_update(
         {"_id": oid},
-        {
-            "$inc": {"candidates_filled": 1},
-            "$set": {"job_last_update_datetime": now},
-        },
+        {"$set": {"job_last_update_datetime": now}},
         return_document=True,
     )
+
+    # Recompute the live stats for the returned job so the JobDetailPage
+    # gets accurate candidates_filled + interviewers immediately, without
+    # waiting for a full refetch.
+    count = await db.job_candidates.count_documents({"job_id": job_id})
+    raw = await db.job_candidates.distinct("interviewer", {"job_id": job_id})
+    interviewers = [n for n in raw if n]
 
     return {
         "candidate": {
@@ -415,5 +436,9 @@ async def add_candidate_to_job(
             "status": "SCHEDULED",
             "score": None,
         },
-        "job": _serialize(updated_job).model_dump(),
+        "job": _serialize({
+            **updated_job,
+            "candidates_filled": count,
+            "interviewers": interviewers,
+        }).model_dump(),
     }

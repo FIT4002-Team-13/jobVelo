@@ -60,6 +60,14 @@ class JobOut(BaseModel):
 
     Defaults are set on every field that could plausibly be missing on a
     legacy doc, so the serializer never raises on partial data.
+
+    DERIVED fields (NOT stored on the jobs collection - computed live from
+    the job_candidates link table by routes/jobs.py on every read):
+      - candidates_filled : count of job_candidates rows for this job
+      - interviewers      : distinct, non-empty interviewer names
+
+    Default values (0 / []) only ever apply when the route forgets to
+    inject the computed stats - keeping them avoids a hard crash.
     """
 
     id: str
@@ -70,10 +78,10 @@ class JobOut(BaseModel):
     recruitment_start: str = ""
     recruitment_end: str = ""
     candidates_total: int = 1
-    candidates_filled: int = 0
+    candidates_filled: int = 0           # derived; see class docstring
     salary: str = ""
     salary_type: str = ""
     status: str = "Pending"
-    interviewers: list[str] = []
+    interviewers: list[str] = []         # derived; see class docstring
     job_created_at: datetime | None = None
     job_last_update_datetime: datetime | None = None
