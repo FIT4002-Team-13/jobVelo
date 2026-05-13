@@ -16,6 +16,14 @@ const JOB_STATUS_OPTIONS = [
 ]
 const CANDIDATE_FILTER_OPTIONS = []
 
+// Solid-fill status pills - kept in sync with JobsPage + JobDetailPage.
+// Pending = warning (coral), In Progress = active (primary), Completed = done (mint).
+const STATUS_STYLES = {
+  Pending:       'bg-coral-500 text-white',
+  'In Progress': 'bg-primary-500 text-white',
+  Completed:     'bg-mint-500 text-white',
+}
+
 // ── Style tokens for summary cards ──────────────────────────────────────────
 
 const CARD_STYLES = [
@@ -26,10 +34,14 @@ const CARD_STYLES = [
 
 // ── Sub-components ───────────────────────────────────────────────────────────
 
-function SearchBar({ placeholder }) {
+// Controlled search input - parent owns the string + filter logic so the
+// same component can power either panel.
+function SearchBar({ placeholder, value, onChange }) {
   return (
     <div className="flex items-center gap-2 border border-neutral-200 rounded-pill px-3 py-1.5 bg-neutral-0 text-sm text-neutral-400">
       <input
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
         className="outline-none border-none bg-transparent text-sm text-neutral-500 placeholder:text-neutral-400 w-28"
       />
@@ -67,23 +79,34 @@ export default function DashboardPage() {
   const [loading,    setLoading]    = useState(true)
   const [error,      setError]      = useState(null)
 
-  // Sort + filter state, one pair per panel.
+  // Search + sort + filter state, one set per panel.
+  const [jobSearch,        setJobSearch]        = useState('')
   const [jobSortKey,       setJobSortKey]       = useState('latest')
   const [jobStatusFilters, setJobStatusFilters] = useState([])
+  const [candSearch,       setCandSearch]       = useState('')
   const [candSortKey,      setCandSortKey]      = useState('latest')
   const [candFilters,      setCandFilters]      = useState([])
 
-  // Derived lists - search + filter + sort. Computed each render; cheap
+  // Derived lists - search → filter → sort. Computed each render; cheap
   // enough at dashboard sizes that useMemo is overkill.
   const jobSorter = makeSorter(jobSortKey, { nameField: 'title', dateField: 'job_created_at' })
+  const jobNeedle = jobSearch.trim().toLowerCase()
   const visibleJobs = jobs
+    .filter(j => !jobNeedle || (j.title ?? '').toLowerCase().includes(jobNeedle))
     .filter(j => jobStatusFilters.length === 0 || jobStatusFilters.includes(j.status))
   const sortedJobs = jobSorter ? [...visibleJobs].sort(jobSorter) : visibleJobs
 
   const candSorter = makeSorter(candSortKey, { nameField: 'cand_full_name', dateField: 'cand_created_at' })
-  // FILTER_OPTIONS is empty for now, so this stays a no-op until we wire a
-  // real candidate-status concept. Left in place so the sort still applies.
-  const sortedCandidates = candSorter ? [...candidates].sort(candSorter) : candidates
+  // CANDIDATE_FILTER_OPTIONS is empty for now, so the filter stage is a
+  // no-op until we wire a real candidate-status concept. Search + sort
+  // already work.
+  const candNeedle = candSearch.trim().toLowerCase()
+  const visibleCandidates = candidates.filter(c =>
+    !candNeedle
+    || (c.cand_full_name ?? '').toLowerCase().includes(candNeedle)
+    || (c.cand_email     ?? '').toLowerCase().includes(candNeedle)
+  )
+  const sortedCandidates = candSorter ? [...visibleCandidates].sort(candSorter) : visibleCandidates
 
   useEffect(() => {
     async function load() {
@@ -165,7 +188,11 @@ export default function DashboardPage() {
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-base font-bold text-neutral-800">Jobs</h2>
               <div className="flex items-center gap-3">
-                <SearchBar placeholder="Position Name" />
+                <SearchBar
+                  placeholder="Position Name"
+                  value={jobSearch}
+                  onChange={setJobSearch}
+                />
                 <SortMenu value={jobSortKey} onChange={setJobSortKey} />
                 <FilterMenu values={jobStatusFilters} onChange={setJobStatusFilters} options={JOB_STATUS_OPTIONS} />
               </div>
@@ -186,7 +213,7 @@ export default function DashboardPage() {
                         Candidates: {job.candidates_filled ?? 0}/{job.candidates_total ?? 0}
                       </p>
                     </div>
-                    <span className="bg-primary-500 text-white text-xs font-semibold px-3 py-1 rounded-pill">
+                    <span className={`text-xs font-bold px-3 py-1 rounded-pill ${STATUS_STYLES[job.status] ?? 'bg-neutral-100 text-neutral-500'}`}>
                       {job.status}
                     </span>
                   </div>
@@ -206,7 +233,11 @@ export default function DashboardPage() {
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-base font-bold text-neutral-800">Candidates</h2>
               <div className="flex items-center gap-3">
-                <SearchBar placeholder="Candidate Name" />
+                <SearchBar
+                  placeholder="Candidate Name"
+                  value={candSearch}
+                  onChange={setCandSearch}
+                />
                 <SortMenu value={candSortKey} onChange={setCandSortKey} />
                 <FilterMenu values={candFilters} onChange={setCandFilters} options={CANDIDATE_FILTER_OPTIONS} />
               </div>

@@ -12,10 +12,12 @@ const JOB_STATUS_OPTIONS = [
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
+// Solid-fill status pills - white bold text on a brand-colour background.
+// Pending = warning (coral), In Progress = active (primary), Completed = done (mint).
 const STATUS_STYLES = {
-  Pending:       'bg-coral-100 text-coral-500',
-  Completed:     'bg-mint-100 text-mint-600',
-  'In Progress': 'bg-sky-100 text-sky-600',
+  Pending:       'bg-coral-500 text-white',
+  'In Progress': 'bg-primary-500 text-white',
+  Completed:     'bg-mint-500 text-white',
 }
 
 const AVATAR_COLORS = [
@@ -95,7 +97,7 @@ function JobCard({ job, onEdit, onDelete }) {
       <div className="flex items-start justify-between gap-2">
         <h3 className="text-base font-bold text-neutral-800 leading-snug flex-1">{job.title}</h3>
         <div className="flex items-center gap-1.5 shrink-0">
-          <span className={`text-xs font-semibold px-3 py-1 rounded-pill whitespace-nowrap ${STATUS_STYLES[job.status] ?? 'bg-neutral-100 text-neutral-500'}`}>
+          <span className={`text-xs font-bold px-3 py-1 rounded-pill whitespace-nowrap ${STATUS_STYLES[job.status] ?? 'bg-neutral-100 text-neutral-500'}`}>
             {job.status}
           </span>
           <CardMenu onEdit={() => onEdit(job)} onDelete={() => onDelete(job)} />

@@ -18,7 +18,11 @@ from bson import ObjectId
 from fastapi import APIRouter, HTTPException, status
 
 from database import get_db
-from models.job_candidate import JobCandidateCreate, JobCandidateOut
+from models.job_candidate import (
+    JobCandidateCreate,
+    JobCandidateOut,
+    JobCandidateScoreUpdate,
+)
 
 router = APIRouter(prefix="/api/job-candidates", tags=["job_candidates"])
 
@@ -31,6 +35,7 @@ def job_candidate_helper(job_candidate: dict) -> JobCandidateOut:
         jobcand_id=str(job_candidate["_id"]),
         cand_id=str(job_candidate["cand_id"]),
         job_id=str(job_candidate["job_id"]),
+        status=job_candidate.get("status"),
         cv_analysis=job_candidate.get("cv_analysis"),
         communication_score=job_candidate.get("communication_score"),
         skill_score=job_candidate.get("skill_score"),
@@ -134,3 +139,47 @@ async def get_job_candidate(jobcand_id: str) -> JobCandidateOut:
             detail="Job-candidate link not found.",
         )
     return job_candidate_helper(job_candidate)
+
+
+@router.patch("/{jobcand_id}/scores", response_model=JobCandidateOut)
+async def update_job_candidate_scores(
+    jobcand_id: str,
+    payload: JobCandidateScoreUpdate,
+) -> JobCandidateOut:
+    """Update any/all of the AI / interview score fields on a link.
+
+    Auto-status side-effect: as soon as any field lands with a non-null
+    value, the link's `status` is set to "EVALUATED". This replaces the
+    earlier dedicated /status endpoint - in practice nobody scores an
+    interview without also moving the candidate out of SCHEDULED, so we
+    do it in one call and remove the chance to forget.
+
+    Clearing a score (sending {communication_score: null}) does NOT touch
+    the status - that's an explicit "undo" gesture.
+    """
+    db = get_db()
+    oid = _validate_oid(jobcand_id, "job-candidate")
+
+    # exclude_unset keeps fields the caller didn't include out of the $set,
+    # so a partial update doesn't wipe other scores.
+    updates = payload.model_dump(exclude_unset=True)
+    if not updates:
+        raise HTTPException(status_code=400, detail="No fields to update")
+
+    # Auto-bump status when a real (non-null) score is being recorded.
+    if any(v is not None for v in updates.values()):
+        updates["status"] = "EVALUATED"
+
+    updates["updated_at"] = datetime.now(timezone.utc)
+
+    result = await db.job_candidates.find_one_and_update(
+        {"_id": oid},
+        {"$set": updates},
+        return_document=True,
+    )
+    if not result:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Job-candidate link not found.",
+        )
+    return job_candidate_helper(result)

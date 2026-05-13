@@ -10,10 +10,12 @@ import { api } from '../lib/api.js'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
+// Solid-fill status pills - kept in sync with JobsPage + DashboardPage.
+// Pending = warning (coral), In Progress = active (primary), Completed = done (mint).
 const STATUS_STYLES = {
-  Pending:       'bg-coral-100 text-coral-500',
-  Completed:     'bg-mint-100 text-mint-600',
-  'In Progress': 'bg-sky-100 text-sky-600',
+  Pending:       'bg-coral-500 text-white',
+  'In Progress': 'bg-primary-500 text-white',
+  Completed:     'bg-mint-500 text-white',
 }
 
 const CANDIDATE_STATUS_STYLES = {
@@ -600,7 +602,7 @@ export default function JobDetailPage() {
                   className="text-xs font-medium text-neutral-500 border border-neutral-200 px-3 py-1 rounded-lg hover:bg-neutral-50 transition-colors">
                   Edit
                 </button>
-                <span className={`${badge.base} ${STATUS_STYLES[job.status] ?? 'bg-neutral-100 text-neutral-500'}`}>
+                <span className={`text-xs font-bold px-3 py-1 rounded-pill ${STATUS_STYLES[job.status] ?? 'bg-neutral-100 text-neutral-500'}`}>
                   {job.status}
                 </span>
               </div>
