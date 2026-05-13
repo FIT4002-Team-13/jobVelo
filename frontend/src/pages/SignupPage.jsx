@@ -5,6 +5,11 @@ import AuthLayout from '../components/auth/AuthLayout.jsx'
 import AuthField from '../components/auth/AuthField.jsx'
 import { api, ApiError } from '../lib/api.js'
 import { checkPassword, isPasswordStrong } from '../lib/password.js'
+import { isEmail, isUsername, isFullName } from '../lib/validators.js'
+
+// Invitation codes are generated server-side as INV-XXXX-XXXX (alphanumeric).
+// Catching obvious typos here saves a server round-trip on step 1.
+const CODE_RE = /^INV-[A-Z0-9]{4}-[A-Z0-9]{4}$/
 
 // Roles the invitee can pick. "admin" isn't here on purpose - that role is
 // reserved for the user who created the company.
@@ -42,10 +47,17 @@ export default function SignupPage() {
   const onCheckCode = async (e) => {
     e.preventDefault()
     setError(null)
-    if (!code.trim()) return
+    const trimmed = code.trim()
+    if (!trimmed) return
+    // Catch obviously-wrong codes (e.g. someone pasted a URL) before
+    // hitting the server. Real validity check still happens server-side.
+    if (!CODE_RE.test(trimmed)) {
+      setError('Invitation codes look like "INV-XXXX-XXXX".')
+      return
+    }
     setSubmitting(true)
     try {
-      const res = await api.checkCode(code.trim())
+      const res = await api.checkCode(trimmed)
       if (!res?.valid) {
         setError('That invitation code is invalid or has already been used.')
         return
@@ -64,6 +76,18 @@ export default function SignupPage() {
     e.preventDefault()
     setError(null)
 
+    if (!isFullName(form.full_name)) {
+      setError('Please enter a real full name (2-100 characters, includes letters).')
+      return
+    }
+    if (!isUsername(form.username)) {
+      setError('Username must be 3-40 characters: letters, digits, dot, underscore or dash.')
+      return
+    }
+    if (!isEmail(form.email)) {
+      setError('Please enter a valid email address.')
+      return
+    }
     if (!isPasswordStrong(form.password)) {
       setError('Password does not meet the requirements below.')
       return

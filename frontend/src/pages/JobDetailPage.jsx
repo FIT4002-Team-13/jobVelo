@@ -8,6 +8,7 @@ import { fontSize } from '../styles/typography'
 
 import { useAuth } from '../lib/AuthContext.jsx'
 import { api } from '../lib/api.js'
+import { isEmail, isHttpUrl, isPhone, isFullName, isFutureDateTime } from '../lib/validators.js'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -102,8 +103,24 @@ function AddCandidateModal({ jobId, onClose, onAdded }) {
 
   async function handleSubmit(e) {
     e.preventDefault()
+    // Required fields
     if (!form_state.name.trim())  return setError('Candidate name is required.')
+    if (!isFullName(form_state.name))
+      return setError('Please enter a real name (2-100 characters, includes letters).')
     if (!form_state.email.trim()) return setError('Candidate email is required.')
+    if (!isEmail(form_state.email))
+      return setError('Please enter a valid email address.')
+    // Optional fields - only validate format when the user actually filled them in
+    if (form_state.phone.trim() && !isPhone(form_state.phone))
+      return setError('Phone number looks malformed (digits, +, spaces, dashes only).')
+    if (form_state.cv_url.trim() && !isHttpUrl(form_state.cv_url))
+      return setError('CV URL must start with http:// or https://')
+    if (form_state.cover_letter_url.trim() && !isHttpUrl(form_state.cover_letter_url))
+      return setError('Cover Letter URL must start with http:// or https://')
+    // Booking the past doesn't make sense - even if the candidate showed up
+    // late, you'd update an existing record, not back-date a new one.
+    if (form_state.scheduled_at && !isFutureDateTime(form_state.scheduled_at))
+      return setError('Scheduled date/time must be in the future.')
 
     setError(null)
     setSubmitting(true)
@@ -195,8 +212,15 @@ function AddCandidateModal({ jobId, onClose, onAdded }) {
           </div>
           <div>
             <label className={form.label}>Scheduled Date & Time</label>
-            <input type="datetime-local" value={form_state.scheduled_at} onChange={e => set('scheduled_at', e.target.value)}
-              className={form.input} />
+            <input
+              type="datetime-local"
+              value={form_state.scheduled_at}
+              onChange={e => set('scheduled_at', e.target.value)}
+              // Browser-level guard so the picker hides past times.
+              // The submit handler re-checks (browsers can be bypassed).
+              min={new Date().toISOString().slice(0, 16)}
+              className={form.input}
+            />
           </div>
 
           {error && <p className={form.error}>{error}</p>}

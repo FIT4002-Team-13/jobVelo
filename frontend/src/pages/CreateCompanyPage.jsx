@@ -6,6 +6,10 @@ import AuthField from '../components/auth/AuthField.jsx'
 import { api, ApiError } from '../lib/api.js'
 import { useAuth } from '../lib/AuthContext.jsx'
 import { checkPassword, isPasswordStrong } from '../lib/password.js'
+import {
+  isEmail, isHttpUrl, isPhone, isUsername, isFullName,
+  checkLogoFile,
+} from '../lib/validators.js'
 
 // Company + admin signup. Multipart (because of the logo). On success the
 // backend returns an access_token, so we auto-log them in and drop them on
@@ -37,10 +41,26 @@ export default function CreateCompanyPage() {
     e.preventDefault()
     setError(null)
 
-    if (!logoFile) {
-      setError('Please upload a company logo.')
-      return
-    }
+    // ── Company-side checks ──────────────────────────────────────────
+    if (!form.comp_name.trim())     return setError('Company name is required.')
+    if (!isEmail(form.comp_email))  return setError('Please enter a valid company email.')
+    if (!form.comp_industry.trim()) return setError('Industry is required.')
+    if (!isPhone(form.comp_contact))
+      return setError('Contact number looks malformed (digits, +, spaces, dashes only).')
+    if (form.comp_website.trim() && !isHttpUrl(form.comp_website))
+      return setError('Website URL must start with http:// or https://')
+
+    // Logo: presence + mime + size (file-size cap lives in validators).
+    const logoErr = checkLogoFile(logoFile)
+    if (logoErr) return setError(logoErr)
+
+    // ── Admin-side checks ────────────────────────────────────────────
+    if (!isFullName(form.full_name))
+      return setError('Please enter a real full name (2-100 characters, includes letters).')
+    if (!isUsername(form.username))
+      return setError('Username must be 3-40 characters: letters, digits, dot, underscore or dash.')
+    if (!isEmail(form.email))
+      return setError('Please enter a valid email address.')
     if (!isPasswordStrong(form.password)) {
       setError('Password does not meet the requirements below.')
       return

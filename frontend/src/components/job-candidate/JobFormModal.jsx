@@ -1,6 +1,11 @@
 import { useState } from 'react'
 import { flex, form as f, button, modal } from '../../styles/layout'
 import { useAuth } from '../../lib/AuthContext.jsx'
+import { toPositiveInt, parseSalary } from '../../lib/validators.js'
+
+// Field length caps - mirror the backend Pydantic limits.
+const TITLE_MAX = 120
+const DESC_MAX  = 2000
 
 const EMPLOYMENT_TYPES = ['Full-time', 'Part-time', 'Casual', 'Internship']
 const STATUS_OPTIONS   = ['Pending', 'In Progress', 'Completed']
@@ -50,13 +55,36 @@ export default function JobFormModal({ initialJob, onClose, onSaved }) {
 
   async function handleSubmit(e) {
     e.preventDefault()
+    // ── Required fields ──────────────────────────────────────────────
     if (!form.title.trim())             return setError('Job title is required.')
+    if (form.title.trim().length > TITLE_MAX)
+      return setError(`Job title must be ${TITLE_MAX} characters or fewer.`)
+    if (form.description.trim().length > DESC_MAX)
+      return setError(`Description must be ${DESC_MAX} characters or fewer.`)
     if (!form.recruitment_start)        return setError('Recruitment start date is required.')
     if (!form.recruitment_end)          return setError('Recruitment end date is required.')
     // yyyy-mm-dd is lexicographically orderable, so direct string compare works.
     if (form.recruitment_end < form.recruitment_start)
       return setError('End date must be on or after the start date.')
     if (form.employment_type.length === 0) return setError('Select at least one employment type.')
+
+    // candidates_total must be a positive integer. <input type="number" min=1>
+    // is hint-only - the user can paste any string, so we re-check in JS.
+    const candidatesTotal = toPositiveInt(form.candidates_total)
+    if (candidatesTotal == null)
+      return setError('No. of candidates must be a positive whole number.')
+
+    // Salary is optional; if they typed one, it must parse, and pairing
+    // a number with a missing rate (Hourly / Yearly) is ambiguous - block it.
+    let salaryNum = 0
+    if (String(form.salary).trim()) {
+      salaryNum = parseSalary(form.salary)
+      if (salaryNum == null)
+        return setError('Salary must be a non-negative number (you can use "k", e.g. 100k).')
+      if (!form.salary_type)
+        return setError('Pick a salary type (Hourly or Yearly) when entering a salary.')
+    }
+
     // comp_id comes from the JWT-derived user; never trust the form for it.
     if (!isEdit && !user?.comp_id) return setError('You must be logged in to create a job.')
 
@@ -68,8 +96,8 @@ export default function JobFormModal({ initialJob, onClose, onSaved }) {
       employment_type:   form.employment_type,
       recruitment_start: form.recruitment_start,
       recruitment_end:   form.recruitment_end,
-      candidates_total:  Number(form.candidates_total),
-      salary:            form.salary,
+      candidates_total:  candidatesTotal,
+      salary:            salaryNum || form.salary, // keep server's existing accept of either shape
       salary_type:       form.salary_type,
       // Only attach comp_id on create - PUT/update can't change company.
       ...(isEdit
@@ -111,12 +139,14 @@ export default function JobFormModal({ initialJob, onClose, onSaved }) {
             <label className={f.label}>Job Title *</label>
             <input value={form.title} onChange={e => set('title', e.target.value)}
               placeholder="eg. Senior Software Engineer"
+              maxLength={TITLE_MAX}
               className={f.input} />
           </div>
 
           <div>
             <label className={f.label}>Description</label>
             <textarea value={form.description} onChange={e => set('description', e.target.value)} rows={3}
+              maxLength={DESC_MAX}
               className={`${f.input} resize-none`} />
           </div>
 

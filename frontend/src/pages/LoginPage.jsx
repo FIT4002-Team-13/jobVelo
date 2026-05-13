@@ -24,6 +24,13 @@ export default function LoginPage() {
   const onSubmit = async (e) => {
     e.preventDefault()
     setError(null)
+    // Cheap client-side sanity check. We deliberately DON'T reveal whether
+    // the identifier looks email-shaped or not - the server returns the same
+    // 401 for both shapes, so leaking format hints here would be inconsistent.
+    if (!form.identifier.trim() || !form.password) {
+      setError('Please enter your username/email and password.')
+      return
+    }
     setSubmitting(true)
     try {
       const user = await login(form.identifier.trim(), form.password)
