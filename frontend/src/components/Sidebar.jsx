@@ -4,12 +4,15 @@ import { LayoutDashboard, CalendarDays, Briefcase, Users } from 'lucide-react';
 import logoFull from '../assets/logo-final.png';
 import { useAuth } from '../lib/AuthContext.jsx';
 
-// `user` is the shape returned by /api/auth/me (UserOut). It may be undefined
-// briefly while the parent is still fetching - guard for that.
-export default function Sidebar({ user }) {
+// `user` is the shape returned by /api/auth/me (UserOut). The prop is
+// optional - if the parent doesn't pass one (e.g. JobsPage / JobDetailPage),
+// we fall back to the AuthContext's user so the sidebar stays consistent
+// across every page without each page having to fetch /api/auth/me itself.
+export default function Sidebar({ user: userProp }) {
   const location = useLocation();
   const navigate = useNavigate();
-  const { logout } = useAuth();
+  const { user: ctxUser, logout } = useAuth();
+  const user = userProp ?? ctxUser;
 
   // Properly clear the JWT + auth state, then bounce to the landing page.
   // Without logout() the token would stay in localStorage and the user
@@ -39,18 +42,34 @@ export default function Sidebar({ user }) {
 
 
   const navLink = (item) => {
-    const isActive = location.pathname === item.path;
+    // Mark the link as active when its path matches OR when we're on a
+    // nested route below it (e.g. /jobs/123 should highlight the Jobs link).
+    const isActive =
+      location.pathname === item.path ||
+      location.pathname.startsWith(item.path + '/');
     return (
       <Link
         key={item.path}
         to={item.path}
-        className={`flex items-center gap-2.5 px-3.5 py-2.5 rounded-md text-sm no-underline transition-all ${
+        aria-current={isActive ? 'page' : undefined}
+        className={`group relative flex items-center gap-2.5 pl-5 pr-3.5 py-2.5 rounded-md text-sm no-underline transition-colors ${
           isActive
-            ? 'font-semibold text-primary-500 bg-primary-50'
-            : 'font-normal text-neutral-500 bg-transparent'
+            ? 'font-semibold text-primary-500 bg-primary-500/20'
+            : 'font-normal text-neutral-500 hover:text-primary-600 hover:bg-primary-500/20'
         }`}
       >
-        <span className={isActive ? 'text-primary-500' : 'text-neutral-400'}>
+        {/* Left-edge indicator pill - solid primary, visible when active or hovered. */}
+        <span
+          aria-hidden
+          className={`absolute left-0 top-1/2 -translate-y-1/2 w-1 h-5 rounded-r-pill bg-primary-500 transition-opacity ${
+            isActive ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+          }`}
+        />
+        <span
+          className={`transition-colors ${
+            isActive ? 'text-primary-500' : 'text-neutral-400 group-hover:text-primary-500'
+          }`}
+        >
           {item.icon}
         </span>
         {item.label}
@@ -59,10 +78,10 @@ export default function Sidebar({ user }) {
   };
 
   return (
-    <aside className="w-[180px] shrink-0 bg-neutral-0 border-r border-neutral-200 flex flex-col h-screen sticky top-0">
+    <aside className="w-[200px] shrink-0 bg-neutral-0 border-r border-neutral-200 flex flex-col h-screen sticky top-0">
       {/* Logo */}
-      <div className="pt-5 px-4 pb-6">
-        <img src={logoFull} alt="Logo" className="h-8 w-auto" />
+      <div className="pt-5 px-4 pb-6 flex items-center justify-center">
+        <img src={logoFull} alt="Logo" className="h-16 w-auto" />
       </div>
 
       {/* Nav */}
@@ -77,7 +96,7 @@ export default function Sidebar({ user }) {
       {/* User + Logout */}
       <div className="p-4 border-t border-neutral-200">
         <div className="flex items-center gap-2.5 mb-3">
-          <div className="w-9 h-9 rounded-pill bg-brand-gradient flex items-center justify-center text-white font-bold text-sm shrink-0">
+          <div className="w-9 h-9 rounded-pill bg-primary-500 flex items-center justify-center text-white font-bold text-sm shrink-0">
             {initials}
           </div>
           <div>

@@ -118,7 +118,7 @@ export default function JobFormModal({ initialJob, onClose, onSaved }) {
 
   return (
     <div className={modal.overlay}>
-      <div className={`${modal.panel} max-w-lg max-h-[90vh] overflow-y-auto`}>
+      <div className={`${modal.panel} max-w-2xl max-h-[90vh] overflow-y-auto`}>
         <button onClick={onClose} className="absolute top-4 right-4 text-neutral-400 hover:text-neutral-700 text-xl leading-none">×</button>
         <h2 className="text-xl font-bold text-neutral-800 mb-1">{isEdit ? 'Edit Job Posting' : 'Create Job Posting'}</h2>
         <p className="text-xs text-neutral-400 mb-5">Required fields are indicated with a asterisk *</p>

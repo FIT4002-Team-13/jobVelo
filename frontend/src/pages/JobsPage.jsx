@@ -75,11 +75,17 @@ function JobCard({ job, onEdit, onDelete }) {
   const visibleAvatars = job.interviewers?.slice(0, 4) ?? []
   const overflow = (job.interviewers?.length ?? 0) - visibleAvatars.length
 
+  // Typography hierarchy on this card:
+  //   1. Title       - text-base, bold, ink-dark   (the "what")
+  //   2. Description - text-xs,   regular, mid-grey (the "context")
+  //   3. Meta rows   - text-xs,   regular, light-grey, with key numbers
+  //                    bumped to medium weight + darker for scannability
   return (
     <div onClick={() => navigate(`/jobs/${job.id}`)}
-      className="bg-white border border-neutral-200 rounded-2xl p-5 flex flex-col gap-3 hover:shadow-md transition-shadow cursor-pointer">
+      className="bg-white border border-neutral-300 rounded-2xl p-5 flex flex-col gap-2 hover:shadow-md transition-all cursor-pointer">
+      {/* Title + status + menu */}
       <div className="flex items-start justify-between gap-2">
-        <h3 className="text-sm font-bold text-neutral-800 flex-1">{job.title}</h3>
+        <h3 className="text-base font-bold text-neutral-800 leading-snug flex-1">{job.title}</h3>
         <div className="flex items-center gap-1.5 shrink-0">
           <span className={`text-xs font-semibold px-3 py-1 rounded-pill whitespace-nowrap ${STATUS_STYLES[job.status] ?? 'bg-neutral-100 text-neutral-500'}`}>
             {job.status}
@@ -88,15 +94,19 @@ function JobCard({ job, onEdit, onDelete }) {
         </div>
       </div>
 
-      <p className="text-xs text-neutral-400 leading-relaxed line-clamp-2">{job.description}</p>
+      {/* Description - secondary, still readable */}
+      <p className="text-xs text-neutral-500 leading-relaxed line-clamp-2">{job.description}</p>
 
-      <div className="flex items-center gap-1.5 text-xs text-neutral-400">
+      {/* Interviewers count */}
+      <div className="flex items-center gap-1.5 text-xs text-neutral-500">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
           <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
         </svg>
-        {job.interviewers?.length ?? 0} interviewers
+        <span className="font-semibold text-neutral-700">{job.interviewers?.length ?? 0}</span>
+        interviewers
       </div>
 
+      {/* Avatars */}
       <div className="flex items-center">
         {visibleAvatars.map((name, i) => <Avatar key={i} name={name} index={i} />)}
         {overflow > 0 && (
@@ -106,12 +116,14 @@ function JobCard({ job, onEdit, onDelete }) {
         )}
       </div>
 
-      <div className="flex items-center gap-1.5 text-xs text-neutral-400">
+      {/* Candidates count */}
+      <div className="flex items-center gap-1.5 text-xs text-neutral-500">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
           <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>
           <path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
         </svg>
-        {job.candidates_filled} / {job.candidates_total} candidates
+        <span className="font-semibold text-neutral-700">{job.candidates_filled}</span>
+        / {job.candidates_total} candidates
       </div>
     </div>
   )
@@ -202,7 +214,7 @@ export default function JobsPage() {
       <main className="flex-1 overflow-y-auto px-10 py-8">
         <div className="flex items-start justify-between mb-6">
           <div>
-            <h1 className="text-3xl font-extrabold tracking-tight text-neutral-800">Job Posting</h1>
+            <h1 className="text-4xl font-extrabold tracking-tight text-neutral-800">Job Posting</h1>
             <p className="text-sm text-neutral-400 mt-1">Manage your open positions</p>
           </div>
           <button onClick={() => setFormModal('create')}
@@ -219,6 +231,12 @@ export default function JobsPage() {
               <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
             </svg>
           </div>
+          <button className="flex items-center gap-1 text-xs font-medium text-neutral-500 hover:text-neutral-700">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M3 6h18M6 12h12M9 18h6" />
+            </svg>
+            Sort
+          </button>
           <button className="flex items-center gap-1 text-xs font-medium text-neutral-500 hover:text-neutral-700">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/>

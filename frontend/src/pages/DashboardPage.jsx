@@ -153,6 +153,7 @@ export default function DashboardPage() {
               <h2 className="text-base font-bold text-neutral-800">Jobs</h2>
               <div className="flex items-center gap-3">
                 <SearchBar placeholder="Position Name" />
+                <SortBtn />
                 <FilterBtn label="Filter" />
               </div>
             </div>

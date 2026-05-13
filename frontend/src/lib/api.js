@@ -71,4 +71,15 @@ export const api = {
   listInvitations:  ()       => request('/invitations',       { auth: true }),
   createInvitation: ()       => request('/invitations',       { method: 'POST', auth: true }),
   deleteInvitation: (id)     => request(`/invitations/${id}`, { method: 'DELETE', auth: true }),
+
+  // ---------- users ------------------------------------------------------
+  // List teammates, optionally filtered by comp_id / role. Used by the
+  // AddCandidate modal's interviewer combobox:
+  //   api.listUsers({ comp_id, role: 'interviewer' })
+  listUsers: (params = {}) => {
+    const qs = new URLSearchParams(
+      Object.entries(params).filter(([, v]) => v !== undefined && v !== null && v !== '')
+    ).toString()
+    return request(`/users${qs ? `?${qs}` : ''}`, { auth: true })
+  },
 }

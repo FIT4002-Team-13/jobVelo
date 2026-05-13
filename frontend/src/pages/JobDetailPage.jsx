@@ -1,8 +1,10 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import Sidebar from '../components/Sidebar'
 import JobFormModal from '../components/JobFormModal'
 import { flex, card, badge, form, button, modal, page } from '../styles/layout'
+import { useAuth } from '../lib/AuthContext.jsx'
+import { api } from '../lib/api.js'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -66,6 +68,7 @@ function Avatar({ name, size = 'md' }) {
 // ── Add Candidate Modal ───────────────────────────────────────────────────────
 
 function AddCandidateModal({ jobId, onClose, onAdded }) {
+  const { user } = useAuth()
   // Mirrors the AddCandidateToJob Pydantic model on the backend:
   //   name + email are required (so the candidate doc has real identity);
   //   phone, cv_url, cover_letter_url, interviewer, scheduled_at are optional.
@@ -80,6 +83,15 @@ function AddCandidateModal({ jobId, onClose, onAdded }) {
   })
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState(null)
+  // Interviewers in the caller's company - powers the combobox below.
+  const [interviewers, setInterviewers] = useState([])
+
+  useEffect(() => {
+    if (!user?.comp_id) return
+    api.listUsers({ comp_id: user.comp_id, role: 'interviewer' })
+      .then(setInterviewers)
+      .catch(() => setInterviewers([]))   // empty -> dropdown shows "no interviewers"
+  }, [user?.comp_id])
 
   function set(k, v) { setForm(f => ({ ...f, [k]: v })) }
 
@@ -127,7 +139,7 @@ function AddCandidateModal({ jobId, onClose, onAdded }) {
 
   return (
     <div className={modal.overlay}>
-      <div className={`${modal.panel} max-w-md max-h-[90vh] overflow-y-auto`}>
+      <div className={`${modal.panel} scrollbar-primary max-w-md max-h-[90vh] overflow-y-auto`}>
         <button onClick={onClose} className="absolute top-4 right-4 text-neutral-400 hover:text-neutral-700 text-xl leading-none">×</button>
         <h2 className="text-xl font-bold text-neutral-800 mb-1">Add Candidate</h2>
         <p className="text-xs text-neutral-400 mb-5">Required fields are indicated with an asterisk *</p>
@@ -170,9 +182,11 @@ function AddCandidateModal({ jobId, onClose, onAdded }) {
 
           <div>
             <label className={form.label}>Interviewer</label>
-            <input value={form_state.interviewer} onChange={e => set('interviewer', e.target.value)}
-              placeholder="eg. Jane Smith"
-              className={form.input} />
+            <InterviewerCombobox
+              value={form_state.interviewer}
+              onChange={(v) => set('interviewer', v)}
+              options={interviewers}
+            />
           </div>
           <div>
             <label className={form.label}>Scheduled Date & Time</label>
@@ -202,6 +216,84 @@ function SectionLabel({ children }) {
   return (
     <div className="text-xs font-bold uppercase tracking-wider text-primary-600 pt-1">
       {children}
+    </div>
+  )
+}
+
+// Searchable dropdown for picking an interviewer from the company roster.
+// Behaviour:
+//   - typing filters the list by full_name / username / email (case-insensitive)
+//   - clicking an option fills the field with the user's full_name
+//   - clicking outside closes the panel
+//   - this is a SELECT (not free-text) - the picker only ever sets values
+//     from the supplied options, so we don't end up with typos in the DB
+function InterviewerCombobox({ value, onChange, options }) {
+  const [query, setQuery] = useState(value || '')
+  const [open, setOpen] = useState(false)
+  const ref = useRef(null)
+
+  // Keep query in sync if the parent clears/sets value externally.
+  useEffect(() => { setQuery(value || '') }, [value])
+
+  // Close panel on outside click.
+  useEffect(() => {
+    function handler(e) { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
+
+  const q = query.toLowerCase().trim()
+  const filtered = q
+    ? options.filter((o) =>
+        (o.full_name || '').toLowerCase().includes(q) ||
+        (o.username  || '').toLowerCase().includes(q) ||
+        (o.email     || '').toLowerCase().includes(q)
+      )
+    : options
+
+  return (
+    <div ref={ref} className="relative">
+      <input
+        value={query}
+        onChange={(e) => { setQuery(e.target.value); setOpen(true) }}
+        onFocus={() => setOpen(true)}
+        placeholder={options.length === 0 ? 'No interviewers in your company yet' : 'Type to search interviewers…'}
+        className={form.input}
+      />
+      {open && (
+        <div className="scrollbar-primary absolute z-10 left-0 right-0 top-full mt-1 max-h-48 overflow-y-auto bg-white border border-neutral-200 rounded-xl shadow-lg">
+          {filtered.length === 0 ? (
+            <div className="px-3 py-2 text-xs text-neutral-400">
+              {options.length === 0
+                ? 'No interviewers yet — invite one from the admin dashboard.'
+                : `No matches for "${query}".`}
+            </div>
+          ) : (
+            <ul>
+              {filtered.map((o) => (
+                <li key={o.userid}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const picked = o.full_name || o.username || o.email || ''
+                      onChange(picked)
+                      setQuery(picked)
+                      setOpen(false)
+                    }}
+                    className="w-full text-left px-3 py-2 text-sm hover:bg-primary-500/10 transition-colors flex items-center gap-3"
+                  >
+                    <Avatar name={o.full_name || o.username || o.email || '?'} size="sm" />
+                    <div className="min-w-0 flex-1">
+                      <div className="font-medium text-neutral-800 truncate">{o.full_name || o.username}</div>
+                      {o.email && <div className="text-xs text-neutral-400 truncate">{o.email}</div>}
+                    </div>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
     </div>
   )
 }
@@ -269,7 +361,7 @@ function InterviewStatusPanel({ candidates, job }) {
 
 // ── Candidates Table ──────────────────────────────────────────────────────────
 
-function CandidatesTable({ candidates, tab }) {
+function CandidatesTable({ candidates, tab, setTab }) {
   const [search, setSearch] = useState('')
 
   const sorted = tab === 'RANKINGS'
@@ -277,25 +369,47 @@ function CandidatesTable({ candidates, tab }) {
     : [...candidates].sort((a, b) => new Date(a.scheduled_at) - new Date(b.scheduled_at))
 
   const filtered = sorted.filter(c =>
-    c.name.toLowerCase().includes(search.toLowerCase())
+    (c.name ?? '').toLowerCase().includes(search.toLowerCase())
   )
 
   return (
     <div>
-      <div className={`${flex.rowEnd} gap-3 mb-4`}>
-        <div className={`${flex.row} gap-2 border border-neutral-200 rounded-xl px-3 py-1.5 bg-neutral-0`}>
-          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Position Name"
-            className="outline-none border-none bg-transparent text-sm text-neutral-600 placeholder:text-neutral-400 w-32" />
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-neutral-400">
-            <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
-          </svg>
+      {/* Single row: tabs on the left, search + sort + filter on the right. */}
+      <div className={`${flex.rowBetween} gap-3 mb-4`}>
+        <div className={`${flex.row} gap-2`}>
+          {['SCHEDULES', 'RANKINGS'].map(t => (
+            <button key={t} onClick={() => setTab(t)}
+              className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-colors ${
+                tab === t
+                  ? 'bg-primary-500 text-white'
+                  : 'text-neutral-500 hover:bg-neutral-100'
+              }`}>
+              {t}
+            </button>
+          ))}
         </div>
-        <button className={`${flex.row} gap-1 text-xs font-medium text-neutral-500 hover:text-neutral-700`}>
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/>
-          </svg>
-          Filter
-        </button>
+
+        <div className={`${flex.row} gap-3`}>
+          <div className={`${flex.row} gap-2 border border-neutral-200 rounded-xl px-3 py-1.5 bg-neutral-0`}>
+            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Candidate Name"
+              className="outline-none border-none bg-transparent text-sm text-neutral-600 placeholder:text-neutral-400 w-32" />
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-neutral-400">
+              <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+            </svg>
+          </div>
+          <button className={`${flex.row} gap-1 text-xs font-medium text-neutral-500 hover:text-neutral-700`}>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M3 6h18M6 12h12M9 18h6" />
+            </svg>
+            Sort
+          </button>
+          <button className={`${flex.row} gap-1 text-xs font-medium text-neutral-500 hover:text-neutral-700`}>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/>
+            </svg>
+            Filter
+          </button>
+        </div>
       </div>
 
       <div className={`${card.flat} overflow-hidden`}>
@@ -459,13 +573,10 @@ export default function JobDetailPage() {
           </div>
           <div className="flex gap-3">
             <button onClick={() => setShowAddCandidate(true)}
-              className={`${flex.row} gap-2 ${button.outline}`}>
+              className={`${flex.row} gap-2 ${button.primary}`}>
               + Add Candidate
             </button>
-            <button onClick={() => navigate('/jobs')}
-              className={`${flex.row} gap-2 ${button.primary}`}>
-              + Create Job
-            </button>
+        
           </div>
         </div>
 
@@ -533,23 +644,10 @@ export default function JobDetailPage() {
           <InterviewStatusPanel candidates={candidates} job={job} />
         </div>
 
-        {/* Candidates section */}
+        {/* Candidates section - tabs are now inside CandidatesTable so they
+            align in the same row as the search + sort + filter controls. */}
         <div className={card.base}>
-          {/* Tabs */}
-          <div className={`${flex.row} gap-2 mb-5`}>
-            {['SCHEDULES', 'RANKINGS'].map(t => (
-              <button key={t} onClick={() => setTab(t)}
-                className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-colors ${
-                  tab === t
-                    ? 'bg-primary-500 text-white'
-                    : 'text-neutral-500 hover:bg-neutral-100'
-                }`}>
-                {t}
-              </button>
-            ))}
-          </div>
-
-          <CandidatesTable candidates={candidates} tab={tab} />
+          <CandidatesTable candidates={candidates} tab={tab} setTab={setTab} />
         </div>
       </main>
 

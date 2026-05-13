@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from config import settings
 from database import close_mongo_connection, connect_to_mongo, ensure_indexes, seed_mock_data
-from routes import auth, cand, dashboard, files, invitations, job_cand, jobs
+from routes import auth, cand, dashboard, files, invitations, job_cand, jobs, users
 
 
 @asynccontextmanager
@@ -43,6 +43,7 @@ app.include_router(dashboard.router)
 app.include_router(jobs.router)
 app.include_router(cand.router)
 app.include_router(job_cand.router)
+app.include_router(users.router)
 
 
 @app.get("/api/health")
