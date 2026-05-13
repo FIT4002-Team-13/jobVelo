@@ -27,7 +27,21 @@ export default function LoginPage() {
     setSubmitting(true)
     try {
       const user = await login(form.identifier.trim(), form.password)
-      const target = fromPath || (user?.role === 'admin' ? '/admin/dashboard' : '/dashboard')
+      // Role-aware redirect.
+      //   - Admins ALWAYS land on /admin/dashboard. Honouring a captured
+      //     fromPath like /dashboard would silently send them past their
+      //     control panel, which surprised people in testing.
+      //   - Non-admins go back to wherever they were trying to reach,
+      //     unless that path is admin-only (in which case we'd just bounce
+      //     them out via RequireRole anyway). Default to /dashboard.
+      const isAdmin = user?.role === 'admin'
+      let target
+      if (isAdmin) {
+        target = '/admin/dashboard'
+      } else {
+        const wantsAdmin = fromPath?.startsWith('/admin')
+        target = fromPath && !wantsAdmin ? fromPath : '/dashboard'
+      }
       navigate(target, { replace: true })
     } catch (err) {
       if (err instanceof ApiError) {

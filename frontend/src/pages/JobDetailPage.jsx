@@ -594,7 +594,7 @@ export default function JobDetailPage() {
               Back to Jobs
             </button>
             <h1 className="text-4xl font-extrabold tracking-tight text-neutral-800">Job Posting</h1>
-            <p className="text-sm text-neutral-400 mt-1">Manage your open positions</p>
+            <p className="text-xs text-neutral-400 mt-1">Manage your open positions</p>
           </div>
           <div className="flex gap-3">
             <button onClick={() => setShowAddCandidate(true)}
@@ -612,7 +612,7 @@ export default function JobDetailPage() {
             <div className="flex items-start justify-between mb-3">
               <div>
                 <h2 className="text-lg font-bold text-neutral-800">{job.title}</h2>
-                <p className={`text-xs text-neutral-400 mt-0.5 ${flex.row} gap-1`}>
+                <p className={`text-sm text-neutral-400 mt-0.5 ${flex.row} gap-1`}>
                   <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                     <circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>
                   </svg>
@@ -631,8 +631,8 @@ export default function JobDetailPage() {
             </div>
 
             <div className="mb-3">
-              <p className="text-xs font-bold text-neutral-700 mb-1">Description</p>
-              <p className="text-xs text-neutral-500 leading-relaxed">{job.description || '—'}</p>
+              <p className="text-sm font-bold text-neutral-700 mb-1">Description</p>
+              <p className="text-sm text-neutral-500 leading-relaxed">{job.description || '—'}</p>
             </div>
 
             {job.employment_type?.length > 0 && (
@@ -645,7 +645,7 @@ export default function JobDetailPage() {
               </div>
             )}
 
-            <div className={`${flex.row} gap-8 text-xs text-neutral-500`}>
+            <div className={`${flex.row} gap-8 text-sm text-neutral-500`}>
               <div>
                 <span className="block text-neutral-400 font-medium uppercase tracking-wide mb-0.5">Start</span>
                 <span className="font-semibold text-neutral-700">{formatDate(job.recruitment_start)}</span>

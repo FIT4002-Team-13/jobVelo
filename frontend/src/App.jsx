@@ -1,6 +1,7 @@
 import { BrowserRouter, Route, Routes } from 'react-router-dom'
 import { AuthProvider } from './lib/AuthContext.jsx'
 import RequireAuth from './components/auth/RequireAuth.jsx'
+import RequireRole from './components/auth/RequireRole.jsx'
 import LandingPage from './pages/LandingPage.jsx'
 import LoginPage from './pages/LoginPage.jsx'
 import SignupPage from './pages/SignupPage.jsx'
@@ -37,7 +38,9 @@ export default function App() {
             path="/admin/dashboard"
             element={
               <RequireAuth>
-                <AdminDashboardPage />
+                <RequireRole allow={['admin']} fallback="/dashboard">
+                  <AdminDashboardPage />
+                </RequireRole>
               </RequireAuth>
             }
           />
