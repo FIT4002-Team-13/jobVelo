@@ -72,7 +72,8 @@ function CardMenu({ onEdit, onDelete }) {
 
 function JobCard({ job, onEdit, onDelete }) {
   const navigate = useNavigate()
-  const visibleAvatars = job.interviewers?.slice(0, 4) ?? []
+  // Show up to 3 avatars; anything beyond collapses into a grey "+N" chip.
+  const visibleAvatars = job.interviewers?.slice(0, 3) ?? []
   const overflow = (job.interviewers?.length ?? 0) - visibleAvatars.length
 
   // Typography hierarchy on this card:

@@ -75,6 +75,28 @@ def _validate_oid(job_id: str) -> ObjectId:
 # ---------- routes -----------------------------------------------------------
 
 
+async def _interviewers_for_jobs(db, job_ids: list[str]) -> dict[str, list[str]]:
+    """Return `{job_id_str: [unique interviewer names]}` for the given jobs.
+
+    The interviewer name is stashed on the job_candidates link when a
+    candidate is added via POST /api/jobs/{job_id}/candidates. This
+    aggregation reads them back so the JobCard avatar stack on the
+    Jobs page reflects who's actually involved.
+
+    One aggregation query per list_jobs call - no N+1 lookups.
+    """
+    if not job_ids:
+        return {}
+    pipeline = [
+        {"$match": {"job_id": {"$in": job_ids}, "interviewer": {"$nin": [None, ""]}}},
+        {"$group": {"_id": "$job_id", "names": {"$addToSet": "$interviewer"}}},
+    ]
+    out: dict[str, list[str]] = {}
+    async for row in db.job_candidates.aggregate(pipeline):
+        out[row["_id"]] = row["names"]
+    return out
+
+
 @router.get("", response_model=list[JobOut])
 async def list_jobs(
     comp_id: str | None = None,
@@ -82,12 +104,24 @@ async def list_jobs(
 ) -> list[JobOut]:
     """List jobs, optionally filtered to a company. Newest-update first.
 
+    Each returned job's `interviewers` array is computed live from the
+    job_candidates link table - the field on the job doc itself is just
+    a placeholder (`[]` from create_job). This means avatar stacks on
+    the JobCard update without needing a separate write path.
+
     Once routes are auth-gated, replace the optional query param with a
     forced filter from `user["comp_id"]`.
     """
     query = {"comp_id": _comp_oid(comp_id)} if comp_id else {}
     jobs = await db.jobs.find(query).sort("job_last_update_datetime", -1).to_list(length=200)
-    return [_serialize(j) for j in jobs]
+
+    interviewers_by_job = await _interviewers_for_jobs(
+        db, [str(j["_id"]) for j in jobs]
+    )
+    return [
+        _serialize({**j, "interviewers": interviewers_by_job.get(str(j["_id"]), [])})
+        for j in jobs
+    ]
 
 
 @router.get("/{job_id}", response_model=JobOut)
@@ -99,7 +133,11 @@ async def get_job(
     job = await db.jobs.find_one({"_id": oid})
     if job is None:
         raise HTTPException(status_code=404, detail="Job not found")
-    return _serialize(job)
+
+    # distinct() is cleaner than aggregate() for the single-job case.
+    raw = await db.job_candidates.distinct("interviewer", {"job_id": job_id})
+    interviewers = [n for n in raw if n]   # drop None / empty strings
+    return _serialize({**job, "interviewers": interviewers})
 
 
 @router.post("", response_model=JobOut, status_code=status.HTTP_201_CREATED)
