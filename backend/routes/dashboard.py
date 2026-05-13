@@ -1,26 +1,33 @@
+"""Dashboard summary endpoint.
+
+Computes the today / completed / upcoming counters from the real
+candidates collection. There's no mock data anymore - when the
+candidates collection is empty, this returns zeros and the frontend
+shows the empty state.
+
+The dashboard's candidate list itself is fetched from the real
+/api/candidates endpoint (cand.py) - this file only owns the summary.
+"""
+
 from fastapi import APIRouter, Depends
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from database import get_db
 
-router = APIRouter(prefix="/api", tags=["dashboard"])
+router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
 
 
-@router.get("/me")                 #Returns the current logged-in user's name & role
-async def get_me(db: AsyncIOMotorDatabase = Depends(get_db)):
-    user = await db.users.find_one({"slug": "me"}, {"_id": 0, "slug": 0})
-    if user is None:
-        return {"name": "John Doe", "role": "Interviewer", "email": ""}
-    return user
-
-
-@router.get("/dashboard/summary")  #Returns Today / Completed / Up-coming interview counts for the summary cards
+@router.get("/summary")
 async def get_summary(db: AsyncIOMotorDatabase = Depends(get_db)):
-    summary = await db.summary.find_one({"slug": "dashboard"}, {"_id": 0})
-    return summary
+    """Return the three counters shown on the dashboard summary cards.
 
-
-@router.get("/candidates")         #Returns all candidates (used by the Dashboard page list)
-async def get_candidates(db: AsyncIOMotorDatabase = Depends(get_db)):
-    candidates = await db.candidates.find({}, {"_id": 0}).to_list(length=100)
-    return candidates
+    Right now we just return totals (today/completed/upcoming = total count).
+    Once interview scheduling lands, this should filter by interview status
+    + date so the cards actually reflect today's load.
+    """
+    total = await db.candidates.count_documents({})
+    return {
+        "today_interviews": 0,        # TODO: filter by interview_date == today
+        "completed_interviews": 0,    # TODO: filter by status == "evaluated"
+        "upcoming_interviews": total, # placeholder: total candidates
+    }

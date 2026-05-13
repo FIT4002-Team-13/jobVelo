@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, UTC
+from datetime import datetime, timezone
 
 from bson import ObjectId
 from fastapi import APIRouter, HTTPException, status
@@ -16,19 +16,37 @@ from models.candidate import (
 router = APIRouter(prefix="/api/candidates", tags=["candidates"])
 
 
-def candidate_helper(candidate: dict) -> CandidateOut:
-    """Convert a raw Mongo candidate document into the API response model."""
+def _comp_oid(comp_id: str) -> ObjectId:
+    """Validate + cast a string comp_id to an ObjectId.
 
+    Every collection stores `comp_id` as an ObjectId (matching auth.py +
+    invitations.py + jobs.py), so a string from the request body or query
+    param must be converted before insert/query, otherwise nothing matches.
+    """
+    if not ObjectId.is_valid(comp_id):
+        raise HTTPException(status_code=400, detail="Invalid comp_id")
+    return ObjectId(comp_id)
+
+
+def candidate_helper(candidate: dict) -> CandidateOut:
+    """Convert a raw Mongo candidate document into the API response model.
+
+    Tolerant of older / legacy doc shapes so a list query can't crash on
+    a single misshaped record. Missing required fields fall back to safe
+    placeholders rather than raising a KeyError that turns into a 500.
+    """
+
+    now = datetime.now(timezone.utc)
     return CandidateOut(
         cand_id=str(candidate["_id"]),
-        cand_full_name=candidate["cand_full_name"],
-        cand_email=candidate["cand_email"],
+        cand_full_name=candidate.get("cand_full_name") or candidate.get("name") or "Unknown",
+        cand_email=candidate.get("cand_email") or "unknown@unknown.test",
         cand_phone=candidate.get("cand_phone"),
         cand_cv_url=candidate.get("cand_cv_url"),
         cand_cover_letter_url=candidate.get("cand_cover_letter_url"),
-        comp_id=str(candidate["comp_id"]),
-        cand_created_at=candidate["cand_created_at"],
-        cand_updated_at=candidate["cand_updated_at"],
+        comp_id=str(candidate.get("comp_id") or ""),
+        cand_created_at=candidate.get("cand_created_at") or candidate.get("created_at") or now,
+        cand_updated_at=candidate.get("cand_updated_at") or candidate.get("updated_at") or now,
     )
 
 
@@ -57,11 +75,12 @@ async def create_candidate(payload: CandidateCreate) -> CandidateOut:
     """
 
     db = get_db()
+    comp_oid = _comp_oid(payload.comp_id)
 
     existing_candidate = await db.candidates.find_one(
         {
             "cand_email": payload.cand_email,
-            "comp_id": payload.comp_id,
+            "comp_id": comp_oid,
         }
     )
     if existing_candidate:
@@ -70,7 +89,7 @@ async def create_candidate(payload: CandidateCreate) -> CandidateOut:
             detail="Candidate with this email already exists in this company.",
         )
 
-    now = datetime.now(UTC)
+    now = datetime.now(timezone.utc)
 
     candidate_doc = {
         "cand_full_name": payload.cand_full_name,
@@ -78,7 +97,7 @@ async def create_candidate(payload: CandidateCreate) -> CandidateOut:
         "cand_phone": payload.cand_phone,
         "cand_cv_url": payload.cand_cv_url,
         "cand_cover_letter_url": payload.cand_cover_letter_url,
-        "comp_id": payload.comp_id,
+        "comp_id": comp_oid,
         "cand_created_at": now,
         "cand_updated_at": now,
     }
@@ -107,7 +126,8 @@ async def create_candidate_for_job(payload: CandidateCreateForJob) -> dict:
     """
 
     db = get_db()
-    now = datetime.now(UTC)
+    now = datetime.now(timezone.utc)
+    comp_oid = _comp_oid(payload.comp_id)
 
     candidate = None
 
@@ -125,7 +145,7 @@ async def create_candidate_for_job(payload: CandidateCreateForJob) -> dict:
         candidate = await db.candidates.find_one(
             {
                 "cand_email": payload.cand_email,
-                "comp_id": payload.comp_id,
+                "comp_id": comp_oid,
             }
         )
 
@@ -137,7 +157,7 @@ async def create_candidate_for_job(payload: CandidateCreateForJob) -> dict:
             "cand_phone": payload.cand_phone,
             "cand_cv_url": payload.cand_cv_url,
             "cand_cover_letter_url": payload.cand_cover_letter_url,
-            "comp_id": payload.comp_id,
+            "comp_id": comp_oid,
             "cand_created_at": now,
             "cand_updated_at": now,
         }
@@ -223,9 +243,9 @@ async def create_candidate_for_job(payload: CandidateCreateForJob) -> dict:
 async def list_candidates(comp_id: str | None = None) -> list[CandidateOut]:
     db = get_db()
 
-    query = {}
+    query: dict = {}
     if comp_id:
-        query["comp_id"] = comp_id
+        query["comp_id"] = _comp_oid(comp_id)
 
     candidates = await db.candidates.find(query).to_list(length=100)
     return [candidate_helper(candidate) for candidate in candidates]
@@ -288,7 +308,7 @@ async def update_candidate(cand_id: str, payload: CandidateUpdate) -> CandidateO
                 detail="Candidate with this email already exists in this company.",
             )
 
-    update_data["cand_updated_at"] = datetime.now(UTC)
+    update_data["cand_updated_at"] = datetime.now(timezone.utc)
 
     await db.candidates.update_one(
         {"_id": ObjectId(cand_id)},

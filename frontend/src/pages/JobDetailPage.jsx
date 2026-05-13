@@ -66,7 +66,18 @@ function Avatar({ name, size = 'md' }) {
 // ── Add Candidate Modal ───────────────────────────────────────────────────────
 
 function AddCandidateModal({ jobId, onClose, onAdded }) {
-  const [form_state, setForm] = useState({ name: '', interviewer: '', scheduled_at: '' })
+  // Mirrors the AddCandidateToJob Pydantic model on the backend:
+  //   name + email are required (so the candidate doc has real identity);
+  //   phone, cv_url, cover_letter_url, interviewer, scheduled_at are optional.
+  const [form_state, setForm] = useState({
+    name: '',
+    email: '',
+    phone: '',
+    cv_url: '',
+    cover_letter_url: '',
+    interviewer: '',
+    scheduled_at: '',
+  })
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState(null)
 
@@ -74,19 +85,38 @@ function AddCandidateModal({ jobId, onClose, onAdded }) {
 
   async function handleSubmit(e) {
     e.preventDefault()
-    if (!form_state.name.trim())        return setError('Candidate name is required.')
-    if (!form_state.interviewer.trim()) return setError('Interviewer name is required.')
-    if (!form_state.scheduled_at)       return setError('Scheduled date/time is required.')
+    if (!form_state.name.trim())  return setError('Candidate name is required.')
+    if (!form_state.email.trim()) return setError('Candidate email is required.')
 
     setError(null)
     setSubmitting(true)
+    // Convert empty optional strings to null so EmailStr / URL validators
+    // on the backend don't trip on "".
+    const body = {
+      name: form_state.name.trim(),
+      email: form_state.email.trim().toLowerCase(),
+      phone: form_state.phone.trim() || null,
+      cv_url: form_state.cv_url.trim() || null,
+      cover_letter_url: form_state.cover_letter_url.trim() || null,
+      interviewer: form_state.interviewer.trim() || null,
+      scheduled_at: form_state.scheduled_at || null,
+    }
     try {
       const res = await fetch(`/api/jobs/${jobId}/candidates`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...form_state, status: 'SCHEDULED', score: null }),
+        body: JSON.stringify(body),
       })
-      if (!res.ok) throw new Error('Failed to add candidate.')
+      if (!res.ok) {
+        // Surface FastAPI's actual error so 422s aren't silently "Failed to add candidate."
+        const data = await res.json().catch(() => null)
+        const detail = data?.detail
+        const message =
+          typeof detail === 'string' ? detail
+          : Array.isArray(detail)    ? detail.map((d) => `${d.loc?.slice(1).join('.')}: ${d.msg}`).join(' • ')
+          :                            `Request failed (${res.status})`
+        throw new Error(message)
+      }
       onAdded(await res.json())
     } catch (err) {
       setError(err.message)
@@ -97,26 +127,55 @@ function AddCandidateModal({ jobId, onClose, onAdded }) {
 
   return (
     <div className={modal.overlay}>
-      <div className={`${modal.panel} max-w-md`}>
+      <div className={`${modal.panel} max-w-md max-h-[90vh] overflow-y-auto`}>
         <button onClick={onClose} className="absolute top-4 right-4 text-neutral-400 hover:text-neutral-700 text-xl leading-none">×</button>
         <h2 className="text-xl font-bold text-neutral-800 mb-1">Add Candidate</h2>
-        <p className="text-xs text-neutral-400 mb-5">Required fields are indicated with a asterisk *</p>
+        <p className="text-xs text-neutral-400 mb-5">Required fields are indicated with an asterisk *</p>
 
         <form onSubmit={handleSubmit} className={`${flex.col} gap-4`}>
+          <SectionLabel>Candidate</SectionLabel>
+
           <div>
-            <label className={form.label}>Candidate Name *</label>
+            <label className={form.label}>Full Name *</label>
             <input value={form_state.name} onChange={e => set('name', e.target.value)}
               placeholder="eg. John Doe"
               className={form.input} />
           </div>
           <div>
-            <label className={form.label}>Interviewer *</label>
+            <label className={form.label}>Email *</label>
+            <input type="email" value={form_state.email} onChange={e => set('email', e.target.value)}
+              placeholder="eg. john.doe@example.com"
+              className={form.input} />
+          </div>
+          <div>
+            <label className={form.label}>Phone</label>
+            <input value={form_state.phone} onChange={e => set('phone', e.target.value)}
+              placeholder="eg. +61 412 345 678"
+              className={form.input} />
+          </div>
+          <div>
+            <label className={form.label}>CV URL</label>
+            <input type="url" value={form_state.cv_url} onChange={e => set('cv_url', e.target.value)}
+              placeholder="https://..."
+              className={form.input} />
+          </div>
+          <div>
+            <label className={form.label}>Cover Letter URL</label>
+            <input type="url" value={form_state.cover_letter_url} onChange={e => set('cover_letter_url', e.target.value)}
+              placeholder="https://..."
+              className={form.input} />
+          </div>
+
+          <SectionLabel>Interview (optional)</SectionLabel>
+
+          <div>
+            <label className={form.label}>Interviewer</label>
             <input value={form_state.interviewer} onChange={e => set('interviewer', e.target.value)}
               placeholder="eg. Jane Smith"
               className={form.input} />
           </div>
           <div>
-            <label className={form.label}>Scheduled Date & Time *</label>
+            <label className={form.label}>Scheduled Date & Time</label>
             <input type="datetime-local" value={form_state.scheduled_at} onChange={e => set('scheduled_at', e.target.value)}
               className={form.input} />
           </div>
@@ -135,6 +194,14 @@ function AddCandidateModal({ jobId, onClose, onAdded }) {
           </div>
         </form>
       </div>
+    </div>
+  )
+}
+
+function SectionLabel({ children }) {
+  return (
+    <div className="text-xs font-bold uppercase tracking-wider text-primary-600 pt-1">
+      {children}
     </div>
   )
 }
@@ -329,7 +396,17 @@ export default function JobDetailPage() {
         ])
         if (!jobRes.ok) throw new Error('Job not found.')
         setJob(await jobRes.json())
-        setCandidates(await candsRes.json())
+
+        // Defend against the candidates endpoint failing or returning a
+        // non-array shape (e.g. FastAPI's {detail: ...} on a 404). Without
+        // this guard the InterviewStatusPanel and CandidatesTable crash with
+        // "candidates is not iterable" on first render.
+        if (candsRes.ok) {
+          const data = await candsRes.json().catch(() => [])
+          setCandidates(Array.isArray(data) ? data : [])
+        } else {
+          setCandidates([])
+        }
       } catch (err) {
         setError(err.message)
       } finally {

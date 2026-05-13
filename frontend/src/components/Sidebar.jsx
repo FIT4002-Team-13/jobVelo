@@ -2,12 +2,22 @@ import React from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { LayoutDashboard, CalendarDays, Briefcase, Users } from 'lucide-react';
 import logoFull from '../assets/logo-final.png';
+import { useAuth } from '../lib/AuthContext.jsx';
 
 // `user` is the shape returned by /api/auth/me (UserOut). It may be undefined
 // briefly while the parent is still fetching - guard for that.
 export default function Sidebar({ user }) {
   const location = useLocation();
   const navigate = useNavigate();
+  const { logout } = useAuth();
+
+  // Properly clear the JWT + auth state, then bounce to the landing page.
+  // Without logout() the token would stay in localStorage and the user
+  // would silently re-authenticate on the next visit.
+  const handleLogout = () => {
+    logout();
+    navigate('/', { replace: true });
+  };
 
   // Prefer the new full_name field; fall back to legacy `name` (mock user)
   // or username so a partially-migrated doc still shows something sensible.
@@ -77,7 +87,7 @@ export default function Sidebar({ user }) {
         </div>
 
         <button
-          onClick={() => navigate('/')}
+          onClick={handleLogout}
           className="w-full py-2 bg-coral-50 text-coral-500 border border-coral-200 rounded-md text-sm font-medium cursor-pointer hover:bg-coral-100 transition-colors"
         >
           Log Out

@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { flex, form as f, button, modal } from '../styles/layout'
+import { useAuth } from '../lib/AuthContext.jsx'
 
 const EMPLOYMENT_TYPES = ['Full-time', 'Part-time', 'Casual', 'Internship']
 const STATUS_OPTIONS   = ['Pending', 'In Progress', 'Completed']
@@ -51,6 +52,7 @@ function DateSelect({ label, prefix, values, onChange }) {
 
 export default function JobFormModal({ initialJob, onClose, onSaved }) {
   const isEdit = !!initialJob
+  const { user } = useAuth()
   const [form, setForm]         = useState(isEdit ? jobToForm(initialJob) : EMPTY_FORM)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError]       = useState(null)
@@ -74,6 +76,8 @@ export default function JobFormModal({ initialJob, onClose, onSaved }) {
     if (form.end_dd === 'dd' || form.end_mm === 'mm' || form.end_yyyy === 'yyyy')
       return setError('Recruitment end date is required.')
     if (form.employment_type.length === 0) return setError('Select at least one employment type.')
+    // comp_id comes from the JWT-derived user; never trust the form for it.
+    if (!isEdit && !user?.comp_id) return setError('You must be logged in to create a job.')
 
     setError(null)
     setSubmitting(true)
@@ -84,14 +88,26 @@ export default function JobFormModal({ initialJob, onClose, onSaved }) {
       recruitment_end:   `${form.end_yyyy}-${form.end_mm}-${form.end_dd}`,
       candidates_total: Number(form.candidates_total),
       salary: form.salary, salary_type: form.salary_type,
-      ...(isEdit && { status: form.status }),
+      // Only attach comp_id on create - PUT/update can't change company.
+      ...(isEdit
+        ? { status: form.status }
+        : { comp_id: user.comp_id }),
     }
     try {
       const res = await fetch(
         isEdit ? `/api/jobs/${initialJob.id}` : '/api/jobs',
         { method: isEdit ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) },
       )
-      if (!res.ok) throw new Error('Request failed.')
+      if (!res.ok) {
+        // Surface FastAPI's actual error so 422s aren't silently "Request failed."
+        const data = await res.json().catch(() => null)
+        const detail = data?.detail
+        const message =
+          typeof detail === 'string' ? detail
+          : Array.isArray(detail)    ? detail.map((d) => `${d.loc?.join('.')}: ${d.msg}`).join(' • ')
+          :                            `Request failed (${res.status})`
+        throw new Error(message)
+      }
       onSaved(await res.json())
     } catch (err) {
       setError(err.message)

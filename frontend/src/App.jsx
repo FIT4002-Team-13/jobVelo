@@ -13,7 +13,13 @@ import JobDetailPage from './pages/JobDetailPage'
 export default function App() {
   return (
     <AuthProvider>
-      <BrowserRouter>
+      {/* Opt in to React Router v7 behaviour early to silence the deprecation
+          warnings printed on every page load. These flags only affect timing
+          (startTransition) + splat-route resolution; nothing in our routes
+          uses splats today so the behaviour is identical. */}
+      <BrowserRouter
+        future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+      >
         <Routes>
           <Route path="/" element={<LandingPage />} />
           <Route path="/login" element={<LoginPage />} />
@@ -35,8 +41,22 @@ export default function App() {
               </RequireAuth>
             }
           />
-          <Route path="/jobs" element={<JobsPage />} />
-          <Route path="/jobs/:id" element={<JobDetailPage />} />
+          <Route
+            path="/jobs"
+            element={
+              <RequireAuth>
+                <JobsPage />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/jobs/:id"
+            element={
+              <RequireAuth>
+                <JobDetailPage />
+              </RequireAuth>
+            }
+          />
         </Routes>
       </BrowserRouter>
     </AuthProvider>

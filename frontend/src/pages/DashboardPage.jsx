@@ -49,6 +49,16 @@ function SortBtn() {
   )
 }
 
+// Shown inside the Jobs / Candidates panels when the list is empty.
+function EmptyState({ message, hint }) {
+  return (
+    <div className="bg-neutral-0 border border-dashed border-neutral-200 rounded-xl px-4 py-6 text-center">
+      <p className="text-sm font-medium text-neutral-500">{message}</p>
+      {hint && <p className="text-xs text-neutral-400 mt-1">{hint}</p>}
+    </div>
+  )
+}
+
 // ── Page ────────────────────────────────────────────────────────────────────
 
 export default function DashboardPage() {
@@ -65,10 +75,10 @@ export default function DashboardPage() {
   useEffect(() => {
     async function load() {
       try {
-        // api.me() hits /api/auth/me with the stored JWT and returns the
-        // actual logged-in user (UserOut shape: full_name, role, etc.).
-        // The other fetches still hit unauthenticated mock endpoints for now -
-        // swap them for authenticated calls once those routes gain tenant scoping.
+        // api.me() hits /api/auth/me with the stored JWT.
+        // /api/candidates (cand.py) returns CandidateOut shape with cand_*
+        // prefixed fields - the dashboard renders the new shape directly now,
+        // empty list shows an empty-state card.
         const [meData, sumRes, jobsRes, candsRes] = await Promise.all([
           api.me(),
           fetch('/api/dashboard/summary'),
@@ -148,22 +158,26 @@ export default function DashboardPage() {
             </div>
 
             <div className="flex flex-col gap-2.5">
-              {jobs.map((job, i) => (
-                <div
-                  key={i}
-                  className="flex items-center justify-between bg-neutral-0 border border-neutral-200 rounded-xl px-4 py-3 hover:shadow-sm transition-shadow"
-                >
-                  <div>
-                    <p className="text-sm font-semibold text-neutral-800">{job.title}</p>
-                    <p className="text-xs text-neutral-400 mt-0.5">
-                      Candidates: {job.candidates_filled}/{job.candidates_total}
-                    </p>
+              {jobs.length === 0 ? (
+                <EmptyState message="No jobs yet" hint="Create one from the Jobs page." />
+              ) : (
+                jobs.map((job, i) => (
+                  <div
+                    key={i}
+                    className="flex items-center justify-between bg-neutral-0 border border-neutral-200 rounded-xl px-4 py-3 hover:shadow-sm transition-shadow"
+                  >
+                    <div>
+                      <p className="text-sm font-semibold text-neutral-800">{job.title}</p>
+                      <p className="text-xs text-neutral-400 mt-0.5">
+                        Candidates: {job.candidates_filled ?? 0}/{job.candidates_total ?? 0}
+                      </p>
+                    </div>
+                    <span className="bg-primary-500 text-white text-xs font-semibold px-3 py-1 rounded-pill">
+                      {job.status}
+                    </span>
                   </div>
-                  <span className="bg-primary-500 text-white text-xs font-semibold px-3 py-1 rounded-pill">
-                    {job.status}
-                  </span>
-                </div>
-              ))}
+                ))
+              )}
             </div>
 
             <div className="text-right mt-3">
@@ -185,25 +199,30 @@ export default function DashboardPage() {
             </div>
 
             <div className="flex flex-col gap-2.5">
-              {candidates.map((c, i) => (
-                <div
-                  key={i}
-                  className="flex items-center justify-between bg-neutral-0 border border-neutral-200 rounded-xl px-4 py-3 hover:shadow-sm transition-shadow"
-                >
-                  <div>
-                    <p className="text-sm font-semibold text-neutral-800">{c.name}</p>
-                    <p className="text-xs text-neutral-400 mt-0.5">
-                      {c.scheduled_at} | {c.position}
-                    </p>
-                  </div>
-                  <button
-                    className={`text-xs font-semibold px-4 py-1.5 rounded-lg transition-opacity hover:opacity-80 text-white
-                      ${c.action === 'Start' ? 'bg-primary-500' : 'bg-neutral-400'}`}
+              {candidates.length === 0 ? (
+                <EmptyState
+                  message="No candidates yet"
+                  hint="Candidates appear here once someone is added to a job."
+                />
+              ) : (
+                candidates.map((c) => (
+                  <div
+                    key={c.cand_id}
+                    className="flex items-center justify-between bg-neutral-0 border border-neutral-200 rounded-xl px-4 py-3 hover:shadow-sm transition-shadow"
                   >
-                    {c.action}
-                  </button>
-                </div>
-              ))}
+                    <div>
+                      <p className="text-sm font-semibold text-neutral-800">{c.cand_full_name}</p>
+                      <p className="text-xs text-neutral-400 mt-0.5">{c.cand_email}</p>
+                    </div>
+                    <Link
+                      to={`/candidates/${c.cand_id}`}
+                      className="text-xs font-semibold px-4 py-1.5 rounded-lg transition-opacity hover:opacity-80 text-white bg-primary-500"
+                    >
+                      View
+                    </Link>
+                  </div>
+                ))
+              )}
             </div>
 
             <div className="text-right mt-3">
