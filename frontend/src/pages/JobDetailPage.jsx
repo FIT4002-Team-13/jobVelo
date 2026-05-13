@@ -19,11 +19,12 @@ const STATUS_STYLES = {
   Completed:     'bg-mint-500 text-white',
 }
 
+// Only SCHEDULED + EVALUATED are surfaced - HIRED / REJECTED removed.
+// Anything else (including legacy data) falls back to the neutral pill style
+// via the `?? 'bg-neutral-100 ...'` guard at the call site.
 const CANDIDATE_STATUS_STYLES = {
-  EVALUATED: 'bg-sky-100 text-sky-600',
-  HIRED:     'bg-mint-100 text-mint-600',
   SCHEDULED: 'bg-neutral-100 text-neutral-500',
-  REJECTED:  'bg-coral-100 text-coral-500',
+  EVALUATED: 'bg-sky-100 text-sky-600',
 }
 
 const AVATAR_COLORS = [
@@ -305,7 +306,7 @@ function InterviewerCombobox({ value, onChange, options }) {
 // ── Interview Status Panel ────────────────────────────────────────────────────
 
 function InterviewStatusPanel({ candidates, job }) {
-  const counts = { HIRED: 0, REJECTED: 0, EVALUATED: 0, SCHEDULED: 0 }
+  const counts = { SCHEDULED: 0, EVALUATED: 0 }
   let scoreSum = 0, scoreCount = 0
 
   for (const c of candidates) {
@@ -470,7 +471,7 @@ function CandidatesTable({ candidates, tab, setTab, onStartInterview }) {
                 <td className="px-4 py-3">
                   <div className={`${flex.row} gap-2`}>
                     {/* Only "SCHEDULED" candidates can be started. Anything else
-                        (EVALUATED / HIRED / REJECTED / null) renders the button
+                        (EVALUATED / null / anything else) renders the button
                         as disabled grey so the row still reads visually but the
                         action is blocked. */}
                     {(() => {
