@@ -9,6 +9,7 @@ import { fontSize } from '../styles/typography'
 import { useAuth } from '../lib/AuthContext.jsx'
 import { api } from '../lib/api.js'
 import { isEmail, isHttpUrl, isPhone, isFullName, isFutureDateTime } from '../lib/validators.js'
+import { SortMenu, FilterMenu, makeSorter } from '../components/job-candidate/TableControls'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -27,6 +28,14 @@ const CANDIDATE_STATUS_STYLES = {
   SCHEDULED: 'bg-neutral-100 text-neutral-500',
   EVALUATED: 'bg-sky-100 text-sky-600',
 }
+
+// Options shown in the candidates-table FilterMenu. Kept in sync with the
+// CANDIDATE_STATUS_STYLES keys above - any new status pill needs a matching
+// entry here so users can filter by it.
+const CANDIDATE_FILTER_OPTIONS = [
+  { value: 'SCHEDULED', label: 'Scheduled' },
+  { value: 'EVALUATED', label: 'Evaluated' },
+]
 
 const AVATAR_COLORS = [
   'bg-primary-500', 'bg-sky-500', 'bg-mint-500', 'bg-coral-500'
@@ -392,14 +401,27 @@ function InterviewStatusPanel({ candidates, job }) {
 
 function CandidatesTable({ candidates, tab, setTab, onStartInterview }) {
   const [search, setSearch] = useState('')
+  // SortMenu is only consulted while the SCHEDULES tab is active. The
+  // RANKINGS tab is itself a sort ("highest score first") so letting the
+  // dropdown override it would be confusing - we just lock it there.
+  const [sortKey, setSortKey] = useState('latest')
+  const [statusFilters, setStatusFilters] = useState([])
 
-  const sorted = tab === 'RANKINGS'
-    ? [...candidates].sort((a, b) => (b.score ?? -1) - (a.score ?? -1))
-    : [...candidates].sort((a, b) => new Date(a.scheduled_at) - new Date(b.scheduled_at))
+  const needle = search.trim().toLowerCase()
+  const filtered = candidates.filter((c) => {
+    if (needle && !(c.name ?? '').toLowerCase().includes(needle)) return false
+    if (statusFilters.length > 0 && !statusFilters.includes(c.status)) return false
+    return true
+  })
 
-  const filtered = sorted.filter(c =>
-    (c.name ?? '').toLowerCase().includes(search.toLowerCase())
-  )
+  let sorted
+  if (tab === 'RANKINGS') {
+    // Highest score wins; rows with no score sink to the bottom.
+    sorted = [...filtered].sort((a, b) => (b.score ?? -Infinity) - (a.score ?? -Infinity))
+  } else {
+    const sorter = makeSorter(sortKey, { nameField: 'name', dateField: 'scheduled_at' })
+    sorted = sorter ? [...filtered].sort(sorter) : filtered
+  }
 
   return (
     <div>
@@ -426,18 +448,24 @@ function CandidatesTable({ candidates, tab, setTab, onStartInterview }) {
               <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
             </svg>
           </div>
-          <button className={`${flex.row} gap-1 text-xs font-medium text-neutral-500 hover:text-neutral-700`}>
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M3 6h18M6 12h12M9 18h6" />
-            </svg>
-            Sort
-          </button>
-          <button className={`${flex.row} gap-1 text-xs font-medium text-neutral-500 hover:text-neutral-700`}>
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/>
-            </svg>
-            Filter
-          </button>
+          {/* Sort is only meaningful on the SCHEDULES tab - RANKINGS already
+              IS a sort by score. We still render the menu in disabled-style
+              on RANKINGS for layout stability. */}
+          {tab === 'SCHEDULES' ? (
+            <SortMenu value={sortKey} onChange={setSortKey} />
+          ) : (
+            <span className={`${flex.row} gap-1 text-xs font-medium text-neutral-300 cursor-not-allowed`} title="Rankings are sorted by score">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M3 6h18M6 12h12M9 18h6" />
+              </svg>
+              Sort
+            </span>
+          )}
+          <FilterMenu
+            values={statusFilters}
+            onChange={setStatusFilters}
+            options={CANDIDATE_FILTER_OPTIONS}
+          />
         </div>
       </div>
 
@@ -453,11 +481,11 @@ function CandidatesTable({ candidates, tab, setTab, onStartInterview }) {
             </tr>
           </thead>
           <tbody>
-            {filtered.length === 0 ? (
+            {sorted.length === 0 ? (
               <tr>
                 <td colSpan={6} className="px-4 py-8 text-center text-sm text-neutral-400">No candidates found.</td>
               </tr>
-            ) : filtered.map((c, i) => (
+            ) : sorted.map((c, i) => (
               <tr key={c.id ?? i} className="border-b border-neutral-100 last:border-0 hover:bg-neutral-50 transition-colors">
                 {/* Candidate */}
                 <td className="px-4 py-3">

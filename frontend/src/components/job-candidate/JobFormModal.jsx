@@ -76,10 +76,11 @@ export default function JobFormModal({ initialJob, onClose, onSaved }) {
 
     // Salary is optional; if they typed one, it must parse, and pairing
     // a number with a missing rate (Hourly / Yearly) is ambiguous - block it.
-    let salaryNum = 0
+    // Note: the backend stores salary as a STRING ("100k", "$120,000", etc.)
+    // so we only use parseSalary() to validate the shape - the value sent
+    // over the wire is still the user's original trimmed string.
     if (String(form.salary).trim()) {
-      salaryNum = parseSalary(form.salary)
-      if (salaryNum == null)
+      if (parseSalary(form.salary) == null)
         return setError('Salary must be a non-negative number (you can use "k", e.g. 100k).')
       if (!form.salary_type)
         return setError('Pick a salary type (Hourly or Yearly) when entering a salary.')
@@ -97,7 +98,9 @@ export default function JobFormModal({ initialJob, onClose, onSaved }) {
       recruitment_start: form.recruitment_start,
       recruitment_end:   form.recruitment_end,
       candidates_total:  candidatesTotal,
-      salary:            salaryNum || form.salary, // keep server's existing accept of either shape
+      // Always send a string - backend model is `salary: str`.
+      // Trim it but don't normalise: the user sees back exactly what they typed.
+      salary:            String(form.salary).trim(),
       salary_type:       form.salary_type,
       // Only attach comp_id on create - PUT/update can't change company.
       ...(isEdit
