@@ -1,8 +1,8 @@
 import React from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { LayoutDashboard, CalendarDays, Briefcase, Users } from 'lucide-react';
-import logoFull from '../assets/logo-final.png';
-import { useAuth } from '../lib/AuthContext.jsx';
+import logoFull from '../../assets/logo-final.png';
+import { useAuth } from '../../lib/AuthContext.jsx';
 
 // `user` is the shape returned by /api/auth/me (UserOut). The prop is
 // optional - if the parent doesn't pass one (e.g. JobsPage / JobDetailPage),

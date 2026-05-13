@@ -1,53 +1,33 @@
 import { useState } from 'react'
-import { flex, form as f, button, modal } from '../styles/layout'
-import { useAuth } from '../lib/AuthContext.jsx'
+import { flex, form as f, button, modal } from '../../styles/layout'
+import { useAuth } from '../../lib/AuthContext.jsx'
 
 const EMPLOYMENT_TYPES = ['Full-time', 'Part-time', 'Casual', 'Internship']
 const STATUS_OPTIONS   = ['Pending', 'In Progress', 'Completed']
-const DAYS   = Array.from({ length: 31 }, (_, i) => String(i + 1).padStart(2, '0'))
-const MONTHS = ['01','02','03','04','05','06','07','08','09','10','11','12']
-const YEARS  = Array.from({ length: 10 }, (_, i) => String(2024 + i))
 
+// Recruitment dates are stored on the backend as ISO yyyy-mm-dd strings,
+// which is exactly the format <input type="date"> emits and consumes - so
+// we just pass the value through with no parsing on either side.
 const EMPTY_FORM = {
   title: '', description: '',
-  start_dd: 'dd', start_mm: 'mm', start_yyyy: 'yyyy',
-  end_dd:   'dd', end_mm:   'mm', end_yyyy:   'yyyy',
+  recruitment_start: '',
+  recruitment_end:   '',
   employment_type: [], candidates_total: 1,
   salary: '', salary_type: '', status: 'Pending',
 }
 
 export function jobToForm(job) {
-  const [sy, sm, sd] = (job.recruitment_start ?? '').split('-')
-  const [ey, em, ed] = (job.recruitment_end   ?? '').split('-')
   return {
-    title:            job.title ?? '',
-    description:      job.description ?? '',
-    start_dd: sd ?? 'dd', start_mm: sm ?? 'mm', start_yyyy: sy ?? 'yyyy',
-    end_dd:   ed ?? 'dd', end_mm:   em ?? 'mm', end_yyyy:   ey ?? 'yyyy',
-    employment_type:  job.employment_type ?? [],
-    candidates_total: job.candidates_total ?? 1,
-    salary:           job.salary ?? '',
-    salary_type:      job.salary_type ?? '',
-    status:           job.status ?? 'Pending',
+    title:             job.title ?? '',
+    description:       job.description ?? '',
+    recruitment_start: job.recruitment_start ?? '',
+    recruitment_end:   job.recruitment_end   ?? '',
+    employment_type:   job.employment_type ?? [],
+    candidates_total:  job.candidates_total ?? 1,
+    salary:            job.salary ?? '',
+    salary_type:       job.salary_type ?? '',
+    status:            job.status ?? 'Pending',
   }
-}
-
-function DateSelect({ label, prefix, values, onChange }) {
-  return (
-    <div className="flex-1">
-      <label className={f.label}>{label} *</label>
-      <div className="flex gap-1">
-        {[['dd', DAYS], ['mm', MONTHS], ['yyyy', YEARS]].map(([unit, opts]) => (
-          <select key={unit} value={values[`${prefix}_${unit}`]}
-            onChange={e => onChange(`${prefix}_${unit}`, e.target.value)}
-            className="flex-1 border border-neutral-300 rounded-lg px-2 py-2 text-sm text-neutral-700 focus:outline-none focus:ring-2 focus:ring-primary-300">
-            <option value={unit}>{unit}</option>
-            {opts.map(o => <option key={o} value={o}>{o}</option>)}
-          </select>
-        ))}
-      </div>
-    </div>
-  )
 }
 
 export default function JobFormModal({ initialJob, onClose, onSaved }) {
@@ -70,11 +50,12 @@ export default function JobFormModal({ initialJob, onClose, onSaved }) {
 
   async function handleSubmit(e) {
     e.preventDefault()
-    if (!form.title.trim())   return setError('Job title is required.')
-    if (form.start_dd === 'dd' || form.start_mm === 'mm' || form.start_yyyy === 'yyyy')
-      return setError('Recruitment start date is required.')
-    if (form.end_dd === 'dd' || form.end_mm === 'mm' || form.end_yyyy === 'yyyy')
-      return setError('Recruitment end date is required.')
+    if (!form.title.trim())             return setError('Job title is required.')
+    if (!form.recruitment_start)        return setError('Recruitment start date is required.')
+    if (!form.recruitment_end)          return setError('Recruitment end date is required.')
+    // yyyy-mm-dd is lexicographically orderable, so direct string compare works.
+    if (form.recruitment_end < form.recruitment_start)
+      return setError('End date must be on or after the start date.')
     if (form.employment_type.length === 0) return setError('Select at least one employment type.')
     // comp_id comes from the JWT-derived user; never trust the form for it.
     if (!isEdit && !user?.comp_id) return setError('You must be logged in to create a job.')
@@ -82,12 +63,14 @@ export default function JobFormModal({ initialJob, onClose, onSaved }) {
     setError(null)
     setSubmitting(true)
     const body = {
-      title: form.title.trim(), description: form.description.trim(),
-      employment_type: form.employment_type,
-      recruitment_start: `${form.start_yyyy}-${form.start_mm}-${form.start_dd}`,
-      recruitment_end:   `${form.end_yyyy}-${form.end_mm}-${form.end_dd}`,
-      candidates_total: Number(form.candidates_total),
-      salary: form.salary, salary_type: form.salary_type,
+      title:             form.title.trim(),
+      description:       form.description.trim(),
+      employment_type:   form.employment_type,
+      recruitment_start: form.recruitment_start,
+      recruitment_end:   form.recruitment_end,
+      candidates_total:  Number(form.candidates_total),
+      salary:            form.salary,
+      salary_type:       form.salary_type,
       // Only attach comp_id on create - PUT/update can't change company.
       ...(isEdit
         ? { status: form.status }
@@ -138,8 +121,27 @@ export default function JobFormModal({ initialJob, onClose, onSaved }) {
           </div>
 
           <div className="flex gap-4">
-            <DateSelect label="Recruitment Start Date" prefix="start" values={form} onChange={set} />
-            <DateSelect label="Recruitment End Date"   prefix="end"   values={form} onChange={set} />
+            <div className="flex-1">
+              <label className={f.label}>Recruitment Start Date *</label>
+              <input
+                type="date"
+                value={form.recruitment_start}
+                onChange={e => set('recruitment_start', e.target.value)}
+                className={f.input}
+              />
+            </div>
+            <div className="flex-1">
+              <label className={f.label}>Recruitment End Date *</label>
+              <input
+                type="date"
+                value={form.recruitment_end}
+                onChange={e => set('recruitment_end', e.target.value)}
+                // Browser-level guard so users can't even pick an end date
+                // before the start. Validated again on submit for safety.
+                min={form.recruitment_start || undefined}
+                className={f.input}
+              />
+            </div>
           </div>
 
           <div>

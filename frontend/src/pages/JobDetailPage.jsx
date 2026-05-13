@@ -1,8 +1,10 @@
 import { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import Sidebar from '../components/Sidebar'
-import JobFormModal from '../components/JobFormModal'
+import Sidebar from '../components/common/Sidebar'
+import JobFormModal from '../components/job-candidate/JobFormModal'
 import { flex, card, badge, form, button, modal, page } from '../styles/layout'
+import { fontSize } from '../styles/typography'
+
 import { useAuth } from '../lib/AuthContext.jsx'
 import { api } from '../lib/api.js'
 

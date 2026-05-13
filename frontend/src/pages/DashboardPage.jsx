@@ -1,7 +1,20 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
-import Sidebar from '../components/Sidebar'
+import Sidebar from '../components/common/Sidebar'
 import { api } from '../lib/api.js'
+import { SortMenu, FilterMenu, makeSorter } from '../components/job-candidate/TableControls'
+
+// Filter options for the dashboard's two panels. Jobs filter by their
+// own status enum; the candidates panel has nothing meaningful to filter
+// by yet (CandidateOut has no status field), so we pass an empty array
+// and FilterMenu shows "No filter options yet." Will fill in once we
+// have e.g. an `applications` rollup with statuses per candidate.
+const JOB_STATUS_OPTIONS = [
+  { value: 'Pending',     label: 'Pending'     },
+  { value: 'In Progress', label: 'In Progress' },
+  { value: 'Completed',   label: 'Completed'   },
+]
+const CANDIDATE_FILTER_OPTIONS = []
 
 // ── Style tokens for summary cards ──────────────────────────────────────────
 
@@ -27,27 +40,9 @@ function SearchBar({ placeholder }) {
   )
 }
 
-function FilterBtn({ label }) {
-  return (
-    <button className="flex items-center gap-1 text-xs font-medium text-neutral-500 hover:text-neutral-700 transition-colors">
-      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-        <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />
-      </svg>
-      {label}
-    </button>
-  )
-}
-
-function SortBtn() {
-  return (
-    <button className="flex items-center gap-1 text-xs font-medium text-neutral-500 hover:text-neutral-700 transition-colors">
-      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-        <path d="M3 6h18M6 12h12M9 18h6" />
-      </svg>
-      Sort
-    </button>
-  )
-}
+// SortBtn / FilterBtn used to be defined here as non-functional placeholders;
+// they've moved to components/TableControls.jsx and are now wired up to local
+// state below. Search bar stays local because it's a different shape.
 
 // Shown inside the Jobs / Candidates panels when the list is empty.
 function EmptyState({ message, hint }) {
@@ -71,6 +66,24 @@ export default function DashboardPage() {
   const [candidates, setCandidates] = useState([])
   const [loading,    setLoading]    = useState(true)
   const [error,      setError]      = useState(null)
+
+  // Sort + filter state, one pair per panel.
+  const [jobSortKey,       setJobSortKey]       = useState('latest')
+  const [jobStatusFilters, setJobStatusFilters] = useState([])
+  const [candSortKey,      setCandSortKey]      = useState('latest')
+  const [candFilters,      setCandFilters]      = useState([])
+
+  // Derived lists - search + filter + sort. Computed each render; cheap
+  // enough at dashboard sizes that useMemo is overkill.
+  const jobSorter = makeSorter(jobSortKey, { nameField: 'title', dateField: 'job_created_at' })
+  const visibleJobs = jobs
+    .filter(j => jobStatusFilters.length === 0 || jobStatusFilters.includes(j.status))
+  const sortedJobs = jobSorter ? [...visibleJobs].sort(jobSorter) : visibleJobs
+
+  const candSorter = makeSorter(candSortKey, { nameField: 'cand_full_name', dateField: 'cand_created_at' })
+  // FILTER_OPTIONS is empty for now, so this stays a no-op until we wire a
+  // real candidate-status concept. Left in place so the sort still applies.
+  const sortedCandidates = candSorter ? [...candidates].sort(candSorter) : candidates
 
   useEffect(() => {
     async function load() {
@@ -153,16 +166,16 @@ export default function DashboardPage() {
               <h2 className="text-base font-bold text-neutral-800">Jobs</h2>
               <div className="flex items-center gap-3">
                 <SearchBar placeholder="Position Name" />
-                <SortBtn />
-                <FilterBtn label="Filter" />
+                <SortMenu value={jobSortKey} onChange={setJobSortKey} />
+                <FilterMenu values={jobStatusFilters} onChange={setJobStatusFilters} options={JOB_STATUS_OPTIONS} />
               </div>
             </div>
 
             <div className="flex flex-col gap-2.5">
-              {jobs.length === 0 ? (
+              {sortedJobs.length === 0 ? (
                 <EmptyState message="No jobs yet" hint="Create one from the Jobs page." />
               ) : (
-                jobs.map((job, i) => (
+                sortedJobs.map((job, i) => (
                   <div
                     key={i}
                     className="flex items-center justify-between bg-neutral-0 border border-neutral-200 rounded-xl px-4 py-3 hover:shadow-sm transition-shadow"
@@ -194,19 +207,19 @@ export default function DashboardPage() {
               <h2 className="text-base font-bold text-neutral-800">Candidates</h2>
               <div className="flex items-center gap-3">
                 <SearchBar placeholder="Candidate Name" />
-                <SortBtn />
-                <FilterBtn label="Filter" />
+                <SortMenu value={candSortKey} onChange={setCandSortKey} />
+                <FilterMenu values={candFilters} onChange={setCandFilters} options={CANDIDATE_FILTER_OPTIONS} />
               </div>
             </div>
 
             <div className="flex flex-col gap-2.5">
-              {candidates.length === 0 ? (
+              {sortedCandidates.length === 0 ? (
                 <EmptyState
                   message="No candidates yet"
                   hint="Candidates appear here once someone is added to a job."
                 />
               ) : (
-                candidates.map((c) => (
+                sortedCandidates.map((c) => (
                   <div
                     key={c.cand_id}
                     className="flex items-center justify-between bg-neutral-0 border border-neutral-200 rounded-xl px-4 py-3 hover:shadow-sm transition-shadow"

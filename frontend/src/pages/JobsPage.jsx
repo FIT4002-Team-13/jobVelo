@@ -1,7 +1,14 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
-import Sidebar from '../components/Sidebar'
-import JobFormModal from '../components/JobFormModal'
+import Sidebar from '../components/common/Sidebar'
+import JobFormModal from '../components/job-candidate/JobFormModal'
+import { SortMenu, FilterMenu, makeSorter } from '../components/job-candidate/TableControls'
+
+const JOB_STATUS_OPTIONS = [
+  { value: 'Pending',     label: 'Pending'     },
+  { value: 'In Progress', label: 'In Progress' },
+  { value: 'Completed',   label: 'Completed'   },
+]
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -108,14 +115,16 @@ function JobCard({ job, onEdit, onDelete }) {
       </div>
 
       {/* Avatars */}
-      <div className="flex items-center">
-        {visibleAvatars.map((name, i) => <Avatar key={i} name={name} index={i} />)}
-        {overflow > 0 && (
-          <div className="w-7 h-7 rounded-pill bg-neutral-200 flex items-center justify-center text-xs font-bold text-neutral-500 border-2 border-white -ml-2">
-            +{overflow}
-          </div>
-        )}
-      </div>
+      {visibleAvatars.length > 0 && (
+        <div className="flex items-center">
+          {visibleAvatars.map((name, i) => <Avatar key={i} name={name} index={i} />)}
+          {overflow > 0 && (
+            <div className="w-7 h-7 rounded-pill bg-neutral-200 flex items-center justify-center text-xs font-bold text-neutral-500 border-2 border-white -ml-2">
+              +{overflow}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Candidates count */}
       <div className="flex items-center gap-1.5 text-xs text-neutral-500">
@@ -182,6 +191,8 @@ export default function JobsPage() {
   const [loading, setLoading]       = useState(true)
   const [error, setError]           = useState(null)
   const [search, setSearch]         = useState('')
+  const [sortKey, setSortKey]       = useState('latest')        // default: newest first
+  const [statusFilters, setStatusFilters] = useState([])        // empty = all
   const [formModal, setFormModal]   = useState(null)
   const [deleteTarget, setDeleteTarget] = useState(null)
 
@@ -206,7 +217,13 @@ export default function JobsPage() {
     setDeleteTarget(null)
   }
 
-  const filtered = jobs.filter(j => j.title.toLowerCase().includes(search.toLowerCase()))
+  // search → filter by status → sort. Each stage is independent so order
+  // doesn't actually matter, but read top-down it matches user mental model.
+  const filtered = jobs
+    .filter(j => j.title.toLowerCase().includes(search.toLowerCase()))
+    .filter(j => statusFilters.length === 0 || statusFilters.includes(j.status))
+  const sorter = makeSorter(sortKey, { nameField: 'title', dateField: 'job_created_at' })
+  const display = sorter ? [...filtered].sort(sorter) : filtered
 
   return (
     <div className="flex h-screen bg-neutral-50 font-sans">
@@ -232,29 +249,19 @@ export default function JobsPage() {
               <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
             </svg>
           </div>
-          <button className="flex items-center gap-1 text-xs font-medium text-neutral-500 hover:text-neutral-700">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M3 6h18M6 12h12M9 18h6" />
-            </svg>
-            Sort
-          </button>
-          <button className="flex items-center gap-1 text-xs font-medium text-neutral-500 hover:text-neutral-700">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/>
-            </svg>
-            Filter
-          </button>
+          <SortMenu value={sortKey} onChange={setSortKey} />
+          <FilterMenu values={statusFilters} onChange={setStatusFilters} options={JOB_STATUS_OPTIONS} />
         </div>
 
         {loading && <p className="text-sm text-neutral-400">Loading…</p>}
         {error   && <p className="text-sm text-coral-500">{error}</p>}
 
         {!loading && !error && (
-          filtered.length === 0
+          display.length === 0
             ? <p className="text-sm text-neutral-400">No jobs found.</p>
             : (
               <div className="grid grid-cols-3 gap-4">
-                {filtered.map(job => (
+                {display.map(job => (
                   <JobCard key={job.id} job={job}
                     onEdit={j => setFormModal(j)}
                     onDelete={j => setDeleteTarget(j)} />
