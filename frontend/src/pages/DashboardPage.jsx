@@ -239,7 +239,9 @@ export default function DashboardPage() {
                   onChange={setCandSearch}
                 />
                 <SortMenu value={candSortKey} onChange={setCandSortKey} />
-                <FilterMenu values={candFilters} onChange={setCandFilters} options={CANDIDATE_FILTER_OPTIONS} />
+                {/* Candidate filter is single-select so it stays consistent
+                    with the JobDetailPage one (which has 2 options today). */}
+                <FilterMenu values={candFilters} onChange={setCandFilters} options={CANDIDATE_FILTER_OPTIONS} singleSelect />
               </div>
             </div>
 

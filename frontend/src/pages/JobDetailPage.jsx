@@ -465,6 +465,9 @@ function CandidatesTable({ candidates, tab, setTab, onStartInterview }) {
             values={statusFilters}
             onChange={setStatusFilters}
             options={CANDIDATE_FILTER_OPTIONS}
+            // Only two statuses surface (SCHEDULED / EVALUATED) - radio-style
+            // is clearer than multi-select, and matches the dashboard.
+            singleSelect
           />
         </div>
       </div>

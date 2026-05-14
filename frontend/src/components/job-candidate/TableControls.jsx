@@ -113,16 +113,30 @@ export function SortMenu({ value, onChange, options = SORT_OPTIONS }) {
 }
 
 
-// ── Filter menu (multi-select) ─────────────────────────────────────────────
+// ── Filter menu ────────────────────────────────────────────────────────────
+//
+// `singleSelect: true` switches the menu to radio-like behaviour:
+//   - clicking a different option REPLACES the current selection
+//   - clicking the currently-selected option clears it (back to "no filter")
+//   - the panel closes after a pick (since there's nothing left to do)
+// Use this when there are only two meaningful options (e.g. SCHEDULED vs
+// EVALUATED) - multi-select adds no expressiveness and confuses people.
+// Default behaviour is multi-select toggle.
 
-export function FilterMenu({ values, onChange, options }) {
-  function toggle(v) {
-    onChange(values.includes(v) ? values.filter((x) => x !== v) : [...values, v])
+export function FilterMenu({ values, onChange, options, singleSelect = false }) {
+  function toggle(v, close) {
+    if (singleSelect) {
+      // Same value clicked again → clear; otherwise replace.
+      onChange(values.includes(v) ? [] : [v])
+      close?.()
+    } else {
+      onChange(values.includes(v) ? values.filter((x) => x !== v) : [...values, v])
+    }
   }
 
   return (
     <DropdownButton label="Filter" icon={FilterIcon}>
-      {() => (
+      {({ close }) => (
         options.length === 0 ? (
           <p className="px-4 py-3 text-xs text-neutral-400">No filter options yet.</p>
         ) : (
@@ -132,7 +146,7 @@ export function FilterMenu({ values, onChange, options }) {
                 <MenuItem
                   selected={values.includes(o.value)}
                   isLast={i === options.length - 1}
-                  onClick={() => toggle(o.value)}
+                  onClick={() => toggle(o.value, close)}
                 >
                   {o.label}
                 </MenuItem>
