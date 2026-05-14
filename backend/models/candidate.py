@@ -1,9 +1,18 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Optional
+from typing import Literal, Optional
 
 from pydantic import BaseModel, EmailStr, Field
+
+# Rolled-up status used by the dashboard candidates list. A candidate can be
+# linked to several jobs at once with different statuses, so we collapse
+# them into one "where in the pipeline are they right now" label:
+#   SCHEDULED → has at least one upcoming interview
+#   EVALUATED → all interviews are done (no SCHEDULED left)
+#   None       → no job_candidate links yet (just a profile)
+# Kept in lock-step with JobCandidateStatus on the link doc.
+CandidateRollupStatus = Literal["SCHEDULED", "EVALUATED"]
 
 class CandidateCreate(BaseModel):
     """Base payload for creating a standalone candidate profile, used when the system only needs to create the candidate 
@@ -62,3 +71,6 @@ class CandidateOut(BaseModel):
     comp_id: str
     cand_created_at: datetime
     cand_updated_at: datetime
+    # Rolled-up status across all of this candidate's job_candidates links.
+    # None means the candidate has no link yet (profile-only).
+    cand_status: Optional[CandidateRollupStatus] = None

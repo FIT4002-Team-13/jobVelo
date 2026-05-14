@@ -4,17 +4,20 @@ import Sidebar from '../components/common/Sidebar'
 import { api } from '../lib/api.js'
 import { SortMenu, FilterMenu, makeSorter } from '../components/job-candidate/TableControls'
 
-// Filter options for the dashboard's two panels. Jobs filter by their
-// own status enum; the candidates panel has nothing meaningful to filter
-// by yet (CandidateOut has no status field), so we pass an empty array
-// and FilterMenu shows "No filter options yet." Will fill in once we
-// have e.g. an `applications` rollup with statuses per candidate.
+// Filter options for the dashboard's two panels.
+//   - Jobs filter by their own status enum (Pending / In Progress / Completed).
+//   - Candidates filter by their rolled-up status from /api/candidates' new
+//     `cand_status` field (SCHEDULED / EVALUATED). Kept in sync with the
+//     filter on JobDetailPage so the UX is identical across pages.
 const JOB_STATUS_OPTIONS = [
   { value: 'Pending',     label: 'Pending'     },
   { value: 'In Progress', label: 'In Progress' },
   { value: 'Completed',   label: 'Completed'   },
 ]
-const CANDIDATE_FILTER_OPTIONS = []
+const CANDIDATE_FILTER_OPTIONS = [
+  { value: 'SCHEDULED', label: 'Scheduled' },
+  { value: 'EVALUATED', label: 'Evaluated' },
+]
 
 // Solid-fill status pills - kept in sync with JobsPage + JobDetailPage.
 // Pending = warning (coral), In Progress = active (primary), Completed = done (mint).
@@ -22,6 +25,14 @@ const STATUS_STYLES = {
   Pending:       'bg-coral-500 text-white',
   'In Progress': 'bg-primary-500 text-white',
   Completed:     'bg-mint-500 text-white',
+}
+
+// Candidate status pills - mirror the JobDetailPage palette so the same
+// status looks identical wherever it shows. Soft tint here (vs solid for
+// jobs) because candidates appear in a denser list and solid would shout.
+const CANDIDATE_STATUS_STYLES = {
+  SCHEDULED: 'bg-neutral-100 text-neutral-500',
+  EVALUATED: 'bg-sky-100 text-sky-600',
 }
 
 // ── Style tokens for summary cards ──────────────────────────────────────────
@@ -97,15 +108,17 @@ export default function DashboardPage() {
   const sortedJobs = jobSorter ? [...visibleJobs].sort(jobSorter) : visibleJobs
 
   const candSorter = makeSorter(candSortKey, { nameField: 'cand_full_name', dateField: 'cand_created_at' })
-  // CANDIDATE_FILTER_OPTIONS is empty for now, so the filter stage is a
-  // no-op until we wire a real candidate-status concept. Search + sort
-  // already work.
   const candNeedle = candSearch.trim().toLowerCase()
-  const visibleCandidates = candidates.filter(c =>
-    !candNeedle
-    || (c.cand_full_name ?? '').toLowerCase().includes(candNeedle)
-    || (c.cand_email     ?? '').toLowerCase().includes(candNeedle)
-  )
+  const visibleCandidates = candidates.filter((c) => {
+    if (candNeedle) {
+      const haystack = `${c.cand_full_name ?? ''} ${c.cand_email ?? ''}`.toLowerCase()
+      if (!haystack.includes(candNeedle)) return false
+    }
+    // candFilters is empty when no filter is active. With singleSelect on
+    // FilterMenu it'll always have 0 or 1 entries.
+    if (candFilters.length > 0 && !candFilters.includes(c.cand_status)) return false
+    return true
+  })
   const sortedCandidates = candSorter ? [...visibleCandidates].sort(candSorter) : visibleCandidates
 
   useEffect(() => {
@@ -202,10 +215,14 @@ export default function DashboardPage() {
               {sortedJobs.length === 0 ? (
                 <EmptyState message="No jobs yet" hint="Create one from the Jobs page." />
               ) : (
-                sortedJobs.map((job, i) => (
-                  <div
-                    key={i}
-                    className="flex items-center justify-between bg-neutral-0 border border-neutral-200 rounded-xl px-4 py-3 hover:shadow-sm transition-shadow"
+                sortedJobs.map((job) => (
+                  // Whole row is now a Link to the job-detail page - matches
+                  // how the JobsPage grid behaves and saves users the trip
+                  // through /jobs just to drill into a job they can see here.
+                  <Link
+                    key={job.id ?? job._id}
+                    to={`/jobs/${job.id ?? job._id}`}
+                    className="flex items-center justify-between bg-neutral-0 border border-neutral-200 rounded-xl px-4 py-3 hover:shadow-sm hover:border-primary-200 transition-all no-underline"
                   >
                     <div>
                       <p className="text-sm font-semibold text-neutral-800">{job.title}</p>
@@ -216,7 +233,7 @@ export default function DashboardPage() {
                     <span className={`text-xs font-bold px-3 py-1 rounded-pill ${STATUS_STYLES[job.status] ?? 'bg-neutral-100 text-neutral-500'}`}>
                       {job.status}
                     </span>
-                  </div>
+                  </Link>
                 ))
               )}
             </div>
@@ -261,12 +278,18 @@ export default function DashboardPage() {
                       <p className="text-sm font-semibold text-neutral-800">{c.cand_full_name}</p>
                       <p className="text-xs text-neutral-400 mt-0.5">{c.cand_email}</p>
                     </div>
-                    <Link
-                      to={`/candidates/${c.cand_id}`}
-                      className="text-xs font-semibold px-4 py-1.5 rounded-lg transition-opacity hover:opacity-80 text-white bg-primary-500"
+                    {/* Status pill replaces the old "View" button - the dashboard
+                        is a glance-view, drill-down lives on the job detail page.
+                        Falls back to a neutral "No application" pill when the
+                        candidate exists as a profile but isn't on any job. */}
+                    <span
+                      className={`text-xs font-bold px-3 py-1 rounded-pill ${
+                        CANDIDATE_STATUS_STYLES[c.cand_status]
+                          ?? 'bg-neutral-100 text-neutral-400'
+                      }`}
                     >
-                      View
-                    </Link>
+                      {c.cand_status ?? 'No application'}
+                    </span>
                   </div>
                 ))
               )}

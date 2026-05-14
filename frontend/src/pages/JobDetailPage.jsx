@@ -621,6 +621,13 @@ export default function JobDetailPage() {
     setShowAddCandidate(false)
   }
 
+  // Capacity gate. Candidates count comes from the freshly-loaded list
+  // (which the AddCandidate flow optimistically appends to), so it always
+  // reflects the latest state without re-fetching the job. We treat a
+  // missing/zero cap as "no cap" so legacy rows aren't locked out.
+  const capacity = job?.candidates_total ?? 0
+  const isFull = capacity > 0 && candidates.length >= capacity
+
   if (loading) return (
     <div className={page.loading}>
       <p className="text-sm text-neutral-400">Loading…</p>
@@ -651,12 +658,28 @@ export default function JobDetailPage() {
             <h1 className="text-4xl font-extrabold tracking-tight text-neutral-800">Job Posting</h1>
             <p className="text-xs text-neutral-400 mt-1">Manage your open positions</p>
           </div>
-          <div className="flex gap-3">
-            <button onClick={() => setShowAddCandidate(true)}
-              className={`${flex.row} gap-2 ${button.primary}`}>
+          <div className="flex items-center gap-3">
+            {/* Capacity hint - mirrors the job card on JobsPage so the user
+                sees the same X/Y number on both screens. Also explains WHY
+                the button is disabled when the role is full. */}
+            <span className="text-xs text-neutral-500">
+              <span className={`font-bold ${isFull ? 'text-neutral-700' : 'text-neutral-700'}`}>
+                {candidates.length}
+              </span>
+              {' / '}
+              {job.candidates_total ?? 0} candidates
+            </span>
+            <button
+              type="button"
+              onClick={() => setShowAddCandidate(true)}
+              disabled={isFull}
+              title={isFull ? `This role is full (${job.candidates_total} candidates).` : undefined}
+              className={`${flex.row} gap-2 ${button.primary} ${
+                isFull ? 'opacity-50 cursor-not-allowed hover:bg-primary-500' : ''
+              }`}
+            >
               + Add Candidate
             </button>
-        
           </div>
         </div>
 

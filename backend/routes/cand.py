@@ -28,12 +28,16 @@ def _comp_oid(comp_id: str) -> ObjectId:
     return ObjectId(comp_id)
 
 
-def candidate_helper(candidate: dict) -> CandidateOut:
+def candidate_helper(candidate: dict, cand_status: str | None = None) -> CandidateOut:
     """Convert a raw Mongo candidate document into the API response model.
 
     Tolerant of older / legacy doc shapes so a list query can't crash on
     a single misshaped record. Missing required fields fall back to safe
     placeholders rather than raising a KeyError that turns into a 500.
+
+    `cand_status` is an optional rollup computed by the caller (see
+    list_candidates). Single-candidate endpoints leave it None - the
+    dashboard is the only place that needs it today.
     """
 
     now = datetime.now(timezone.utc)
@@ -47,6 +51,7 @@ def candidate_helper(candidate: dict) -> CandidateOut:
         comp_id=str(candidate.get("comp_id") or ""),
         cand_created_at=candidate.get("cand_created_at") or candidate.get("created_at") or now,
         cand_updated_at=candidate.get("cand_updated_at") or candidate.get("updated_at") or now,
+        cand_status=cand_status,
     )
 
 
@@ -241,6 +246,16 @@ async def create_candidate_for_job(payload: CandidateCreateForJob) -> dict:
 
 @router.get("", response_model=list[CandidateOut])
 async def list_candidates(comp_id: str | None = None) -> list[CandidateOut]:
+    """List candidates, optionally scoped to a company.
+
+    Each row also carries `cand_status`, a rollup over all of the
+    candidate's job_candidates links:
+      - "SCHEDULED" if ANY link is still SCHEDULED (something pending)
+      - "EVALUATED" otherwise, when at least one link exists
+      - None        if there's no link at all (profile-only)
+    The rollup makes the dashboard "candidates" panel actionable
+    (status badge + filter) without N+1 fetches from the frontend.
+    """
     db = get_db()
 
     query: dict = {}
@@ -248,7 +263,29 @@ async def list_candidates(comp_id: str | None = None) -> list[CandidateOut]:
         query["comp_id"] = _comp_oid(comp_id)
 
     candidates = await db.candidates.find(query).to_list(length=100)
-    return [candidate_helper(candidate) for candidate in candidates]
+    if not candidates:
+        return []
+
+    # One round-trip to gather every link for these candidates, then build
+    # a {cand_id: status} map in Python. cand_id is stored as a STRING in
+    # job_candidates (see create_candidate_for_job), so we match accordingly.
+    cand_ids = [str(c["_id"]) for c in candidates]
+    links_cursor = db.job_candidates.find(
+        {"cand_id": {"$in": cand_ids}},
+        {"cand_id": 1, "status": 1},
+    )
+    statuses: dict[str, str] = {}
+    async for link in links_cursor:
+        cid = link["cand_id"]
+        s = link.get("status")
+        # SCHEDULED dominates EVALUATED in the rollup - if the candidate
+        # has ANY outstanding interview, the dashboard should show that.
+        if s == "SCHEDULED":
+            statuses[cid] = "SCHEDULED"
+        elif s == "EVALUATED" and statuses.get(cid) != "SCHEDULED":
+            statuses[cid] = "EVALUATED"
+
+    return [candidate_helper(c, statuses.get(str(c["_id"]))) for c in candidates]
 
 
 @router.get("/{cand_id}", response_model=CandidateOut)
