@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { modal } from '../../styles/layout'
+import { modal, button } from '../../styles/layout'
 
 /**
  * Confirmation dialog for removing a candidate from a job.
@@ -43,7 +43,7 @@ export default function DeleteCandidateModal({ candidate, jobId, onClose, onDele
 
   return (
     <div className={modal.overlay}>
-      <div className="bg-white rounded-2xl w-full max-w-sm shadow-xl p-6">
+      <div className="bg-neutral-0 rounded-2xl w-full max-w-sm shadow-xl p-6">
         {/* Coral-tinted trash icon - same chrome as DeleteConfirmModal in JobsPage. */}
         <div className="flex items-center justify-center w-12 h-12 rounded-pill bg-coral-100 mx-auto mb-4">
           <svg
@@ -73,7 +73,7 @@ export default function DeleteCandidateModal({ candidate, jobId, onClose, onDele
             type="button"
             onClick={onClose}
             disabled={deleting}
-            className="flex-1 py-2 rounded-lg border border-neutral-300 text-sm font-medium text-neutral-600 hover:bg-neutral-50 disabled:opacity-60"
+            className={`flex-1 py-2 ${button.cancel} disabled:opacity-60`}
           >
             Cancel
           </button>
@@ -81,7 +81,7 @@ export default function DeleteCandidateModal({ candidate, jobId, onClose, onDele
             type="button"
             onClick={handleDelete}
             disabled={deleting}
-            className="flex-1 py-2 rounded-lg bg-coral-500 text-white text-sm font-semibold hover:bg-coral-600 disabled:opacity-60"
+            className={`flex-1 py-2 ${button.danger}`}
           >
             {deleting ? 'Removing…' : 'Remove'}
           </button>

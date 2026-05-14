@@ -93,9 +93,9 @@ export default function AdminDashboardPage() {
     <div className="min-h-screen bg-neutral-50/60 px-6 lg:px-10 py-8">
       <header className="flex items-center justify-between mb-8">
         <div>
-          <h1 className="text-3xl font-extrabold tracking-tight">Admin dashboard</h1>
-          <p className="text-sm text-neutral-500 mt-1">
-            Signed in as <span className="font-semibold text-ink">{user?.username}</span>
+          <h1 className="text-4xl font-extrabold tracking-tight text-neutral-800">Admin dashboard</h1>
+          <p className="text-xs text-neutral-400 mt-1">
+            Signed in as <span className="font-semibold text-neutral-700">{user?.username}</span>
             {user?.email && <> · {user.email}</>}
           </p>
         </div>
@@ -105,11 +105,11 @@ export default function AdminDashboardPage() {
         </div>
       </header>
 
-      <section className="bg-white rounded-2xl shadow-sm">
+      <section className="bg-neutral-0 border border-neutral-200 rounded-2xl shadow-sm">
         <div className="flex items-center justify-between px-6 py-5 border-b border-neutral-100">
           <div>
-            <h2 className="text-lg font-bold text-ink">Invitation codes</h2>
-            <p className="text-sm text-neutral-500">
+            <h2 className="text-lg font-bold text-neutral-800">Invitation codes</h2>
+            <p className="text-xs text-neutral-400">
               Generate one code per teammate. They enter it on the signup page to join your company.
             </p>
           </div>
@@ -120,7 +120,7 @@ export default function AdminDashboardPage() {
                 value={nextRole}
                 onChange={(e) => setNextRole(e.target.value)}
                 disabled={generating}
-                className="rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-ink
+                className="rounded-lg border border-neutral-300 bg-neutral-0 px-3 py-2 text-sm text-neutral-700
                            outline-none transition-all focus:border-primary-400 focus:ring-4 focus:ring-primary-100
                            disabled:opacity-60"
               >
@@ -192,7 +192,7 @@ export default function AdminDashboardPage() {
                     <div className="flex justify-end">
                       <button
                         onClick={() => onDelete(inv)}
-                        className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-semibold text-coral-700 hover:bg-coral-50"
+                        className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-coral-500 hover:bg-coral-50 hover:text-coral-700 transition-colors"
                         title={inv.status === 'used' ? 'Delete code & remove teammate' : 'Delete code'}
                       >
                         <Trash2 size={14} />

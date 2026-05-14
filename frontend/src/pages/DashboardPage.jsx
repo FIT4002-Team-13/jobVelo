@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import Sidebar from '../components/common/Sidebar'
 import { api } from '../lib/api.js'
 import { SortMenu, FilterMenu, makeSorter } from '../components/job-candidate/TableControls'
+import { page } from '../styles/layout'
 
 // Filter options for the dashboard's two panels.
 //   - Jobs filter by their own status enum (Pending / In Progress / Completed).
@@ -149,23 +150,23 @@ export default function DashboardPage() {
   }, [])
 
   if (loading) return (
-    <div className="flex h-screen items-center justify-center bg-neutral-50 font-sans">
+    <div className={page.loading}>
       <p className="text-sm text-neutral-400">Loading...</p>
     </div>
   )
 
   if (error) return (
-    <div className="flex h-screen items-center justify-center bg-neutral-50 font-sans">
+    <div className={page.loading}>
       <p className="text-sm text-coral-500">{error}</p>
     </div>
   )
 
   return (
-    <div className="flex h-screen bg-neutral-50 font-sans">
+    <div className={page.shell}>
       {/* If me hasn't loaded, pass undefined to Sidebar to show skeleton instead of user info */}
       <Sidebar user={me ?? undefined} />
 
-      <main className="flex-1 overflow-y-auto px-10 py-8">
+      <main className={page.main}>
 
         {/* Header */}
         <div className="mb-6">

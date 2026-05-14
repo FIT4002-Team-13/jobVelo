@@ -241,7 +241,7 @@ function AddCandidateModal({ jobId, onClose, onAdded }) {
               Cancel
             </button>
             <button type="submit" disabled={submitting}
-              className="px-6 py-2 rounded-lg bg-primary-500 text-white text-sm font-semibold hover:bg-primary-600 disabled:opacity-60">
+              className={`${button.primary} disabled:opacity-60`}>
               {submitting ? 'Adding…' : 'Add Candidate'}
             </button>
           </div>

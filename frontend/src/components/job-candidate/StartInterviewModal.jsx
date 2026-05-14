@@ -1,4 +1,4 @@
-import { modal } from '../../styles/layout'
+import { modal, button } from '../../styles/layout'
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -39,7 +39,7 @@ function formatScheduledAt(iso) {
 export default function StartInterviewModal({ candidate, jobTitle, onClose, onConfirm }) {
   return (
     <div className={modal.overlay}>
-      <div className="relative bg-white rounded-2xl w-full max-w-md shadow-xl">
+      <div className="relative bg-neutral-0 rounded-2xl w-full max-w-md shadow-xl">
         {/* Header strip */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-neutral-100">
           <h2 className="text-base font-bold text-neutral-800">Start Interview Session</h2>
@@ -95,19 +95,20 @@ export default function StartInterviewModal({ candidate, jobTitle, onClose, onCo
             </p>
           </div>
 
-          {/* Action buttons */}
+          {/* Action buttons - use shared button tokens so primary/cancel pairs
+              look identical across every modal in the app. */}
           <div className="flex justify-center gap-3">
             <button
               type="button"
               onClick={onClose}
-              className="px-6 py-2 rounded-lg border border-neutral-300 text-sm font-semibold text-neutral-600 hover:bg-neutral-50 transition-colors"
+              className={`px-6 py-2 ${button.cancel}`}
             >
               Cancel
             </button>
             <button
               type="button"
               onClick={onConfirm}
-              className="flex items-center gap-2 px-6 py-2 rounded-lg bg-primary-500 hover:bg-primary-600 text-white text-sm font-semibold transition-colors"
+              className={`flex items-center gap-2 ${button.primary}`}
             >
               <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor">
                 <polygon points="5 3 19 12 5 21 5 3" />

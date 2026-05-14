@@ -107,7 +107,7 @@ export default function Sidebar({ user: userProp }) {
 
         <button
           onClick={handleLogout}
-          className="w-full py-2 bg-primary-500 text-white rounded-md text-sm font-bold cursor-pointer hover:bg-primary-600 transition-colors"
+          className="w-full bg-primary-500 hover:bg-primary-600 text-white text-sm font-semibold py-2 rounded-xl transition-colors cursor-pointer"
         >
           Log Out
         </button>
