@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import Sidebar from '../components/common/Sidebar'
 import JobFormModal from '../components/job-candidate/JobFormModal'
 import StartInterviewModal from '../components/job-candidate/StartInterviewModal'
+import DeleteCandidateModal from '../components/job-candidate/DeleteCandidateModal'
 import { flex, card, badge, form, button, modal, page } from '../styles/layout'
 import { fontSize } from '../styles/typography'
 
@@ -399,7 +400,14 @@ function InterviewStatusPanel({ candidates, job }) {
 
 // ── Candidates Table ──────────────────────────────────────────────────────────
 
-function CandidatesTable({ candidates, tab, setTab, onStartInterview }) {
+// Format a 0-10 rubric score for the RANKINGS columns. Backend stores them
+// as floats; we round to one decimal so "7.333333" doesn't blow up the cell.
+function formatScore(n) {
+  if (n == null) return '--'
+  return Number.isFinite(n) ? Number(n).toFixed(1) : '--'
+}
+
+function CandidatesTable({ candidates, tab, setTab, onStartInterview, onDelete }) {
   const [search, setSearch] = useState('')
   // SortMenu is only consulted while the SCHEDULES tab is active. The
   // RANKINGS tab is itself a sort ("highest score first") so letting the
@@ -474,9 +482,17 @@ function CandidatesTable({ candidates, tab, setTab, onStartInterview }) {
 
       <div className={`${card.flat} overflow-hidden`}>
         <table className="w-full text-sm">
+          {/* Column set is tab-aware:
+                SCHEDULES  → Candidate | Status | Datetime | Score | Interviewer | Actions
+                RANKINGS   → Rank | Candidate | Status | Communication | Skill | Problem Solving | Score | Actions
+              The two views share the Candidate / Status / Score / Actions cells so
+              the column count differs but the look stays consistent. */}
           <thead>
             <tr className="bg-neutral-50 border-b border-neutral-100">
-              {['Candidate','Status','Datetime','Score','Interviewer','Actions'].map(h => (
+              {(tab === 'RANKINGS'
+                ? ['Rank','Candidate','Status','Communication','Skill','Problem Solving','Score','Actions']
+                : ['Candidate','Status','Datetime','Score','Interviewer','Actions']
+              ).map(h => (
                 <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-neutral-500 uppercase tracking-wide">
                   {h}
                 </th>
@@ -486,11 +502,13 @@ function CandidatesTable({ candidates, tab, setTab, onStartInterview }) {
           <tbody>
             {sorted.length === 0 ? (
               <tr>
-                <td colSpan={6} className="px-4 py-8 text-center text-sm text-neutral-400">No candidates found.</td>
+                <td colSpan={tab === 'RANKINGS' ? 8 : 6} className="px-4 py-8 text-center text-sm text-neutral-400">
+                  No candidates found.
+                </td>
               </tr>
-            ) : sorted.map((c, i) => (
-              <tr key={c.id ?? i} className="border-b border-neutral-100 last:border-0 hover:bg-neutral-50 transition-colors">
-                {/* Candidate */}
+            ) : sorted.map((c, i) => {
+              // Cells shared by both views (so they read identically across tabs)
+              const candidateCell = (
                 <td className="px-4 py-3">
                   <div className={`${flex.row} gap-3`}>
                     <div className={`w-8 h-8 rounded-pill ${flex.rowCenter} text-white text-xs font-bold shrink-0 ${avatarColor(c.name)}`}>
@@ -499,65 +517,119 @@ function CandidatesTable({ candidates, tab, setTab, onStartInterview }) {
                     <span className="font-medium text-neutral-800">{c.name}</span>
                   </div>
                 </td>
-                {/* Status */}
+              )
+              const statusCell = (
                 <td className="px-4 py-3">
                   <span className={`${badge.sm} ${CANDIDATE_STATUS_STYLES[c.status] ?? 'bg-neutral-100 text-neutral-500'}`}>
                     {c.status}
                   </span>
                 </td>
-                {/* Datetime */}
-                <td className="px-4 py-3 text-neutral-500 whitespace-nowrap">
-                  {formatDateTime(c.scheduled_at)}
-                </td>
-                {/* Score */}
+              )
+              const scoreCell = (
                 <td className="px-4 py-3 font-semibold text-neutral-700">
-                  {c.score != null ? c.score : '--'}
+                  {formatScore(c.score)}
                 </td>
-                {/* Interviewer */}
+              )
+              // Actions: Start Interview is only meaningful for SCHEDULED rows
+              // (so it stays greyed-out on the RANKINGS tab where everything is
+              // typically EVALUATED). Delete is always available - removing a
+              // mis-added candidate from a job shouldn't depend on their state.
+              const canStart = c.status === 'SCHEDULED'
+              const actionsCell = (
                 <td className="px-4 py-3">
                   <div className={`${flex.row} gap-2`}>
-                    <div className={`w-7 h-7 rounded-pill ${flex.rowCenter} text-white text-xs font-bold shrink-0 ${avatarColor(c.interviewer)}`}>
-                      {initials(c.interviewer)}
-                    </div>
-                    <span className="text-neutral-600">{c.interviewer}</span>
-                  </div>
-                </td>
-                {/* Actions */}
-                <td className="px-4 py-3">
-                  <div className={`${flex.row} gap-2`}>
-                    {/* Only "SCHEDULED" candidates can be started. Anything else
-                        (EVALUATED / null / anything else) renders the button
-                        as disabled grey so the row still reads visually but the
-                        action is blocked. */}
-                    {(() => {
-                      const canStart = c.status === 'SCHEDULED'
-                      return (
-                        <button
-                          type="button"
-                          disabled={!canStart}
-                          onClick={() => canStart && onStartInterview?.(c)}
-                          className={`${flex.row} gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors whitespace-nowrap ${
-                            canStart
-                              ? 'bg-primary-500 hover:bg-primary-600 text-white'
-                              : 'bg-neutral-100 text-neutral-400 cursor-not-allowed'
-                          }`}
-                        >
-                          <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor">
-                            <polygon points="5 3 19 12 5 21 5 3"/>
-                          </svg>
-                          Start Interview
-                        </button>
-                      )
-                    })()}
-                    <button className={`w-7 h-7 ${flex.rowCenter} rounded-lg text-neutral-400 hover:bg-neutral-100 hover:text-neutral-600 transition-colors`}>
+                    <button
+                      type="button"
+                      disabled={!canStart}
+                      onClick={() => canStart && onStartInterview?.(c)}
+                      className={`${flex.row} gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors whitespace-nowrap ${
+                        canStart
+                          ? 'bg-primary-500 hover:bg-primary-600 text-white'
+                          : 'bg-neutral-100 text-neutral-400 cursor-not-allowed'
+                      }`}
+                    >
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor">
+                        <polygon points="5 3 19 12 5 21 5 3"/>
+                      </svg>
+                      Start Interview
+                    </button>
+                    {/* View - placeholder for the upcoming candidate-detail page.
+                        Kept here so the icon row stays familiar, will get wired
+                        up once /candidates/:id lands. */}
+                    <button
+                      type="button"
+                      title="View candidate details"
+                      aria-label="View candidate"
+                      className={`w-7 h-7 ${flex.rowCenter} rounded-lg text-neutral-400 hover:bg-neutral-100 hover:text-neutral-600 transition-colors`}
+                    >
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                         <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
                       </svg>
                     </button>
+                    <button
+                      type="button"
+                      onClick={() => onDelete?.(c)}
+                      title="Remove this candidate from the job"
+                      aria-label="Delete candidate"
+                      className={`w-7 h-7 ${flex.rowCenter} rounded-lg text-coral-500 hover:bg-coral-50 hover:text-coral-700 transition-colors`}
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="3 6 5 6 21 6"/>
+                        <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+                        <path d="M10 11v6M14 11v6"/>
+                        <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
+                      </svg>
+                    </button>
                   </div>
                 </td>
-              </tr>
-            ))}
+              )
+
+              return (
+                <tr key={c.id ?? i} className="border-b border-neutral-100 last:border-0 hover:bg-neutral-50 transition-colors">
+                  {tab === 'RANKINGS' ? (
+                    <>
+                      {/* Rank - 1-based since people don't count from zero.
+                          Top three use the medal palette (🥇 gold / 🥈 silver
+                          / 🥉 bronze) for at-a-glance pecking order. Everyone
+                          else renders in plain neutral. All non-bold per spec. */}
+                      <td className={`px-4 py-3 w-12 ${
+                        i === 0 ? 'text-yellow-500'
+                        : i === 1 ? 'text-neutral-400'
+                        : i === 2 ? 'text-amber-700'
+                        : 'text-neutral-500'
+                      }`}>
+                        #{i + 1}
+                      </td>
+                      {candidateCell}
+                      {statusCell}
+                      <td className="px-4 py-3 text-neutral-700">{formatScore(c.communication_score)}</td>
+                      <td className="px-4 py-3 text-neutral-700">{formatScore(c.skill_score)}</td>
+                      <td className="px-4 py-3 text-neutral-700">{formatScore(c.problem_solving_score)}</td>
+                      {scoreCell}
+                      {actionsCell}
+                    </>
+                  ) : (
+                    <>
+                      {candidateCell}
+                      {statusCell}
+                      <td className="px-4 py-3 text-neutral-500 whitespace-nowrap">
+                        {formatDateTime(c.scheduled_at)}
+                      </td>
+                      {scoreCell}
+                      <td className="px-4 py-3">
+                        <div className={`${flex.row} gap-2`}>
+                          <div className={`w-7 h-7 rounded-pill ${flex.rowCenter} text-white text-xs font-bold shrink-0 ${avatarColor(c.interviewer)}`}>
+                            {initials(c.interviewer)}
+                          </div>
+                          <span className="text-neutral-600">{c.interviewer}</span>
+                        </div>
+                      </td>
+                      {actionsCell}
+                    </>
+                  )}
+                </tr>
+              )
+            })}
           </tbody>
         </table>
       </div>
@@ -580,6 +652,8 @@ export default function JobDetailPage() {
   const [showAddCandidate, setShowAddCandidate] = useState(false)
   // The candidate row clicked via "Start Interview" - null when no modal is open.
   const [startTarget, setStartTarget] = useState(null)
+  // Candidate row queued for deletion - null when the confirm modal is closed.
+  const [deleteTarget, setDeleteTarget] = useState(null)
 
   useEffect(() => {
     async function load() {
@@ -621,6 +695,16 @@ export default function JobDetailPage() {
     setShowAddCandidate(false)
   }
 
+  // Delete flow:
+  //   1. row's trash icon → setDeleteTarget(c) → DeleteCandidateModal opens
+  //   2. modal owns the confirm + DELETE request + its own error state
+  //   3. on success it calls onDeleted(id) → we drop the row from local
+  //      state, which keeps the table in sync without a re-fetch.
+  function handleCandidateDeleted(jobcand_id) {
+    setCandidates((rows) => rows.filter((r) => r.id !== jobcand_id))
+    setDeleteTarget(null)
+  }
+
   // Capacity gate. Candidates count comes from the freshly-loaded list
   // (which the AddCandidate flow optimistically appends to), so it always
   // reflects the latest state without re-fetching the job. We treat a
@@ -648,9 +732,15 @@ export default function JobDetailPage() {
         {/* Header */}
         <div className="flex items-start justify-between mb-6">
           <div>
-            <button onClick={() => navigate('/jobs')}
-              className={`${flex.row} gap-1.5 text-xs text-neutral-400 hover:text-neutral-600 mb-2 transition-colors`}>
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            {/* Back-to-Jobs - upgraded from a tiny grey breadcrumb to a
+                proper chip so users actually notice it. Border + bg make it
+                read as a button; primary hover ties it to the rest of the
+                action palette (Edit, Add Candidate, Start Interview). */}
+            <button
+              onClick={() => navigate('/jobs')}
+              className={`${flex.row} gap-2 mb-3 text-sm font-semibold text-neutral-600 bg-neutral-0 border border-neutral-200 rounded-lg px-3 py-1.5 hover:bg-primary-500/10 hover:border-primary-200 hover:text-primary-600 transition-colors`}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/>
               </svg>
               Back to Jobs
@@ -755,6 +845,7 @@ export default function JobDetailPage() {
             tab={tab}
             setTab={setTab}
             onStartInterview={(c) => setStartTarget(c)}
+            onDelete={(c) => setDeleteTarget(c)}
           />
         </div>
       </main>
@@ -776,6 +867,15 @@ export default function JobDetailPage() {
 
       {showAddCandidate && (
         <AddCandidateModal jobId={id} onClose={() => setShowAddCandidate(false)} onAdded={handleCandidateAdded} />
+      )}
+
+      {deleteTarget && (
+        <DeleteCandidateModal
+          candidate={deleteTarget}
+          jobId={id}
+          onClose={() => setDeleteTarget(null)}
+          onDeleted={handleCandidateDeleted}
+        />
       )}
     </div>
   )

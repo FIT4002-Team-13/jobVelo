@@ -280,9 +280,43 @@ async def list_candidates_for_job(
             "status": link.get("status"),
             "scheduled_at": link.get("scheduled_at"),
             "interviewer": link.get("interviewer"),
+            # Individual rubric scores - rendered as separate columns in the
+            # RANKINGS view of the JobDetailPage. The aggregate `score` below
+            # is still useful for sorting + the InterviewStatusPanel.
+            "communication_score":   link.get("communication_score"),
+            "skill_score":           link.get("skill_score"),
+            "problem_solving_score": link.get("problem_solving_score"),
             "score": avg,
         })
     return out
+
+
+@router.delete(
+    "/{job_id}/candidates/{jobcand_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    response_class=Response,
+)
+async def remove_candidate_from_job(
+    job_id: str,
+    jobcand_id: str,
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Remove a single candidate-job link.
+
+    Only the link is removed - the candidate document itself stays around
+    because the same candidate may be on multiple jobs (or could be reused
+    later). Mirrors how delete_job() cascades only its OWN links and never
+    touches candidate rows.
+    """
+    if not ObjectId.is_valid(jobcand_id):
+        raise HTTPException(status_code=400, detail="Invalid jobcand_id")
+
+    # Scope by job_id too so an attacker can't delete a random link by id.
+    result = await db.job_candidates.delete_one(
+        {"_id": ObjectId(jobcand_id), "job_id": job_id}
+    )
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Candidate link not found on this job")
 
 
 class AddCandidateToJob(BaseModel):
