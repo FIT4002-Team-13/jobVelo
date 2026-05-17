@@ -1,33 +1,67 @@
 import { BrowserRouter, Route, Routes } from 'react-router-dom'
-
-// Add page imports here as they're built, then declare them inside <Routes>.
-// Wrap private routes with a RequireAuth component once auth lands.
-
-function Welcome() {
-  return (
-    <div className="min-h-screen grid place-items-center px-6">
-      <div className="text-center">
-        <h1 className="text-5xl font-extrabold tracking-tight bg-brand-gradient bg-clip-text text-transparent">
-          Smart Recruit
-        </h1>
-        <p className="mt-4 text-lg text-muted">
-          Real-Time Interview Intelligence System
-        </p>
-        <p className="mt-2 text-sm text-muted">
-          Project scaffold ready. Start building under{' '}
-          <code className="px-1.5 py-0.5 rounded-md bg-neutral-100 text-ink text-sm">src/pages</code>.
-        </p>
-      </div>
-    </div>
-  )
-}
+import { AuthProvider } from './lib/AuthContext.jsx'
+import RequireAuth from './components/auth/RequireAuth.jsx'
+import RequireRole from './components/auth/RequireRole.jsx'
+import LandingPage from './pages/LandingPage.jsx'
+import LoginPage from './pages/LoginPage.jsx'
+import SignupPage from './pages/SignupPage.jsx'
+import CreateCompanyPage from './pages/CreateCompanyPage.jsx'
+import DashboardPage from './pages/DashboardPage.jsx'
+import AdminDashboardPage from './pages/AdminDashboardPage.jsx'
+import JobsPage from './pages/JobsPage'
+import JobDetailPage from './pages/JobDetailPage'
 
 export default function App() {
   return (
-    <BrowserRouter>
-      <Routes>
-        <Route path="/" element={<Welcome />} />
-      </Routes>
-    </BrowserRouter>
+    <AuthProvider>
+      {/* Opt in to React Router v7 behaviour early to silence the deprecation
+          warnings printed on every page load. These flags only affect timing
+          (startTransition) + splat-route resolution; nothing in our routes
+          uses splats today so the behaviour is identical. */}
+      <BrowserRouter
+        future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+      >
+        <Routes>
+          <Route path="/" element={<LandingPage />} />
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/signup" element={<SignupPage />} />
+          <Route path="/create-company" element={<CreateCompanyPage />} />
+          <Route
+            path="/dashboard"
+            element={
+              <RequireAuth>
+                <DashboardPage />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/admin/dashboard"
+            element={
+              <RequireAuth>
+                <RequireRole allow={['admin']} fallback="/dashboard">
+                  <AdminDashboardPage />
+                </RequireRole>
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/jobs"
+            element={
+              <RequireAuth>
+                <JobsPage />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/jobs/:id"
+            element={
+              <RequireAuth>
+                <JobDetailPage />
+              </RequireAuth>
+            }
+          />
+        </Routes>
+      </BrowserRouter>
+    </AuthProvider>
   )
 }

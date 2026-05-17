@@ -8,3 +8,8 @@ __pycache__/
 
 .env
 !.env.example
+
+# User uploads (company logos, CVs, etc.) - never committed.
+# Keep the directory itself so a fresh clone has somewhere to write to.
+uploads/*
+!uploads/.gitkeep
