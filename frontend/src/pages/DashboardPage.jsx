@@ -44,6 +44,11 @@ const CARD_STYLES = [
   { label: 'Up-coming', key: 'upcoming_interviews',  bg: 'bg-tint-coral', countColor: 'text-coral-500', labelColor: 'text-coral-700', unitColor: 'text-coral-400' },
 ]
 
+// Default page size for both panels. Five rows fits the dashboard layout
+// without forcing the viewport to scroll - "View All" remains the path
+// for someone who actually wants to browse the full list.
+const PAGE_SIZE = 5
+
 // ── Sub-components ───────────────────────────────────────────────────────────
 
 // Controlled search input - parent owns the string + filter logic so the
@@ -78,6 +83,45 @@ function EmptyState({ message, hint }) {
   )
 }
 
+// Compact Prev/Next + page indicator. Used by both panels so the pagination
+// affordance reads identically across the page.
+//
+// Parent owns the page state; this component only renders + emits clicks.
+// Renders nothing when totalPages <= 1 - no point showing controls for a
+// single page.
+function Pagination({ page, totalPages, onPrev, onNext }) {
+  if (totalPages <= 1) return null
+  return (
+    <div className="flex items-center gap-2 text-xs text-neutral-500">
+      <button
+        type="button"
+        onClick={onPrev}
+        disabled={page === 0}
+        aria-label="Previous page"
+        className="w-7 h-7 flex items-center justify-center rounded-lg border border-neutral-200 text-neutral-500 hover:bg-neutral-50 hover:text-neutral-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+      >
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+          <polyline points="15 18 9 12 15 6" />
+        </svg>
+      </button>
+      <span className="tabular-nums font-medium">
+        Page <span className="text-neutral-700">{page + 1}</span> / {totalPages}
+      </span>
+      <button
+        type="button"
+        onClick={onNext}
+        disabled={page >= totalPages - 1}
+        aria-label="Next page"
+        className="w-7 h-7 flex items-center justify-center rounded-lg border border-neutral-200 text-neutral-500 hover:bg-neutral-50 hover:text-neutral-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+      >
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+          <polyline points="9 18 15 12 9 6" />
+        </svg>
+      </button>
+    </div>
+  )
+}
+
 // ── Page ────────────────────────────────────────────────────────────────────
 
 export default function DashboardPage() {
@@ -98,6 +142,12 @@ export default function DashboardPage() {
   const [candSearch,       setCandSearch]       = useState('')
   const [candSortKey,      setCandSortKey]      = useState('latest')
   const [candFilters,      setCandFilters]      = useState([])
+
+  // Pagination state, one page index per panel. Reset to 0 when a search
+  // or filter change shrinks the list out from under the current page
+  // (handled below via the `safePage` clamp - cheaper than a useEffect).
+  const [jobPage,  setJobPage]  = useState(0)
+  const [candPage, setCandPage] = useState(0)
 
   // Derived lists - search → filter → sort. Computed each render; cheap
   // enough at dashboard sizes that useMemo is overkill.
@@ -121,6 +171,17 @@ export default function DashboardPage() {
     return true
   })
   const sortedCandidates = candSorter ? [...visibleCandidates].sort(candSorter) : visibleCandidates
+
+  // Pagination: clamp the current page against the (possibly) shrunken
+  // result set, then slice for display. We clamp at render-time instead
+  // of an effect so the controls always reflect the data we're actually
+  // showing - no flicker, no stale "Page 3 / 1" intermediate state.
+  const jobTotalPages   = Math.max(1, Math.ceil(sortedJobs.length        / PAGE_SIZE))
+  const candTotalPages  = Math.max(1, Math.ceil(sortedCandidates.length  / PAGE_SIZE))
+  const safeJobPage     = Math.min(jobPage,  jobTotalPages  - 1)
+  const safeCandPage    = Math.min(candPage, candTotalPages - 1)
+  const pagedJobs       = sortedJobs.slice(safeJobPage  * PAGE_SIZE, (safeJobPage  + 1) * PAGE_SIZE)
+  const pagedCandidates = sortedCandidates.slice(safeCandPage * PAGE_SIZE, (safeCandPage + 1) * PAGE_SIZE)
 
   useEffect(() => {
     async function load() {
@@ -216,7 +277,7 @@ export default function DashboardPage() {
               {sortedJobs.length === 0 ? (
                 <EmptyState message="No jobs yet" hint="Create one from the Jobs page." />
               ) : (
-                sortedJobs.map((job) => (
+                pagedJobs.map((job) => (
                   // Whole row is now a Link to the job-detail page - matches
                   // how the JobsPage grid behaves and saves users the trip
                   // through /jobs just to drill into a job they can see here.
@@ -239,7 +300,18 @@ export default function DashboardPage() {
               )}
             </div>
 
-            <div className="text-right mt-3">
+            {/* Footer: pagination on the left when there's more than one
+                page, View-All on the right. justify-between keeps the
+                View-All anchored to the right whether pagination shows or
+                not (the empty <div /> placeholder takes care of layout). */}
+            <div className="flex items-center justify-between mt-3">
+              <Pagination
+                page={safeJobPage}
+                totalPages={jobTotalPages}
+                onPrev={() => setJobPage((p) => Math.max(0, p - 1))}
+                onNext={() => setJobPage((p) => Math.min(jobTotalPages - 1, p + 1))}
+              />
+              {jobTotalPages <= 1 && <div />}
               <Link to="/jobs" className="text-sm font-semibold text-primary-500 hover:text-primary-600">
                 &gt; View All
               </Link>
@@ -270,7 +342,7 @@ export default function DashboardPage() {
                   hint="Candidates appear here once someone is added to a job."
                 />
               ) : (
-                sortedCandidates.map((c) => (
+                pagedCandidates.map((c) => (
                   <div
                     key={c.cand_id}
                     className="flex items-center justify-between bg-neutral-0 border border-neutral-200 rounded-xl px-4 py-3 hover:shadow-sm transition-shadow"
@@ -296,7 +368,16 @@ export default function DashboardPage() {
               )}
             </div>
 
-            <div className="text-right mt-3">
+            {/* Footer: pagination on the left when there's more than one
+                page, View-All on the right. Same layout as the Jobs panel. */}
+            <div className="flex items-center justify-between mt-3">
+              <Pagination
+                page={safeCandPage}
+                totalPages={candTotalPages}
+                onPrev={() => setCandPage((p) => Math.max(0, p - 1))}
+                onNext={() => setCandPage((p) => Math.min(candTotalPages - 1, p + 1))}
+              />
+              {candTotalPages <= 1 && <div />}
               <Link to="/candidates" className="text-sm font-semibold text-primary-500 hover:text-primary-600">
                 &gt; View All
               </Link>
