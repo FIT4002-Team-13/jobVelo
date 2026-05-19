@@ -26,8 +26,9 @@ class Settings(BaseSettings):
     openai_analysis_model: str = "gpt-4o"
 
     # Gemini — CV analysis. Multimodal model so we can ingest PDFs directly.
+    # 2.5-flash is the cheapest model that still handles long-form PDFs well.
     gemini_api_key: str = ""
-    gemini_cv_model: str = "gemini-2.0-flash"
+    gemini_cv_model: str = "gemini-2.5-flash"
 
     # Where uploaded files (company logos today; CVs etc. later) are stored.
     # Relative paths resolve against the backend working directory. Swap the
