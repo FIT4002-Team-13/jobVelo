@@ -21,14 +21,24 @@ from config import settings
 logger = logging.getLogger(__name__)
 
 # Subdirs callers pass in. Anything else is rejected to prevent surprise paths.
-_KNOWN_SUBDIRS = {"company_logos"}
+_KNOWN_SUBDIRS = {"company_logos", "cv_analyses"}
 
-# Conservative extension allow-list per subdir.
+# Conservative extension allow-list per subdir. Adding a new subdir requires
+# an entry here AND in _KNOWN_SUBDIRS - the redundancy makes it harder to
+# accidentally allow arbitrary file types through.
 _ALLOWED_EXTS = {
     "company_logos": {".png", ".jpg", ".jpeg", ".webp"},
+    "cv_analyses":   {".pdf"},
 }
 
-_MAX_BYTES = 5 * 1024 * 1024  # 5 MB ceiling for logos.
+# Per-subdir ceiling. Logos stay capped at 5 MB; CV PDFs can go up to 8 MB
+# (matches the frontend MAX_PDF_BYTES). Bumping this also bumps the maximum
+# payload size Gemini receives.
+_MAX_BYTES_PER_SUBDIR = {
+    "company_logos": 5 * 1024 * 1024,
+    "cv_analyses":   8 * 1024 * 1024,
+}
+_DEFAULT_MAX_BYTES = 5 * 1024 * 1024
 
 
 def _root() -> Path:
@@ -77,8 +87,12 @@ async def save_upload(file: UploadFile, *, subdir: str, key: str) -> str:
     data = await file.read()
     if not data:
         raise HTTPException(status_code=400, detail="Empty file")
-    if len(data) > _MAX_BYTES:
-        raise HTTPException(status_code=413, detail="File too large (max 5 MB)")
+    max_bytes = _MAX_BYTES_PER_SUBDIR.get(subdir, _DEFAULT_MAX_BYTES)
+    if len(data) > max_bytes:
+        raise HTTPException(
+            status_code=413,
+            detail=f"File too large (max {max_bytes // 1024 // 1024} MB)",
+        )
 
     rel_path = f"{subdir}/{_safe_key(key)}{ext}"
     dest = _root() / rel_path
