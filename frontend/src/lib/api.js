@@ -74,6 +74,11 @@ export const api = {
   createInvitation: (role)    => request('/invitations',       { method: 'POST', body: { role }, auth: true }),
   deleteInvitation: (id)      => request(`/invitations/${id}`, { method: 'DELETE', auth: true }),
 
+  // ---------- CV analysis ----------------------------------------------
+  // Multipart upload: { cv (PDF), cover_letter (optional PDF), position_title }.
+  // Returns the structured analysis used by CvAnalysisPage.
+  analyseCv: (formData) => request('/cv-analysis', { method: 'POST', body: formData, auth: true }),
+
   // ---------- users ------------------------------------------------------
   // List teammates, optionally filtered by comp_id / role. Used by the
   // AddCandidate modal's interviewer combobox:

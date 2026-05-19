@@ -10,6 +10,8 @@ import DashboardPage from './pages/DashboardPage.jsx'
 import AdminDashboardPage from './pages/AdminDashboardPage.jsx'
 import JobsPage from './pages/JobsPage'
 import JobDetailPage from './pages/JobDetailPage'
+import CvUploadPage from './pages/CvUploadPage'
+import CvAnalysisPage from './pages/CvAnalysisPage'
 
 export default function App() {
   return (
@@ -57,6 +59,25 @@ export default function App() {
             element={
               <RequireAuth>
                 <JobDetailPage />
+              </RequireAuth>
+            }
+          />
+          {/* CV analyser - upload form lives at /cv-analysis, the rendered
+              report at /cv-analysis/result (reached via navigation state from
+              the upload form, NOT a deep-linkable URL until persistence lands). */}
+          <Route
+            path="/cv-analysis"
+            element={
+              <RequireAuth>
+                <CvUploadPage />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/cv-analysis/result"
+            element={
+              <RequireAuth>
+                <CvAnalysisPage />
               </RequireAuth>
             }
           />
