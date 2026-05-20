@@ -74,6 +74,17 @@ export const api = {
   createInvitation: (role)    => request('/invitations',       { method: 'POST', body: { role }, auth: true }),
   deleteInvitation: (id)      => request(`/invitations/${id}`, { method: 'DELETE', auth: true }),
 
+  // ---------- jobs -------------------------------------------------------
+  // List jobs, optionally scoped to a company. Used by the CV analyser
+  // upload page to populate the job-picker dropdown:
+  //   api.listJobs({ comp_id })
+  listJobs: (params = {}) => {
+    const qs = new URLSearchParams(
+      Object.entries(params).filter(([, v]) => v !== undefined && v !== null && v !== '')
+    ).toString()
+    return request(`/jobs${qs ? `?${qs}` : ''}`, { auth: true })
+  },
+
   // ---------- CV analysis ----------------------------------------------
   // Multipart upload: { cv (PDF), cover_letter (optional PDF), position_title }.
   // Returns the structured analysis used by CvAnalysisPage.

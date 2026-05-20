@@ -1,8 +1,9 @@
-import { useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useEffect, useRef, useState } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
 import { UploadCloud, FileText, X } from 'lucide-react'
 import Sidebar from '../components/common/Sidebar'
 import { api, ApiError } from '../lib/api.js'
+import { useAuth } from '../lib/AuthContext.jsx'
 import { button, card, form, page } from '../styles/layout'
 
 // 8 MB cap on each PDF. Gemini's free-tier limits + our own bandwidth
@@ -104,35 +105,57 @@ function DropZone({ label, file, onPick, required = false }) {
 
 // ── Page ─────────────────────────────────────────────────────────────────
 
-// Backend caps the JD at 10,000 chars - matches Form(max_length=10_000) on
-// the route. Anything longer probably isn't a JD anyway.
-const JD_MAX = 10_000
-
 export default function CvUploadPage() {
   const navigate = useNavigate()
+  const { user } = useAuth()
+
+  // Jobs in the user's company - populates the dropdown. Loaded once on
+  // mount; we don't need filtering/pagination here, just the picker list.
+  const [jobs,         setJobs]         = useState([])
+  const [jobsLoading,  setJobsLoading]  = useState(true)
+  // selectedJobId is "" until the user picks; we derive position + JD from
+  // the chosen job at submit time so we never let the form drift out of
+  // sync with the dropdown.
+  const [selectedJobId, setSelectedJobId] = useState('')
+
   const [cvFile, setCvFile] = useState(null)
   const [coverFile, setCoverFile] = useState(null)
-  const [position, setPosition] = useState('')
-  // Optional. When supplied, the Gemini prompt grounds every score and
-  // bullet in this text instead of falling back to position_title alone.
-  const [jobDescription, setJobDescription] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState(null)
+
+  useEffect(() => {
+    if (!user?.comp_id) return
+    let cancelled = false
+    api.listJobs({ comp_id: user.comp_id })
+      .then((data) => {
+        if (cancelled) return
+        // Defensive: API should return an array but a 404 / malformed
+        // response would crash the .map below if we don't guard here.
+        setJobs(Array.isArray(data) ? data : [])
+      })
+      .catch(() => !cancelled && setJobs([]))
+      .finally(() => !cancelled && setJobsLoading(false))
+    return () => { cancelled = true }
+  }, [user?.comp_id])
+
+  const selectedJob = jobs.find((j) => (j.id ?? j._id) === selectedJobId)
 
   async function handleSubmit(e) {
     e.preventDefault()
     setError(null)
-    if (!cvFile) return setError('Please attach a CV PDF.')
-    if (!position.trim()) return setError('Please enter the target position.')
-    if (jobDescription.length > JD_MAX) {
-      return setError(`Job description is too long (max ${JD_MAX} characters).`)
-    }
+    if (!selectedJob) return setError('Please pick a job to analyse against.')
+    if (!cvFile)      return setError('Please attach a CV PDF.')
 
     const fd = new FormData()
     fd.append('cv', cvFile)
-    fd.append('position_title', position.trim())
+    // Position title + JD are sourced from the picked job - no manual
+    // input - so the analyser is always scoring against an actual posting
+    // that exists in the database.
+    fd.append('position_title', selectedJob.title || '')
+    if (selectedJob.description?.trim()) {
+      fd.append('job_description', selectedJob.description.trim())
+    }
     if (coverFile) fd.append('cover_letter', coverFile)
-    if (jobDescription.trim()) fd.append('job_description', jobDescription.trim())
 
     setSubmitting(true)
     try {
@@ -158,50 +181,77 @@ export default function CvUploadPage() {
           <div className="mb-6">
             <h1 className="text-4xl font-extrabold tracking-tight text-neutral-800">CV Analyser</h1>
             <p className="text-xs text-neutral-400 mt-1">
-              Upload a candidate&apos;s CV (and optional cover letter) to get an AI-generated
-              fit summary, strengths, improvement areas, and inconsistencies.
+              Pick a job from your company&apos;s postings, upload the candidate&apos;s CV
+              (and optional cover letter), and get an AI-generated fit summary,
+              strengths, improvement areas, and inconsistencies.
             </p>
           </div>
 
           <form onSubmit={handleSubmit} className={`${card.base} flex flex-col gap-5`}>
+            {/* Job picker - replaces the old "Target Position" + "Job Description"
+                manual inputs. Description auto-populates from the selection.   */}
             <div>
-              <label className={form.label}>Target Position *</label>
-              <input
-                type="text"
-                value={position}
-                onChange={(e) => setPosition(e.target.value)}
-                placeholder="eg. Front End Developer"
-                maxLength={120}
-                className={form.input}
-              />
+              <label className={form.label}>Job *</label>
+              <select
+                value={selectedJobId}
+                onChange={(e) => setSelectedJobId(e.target.value)}
+                disabled={jobsLoading || jobs.length === 0}
+                className={`${form.input} ${jobs.length === 0 ? 'opacity-60 cursor-not-allowed' : ''}`}
+              >
+                <option value="">
+                  {jobsLoading
+                    ? 'Loading jobs…'
+                    : jobs.length === 0
+                      ? 'No jobs available'
+                      : 'Select a job…'}
+                </option>
+                {jobs.map((j) => (
+                  <option key={j.id ?? j._id} value={j.id ?? j._id}>
+                    {j.title}
+                  </option>
+                ))}
+              </select>
+
+              {/* Helper / empty-state line under the picker. */}
+              {!jobsLoading && jobs.length === 0 && (
+                <p className="text-xs text-coral-500 mt-1">
+                  You don&apos;t have any jobs yet.{' '}
+                  <Link to="/jobs" className="font-semibold underline underline-offset-2 hover:text-coral-700">
+                    Create one
+                  </Link>{' '}
+                  before running an analysis.
+                </p>
+              )}
             </div>
 
-            <div>
-              <label className={form.label}>
-                Job Description
-                <span className="ml-2 text-[10px] font-medium text-neutral-400 normal-case tracking-normal">
-                  (recommended)
-                </span>
-              </label>
-              <textarea
-                value={jobDescription}
-                onChange={(e) => setJobDescription(e.target.value)}
-                placeholder="Paste the full JD here - responsibilities, required skills, years of experience, soft-skill expectations. The analyser uses this as the source of truth for every score and bullet."
-                rows={6}
-                maxLength={JD_MAX}
-                className={`${form.input} resize-y leading-relaxed`}
-              />
-              <div className="flex items-center justify-between mt-1">
-                <p className="text-[11px] text-neutral-400">
-                  When omitted, the analyser falls back to scoring against the position title alone.
-                </p>
-                <p className={`text-[11px] tabular-nums ${
-                  jobDescription.length > JD_MAX * 0.95 ? 'text-coral-500' : 'text-neutral-400'
-                }`}>
-                  {jobDescription.length.toLocaleString()} / {JD_MAX.toLocaleString()}
+            {/* Read-only JD preview - shows the description tied to the picked
+                job so the user knows what the analyser will be scoring against.
+                Collapses to a "no description" hint when the job has none. */}
+            {selectedJob && (
+              <div>
+                <label className={form.label}>
+                  Job Description
+                  <span className="ml-2 text-[10px] font-medium text-neutral-400 normal-case tracking-normal">
+                    (from the selected job)
+                  </span>
+                </label>
+                <div className="w-full rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2 text-sm text-neutral-700 max-h-48 overflow-y-auto leading-relaxed whitespace-pre-wrap">
+                  {selectedJob.description?.trim()
+                    ? selectedJob.description
+                    : <span className="italic text-neutral-400">No description on this job.</span>}
+                </div>
+                <p className="text-[11px] text-neutral-400 mt-1">
+                  Edit the JD on the{' '}
+                  <Link
+                    to={`/jobs/${selectedJob.id ?? selectedJob._id}`}
+                    className="font-semibold text-primary-600 hover:text-primary-700"
+                  >
+                    job detail page
+                  </Link>
+                  {' '}if it needs changes before the analysis.
                 </p>
               </div>
-            </div>
+            )}
 
             <DropZone label="CV / Resume" file={cvFile} onPick={setCvFile} required />
             <DropZone label="Cover Letter (optional)" file={coverFile} onPick={setCoverFile} />
@@ -219,7 +269,7 @@ export default function CvUploadPage() {
               </button>
               <button
                 type="submit"
-                disabled={submitting}
+                disabled={submitting || jobs.length === 0}
                 className={`${button.primary} disabled:opacity-60`}
               >
                 {submitting ? 'Analysing…' : 'Analyse CV'}
