@@ -68,7 +68,20 @@ export const api = {
   me:            ()          => request('/auth/me',             { auth: true }),
 
   // ---------- invitations (admin only) ----------------------------------
-  listInvitations:  ()       => request('/invitations',       { auth: true }),
-  createInvitation: ()       => request('/invitations',       { method: 'POST', auth: true }),
-  deleteInvitation: (id)     => request(`/invitations/${id}`, { method: 'DELETE', auth: true }),
+  listInvitations:  ()        => request('/invitations',       { auth: true }),
+  // Admin must pick the role at generation time - the invitee no longer
+  // chooses one at signup. role: 'recruiter' | 'interviewer' | 'hiring_manager'.
+  createInvitation: (role)    => request('/invitations',       { method: 'POST', body: { role }, auth: true }),
+  deleteInvitation: (id)      => request(`/invitations/${id}`, { method: 'DELETE', auth: true }),
+
+  // ---------- users ------------------------------------------------------
+  // List teammates, optionally filtered by comp_id / role. Used by the
+  // AddCandidate modal's interviewer combobox:
+  //   api.listUsers({ comp_id, role: 'interviewer' })
+  listUsers: (params = {}) => {
+    const qs = new URLSearchParams(
+      Object.entries(params).filter(([, v]) => v !== undefined && v !== null && v !== '')
+    ).toString()
+    return request(`/users${qs ? `?${qs}` : ''}`, { auth: true })
+  },
 }

@@ -1,3 +1,10 @@
+"""MongoDB connection + index setup.
+
+No mock data is seeded - all jobs, candidates, and link rows are created
+via the real API endpoints. The dashboard shows empty-state messaging
+when collections are empty.
+"""
+
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 
 from config import settings

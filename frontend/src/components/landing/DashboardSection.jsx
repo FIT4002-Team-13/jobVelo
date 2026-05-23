@@ -16,7 +16,7 @@ const candidates = [
 
 export default function DashboardSection() {
   return (
-    <section id="features" className="py-section">
+    <section id="dashboard" className="py-section scroll-mt-24">
       <div className="container-page grid lg:grid-cols-2 gap-16 items-center">
         <motion.div
           initial={{ opacity: 0, x: -32 }}

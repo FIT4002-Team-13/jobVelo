@@ -42,12 +42,25 @@
   background-size: 18px 18px;
 }
 
-/* Hide scrollbar*/
-.no-scrollbar::-webkit-scrollbar {
-  display: none;
+/* Primary-coloured scrollbar - apply to any scrollable container that
+   wants the branded look instead of the OS default. Falls back to a
+   transparent track + a primary-500 thumb, fully rounded so it reads as
+   a pill. Both Firefox and webkit handled. */
+.scrollbar-primary {
+  scrollbar-color: theme('colors.primary.500') transparent;
+  scrollbar-width: thin;
 }
-
-.no-scrollbar {
-  -ms-overflow-style: none;
-  scrollbar-width: none;
+.scrollbar-primary::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.scrollbar-primary::-webkit-scrollbar-track {
+  background: transparent;
+}
+.scrollbar-primary::-webkit-scrollbar-thumb {
+  background-color: theme('colors.primary.500');
+  border-radius: 9999px;
+}
+.scrollbar-primary::-webkit-scrollbar-thumb:hover {
+  background-color: theme('colors.primary.600');
 }
