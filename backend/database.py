@@ -54,10 +54,36 @@ async def ensure_indexes() -> None:
     await db.invitations.create_index("code", unique=True)
     await db.invitations.create_index([("comp_id", 1), ("created_at", -1)])
 
-    # Candidates
-    await db.candidates.create_index([("cand_email", 1), ("comp_id", 1)], unique=True)
-    await db.candidates.create_index("comp_id")
+    # Jobs - scoped to a company, sorted by recent activity.
+    await db.jobs.create_index([("comp_id", 1), ("job_last_update_datetime", -1)])
+    await db.jobs.create_index("title")
 
-    # Job-Candidates
-    await db.job_candidates.create_index([("cand_id", 1), ("job_id", 1)], unique=True)
+    # Candidates - scoped to a company, deduped by email within a company.
+    await db.candidates.create_index([("comp_id", 1), ("cand_email", 1)], unique=True)
+    await db.candidates.create_index("cand_full_name")
+
+    # Job-candidates link - the (cand_id, job_id) pair is logically unique.
+    await db.job_candidates.create_index(
+        [("cand_id", 1), ("job_id", 1)],
+        unique=True,
+    )
     await db.job_candidates.create_index("job_id")
+    await db.job_candidates.create_index("cand_id")
+
+    # Interview-user link - the (user_id, intv_id) pair is logically unique.
+    await db.interview_users.create_index(
+        [("user_id", 1), ("intv_id", 1)],
+        unique=True,
+    )
+    await db.interview_users.create_index("user_id")
+    await db.interview_users.create_index("intv_id")
+
+    # Interviews - indexed by candidate and job for fast lookup in various contexts.
+    await db.interviews.create_index("cand_id")
+    await db.interviews.create_index("job_id")
+
+
+# Stub kept so existing callers (main.py lifespan) don't break. Real seeding
+# happens through the API now - this is intentionally a no-op.
+async def seed_mock_data() -> None:
+    return

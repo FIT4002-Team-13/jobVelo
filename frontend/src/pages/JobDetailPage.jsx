@@ -407,7 +407,7 @@ function formatScore(n) {
   return Number.isFinite(n) ? Number(n).toFixed(1) : '--'
 }
 
-function CandidatesTable({ candidates, tab, setTab, onStartInterview, onDelete }) {
+function CandidatesTable({ candidates, tab, setTab, onStartInterview, onDelete, onOpenCandidate }) {
   const [search, setSearch] = useState('')
   // SortMenu is only consulted while the SCHEDULES tab is active. The
   // RANKINGS tab is itself a sort ("highest score first") so letting the
@@ -510,12 +510,17 @@ function CandidatesTable({ candidates, tab, setTab, onStartInterview, onDelete }
               // Cells shared by both views (so they read identically across tabs)
               const candidateCell = (
                 <td className="px-4 py-3">
-                  <div className={`${flex.row} gap-3`}>
+                  <button
+                    type="button"
+                    onClick={() => onOpenCandidate?.(c)}
+                    className={`${flex.row} gap-3 text-left transition-opacity hover:opacity-80`}
+                    title="Open candidate page"
+                  >
                     <div className={`w-8 h-8 rounded-pill ${flex.rowCenter} text-white text-xs font-bold shrink-0 ${avatarColor(c.name)}`}>
                       {initials(c.name)}
                     </div>
-                    <span className="font-medium text-neutral-800">{c.name}</span>
-                  </div>
+                    <span className="font-medium text-neutral-800 hover:text-primary-600">{c.name}</span>
+                  </button>
                 </td>
               )
               const statusCell = (
@@ -553,13 +558,14 @@ function CandidatesTable({ candidates, tab, setTab, onStartInterview, onDelete }
                       </svg>
                       Start Interview
                     </button>
-                    {/* View - placeholder for the upcoming candidate-detail page.
-                        Kept here so the icon row stays familiar, will get wired
-                        up once /candidates/:id lands. */}
+                    {/* View - now wired to the candidate-detail page using
+                        cand_id + current job id. Keeping the icon here preserves
+                        the familiar action row while making the flow usable. */}
                     <button
                       type="button"
                       title="View candidate details"
                       aria-label="View candidate"
+                      onClick={() => onOpenCandidate?.(c)}
                       className={`w-7 h-7 ${flex.rowCenter} rounded-lg text-neutral-400 hover:bg-neutral-100 hover:text-neutral-600 transition-colors`}
                     >
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -846,6 +852,9 @@ export default function JobDetailPage() {
             setTab={setTab}
             onStartInterview={(c) => setStartTarget(c)}
             onDelete={(c) => setDeleteTarget(c)}
+            onOpenCandidate={(c) => {
+              navigate(`/candidates/${c.cand_id}/${id}`)
+            }}
           />
         </div>
       </main>

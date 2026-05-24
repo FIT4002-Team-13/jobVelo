@@ -5,15 +5,34 @@ from typing import Literal, Optional
 
 from pydantic import BaseModel, Field
 
-# Interview cycle for scheduling + running + post-interview state.
+
+# Interview lifecycle used by scheduling and interview progress tracking.
 InterviewStatus = Literal["scheduled", "in_progress", "completed", "cancelled"]
 
-class InterviewCreate(BaseModel):
-    """Base payload for creating an interview session.
 
-    An interview belongs to one candidate and one job. Interviewers are linked
-    separately through the interview_user collection so one interview can have
-    one or more interviewers.
+class InterviewFeedbackSection(BaseModel):
+    """
+    Create/update payload for one section of the interview feedback report.
+    """
+
+    items: list[str] = Field(default_factory=list)
+    justification: Optional[str] = None
+
+
+class InterviewFeedback(BaseModel):
+    """
+    Create/update payload for an interview feedback report.
+    """
+
+    summary: Optional[str] = None
+    strengths: InterviewFeedbackSection = Field(default_factory=InterviewFeedbackSection)
+    improvements: InterviewFeedbackSection = Field(default_factory=InterviewFeedbackSection)
+
+
+class InterviewCreate(BaseModel):
+    """
+    Creating a new interview session.
+
     """
 
     cand_id: str = Field(..., min_length=1)
@@ -22,18 +41,25 @@ class InterviewCreate(BaseModel):
     intv_location: Optional[str] = Field(default=None, max_length=200)
     intv_status: InterviewStatus = "scheduled"
 
+
 class InterviewUpdate(BaseModel):
-    """Patch payload for updating mutable interview fields."""
+    """
+    Patch payload for updating mutable interview fields.
+    All fields optional - the caller sends only what they want to change.
+    """
 
     intv_date_time: Optional[datetime] = None
     intv_location: Optional[str] = Field(default=None, max_length=200)
     intv_transcript: Optional[str] = None
     intv_status: Optional[InterviewStatus] = None
-    intv_candidate_report: Optional[str] = None
-    intv_interviewer_report: Optional[str] = None
+    intv_candidate_report: Optional[InterviewFeedback] = None
+    intv_interviewer_report: Optional[InterviewFeedback] = None
+
 
 class InterviewOut(BaseModel):
-    """Public representation of an interview document."""
+    """
+    Public representation of an interview document.
+    """
 
     intv_id: str
     cand_id: str
@@ -42,7 +68,7 @@ class InterviewOut(BaseModel):
     intv_location: Optional[str] = None
     intv_transcript: Optional[str] = None
     intv_status: InterviewStatus
-    intv_candidate_report: Optional[str] = None
-    intv_interviewer_report: Optional[str] = None
+    intv_candidate_report: Optional[InterviewFeedback] = None
+    intv_interviewer_report: Optional[InterviewFeedback] = None
     intv_created_at: datetime
     intv_updated_at: datetime
