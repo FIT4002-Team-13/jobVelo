@@ -266,7 +266,7 @@ export default function InterviewPage() {
   const [transcript, setTranscript] = useState(INITIAL_TRANSCRIPT);
   const [scores] = useState(MOCK_SCORES);
   const [questions] = useState(MOCK_QUESTIONS);
-  const [timer] = useState(25 * 60 + 2); // seconds — will be driven by a live ticker
+  const [timer, setTimer] = useState(0);
 
   const wsRef = useRef(null);
   const audioContextRef = useRef(null);
@@ -469,6 +469,18 @@ export default function InterviewPage() {
     return () => {
       void stopScreenShare();
     };
+  }, []);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const elapsedSeconds = Math.floor(
+        (Date.now() - startTimeRef.current) / 1000,
+      );
+
+      setTimer(elapsedSeconds);
+    }, 1000);
+
+    return () => clearInterval(interval);
   }, []);
 
   return (
