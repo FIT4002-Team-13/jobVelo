@@ -121,6 +121,77 @@ async def list_job_candidates_by_job(job_id: str) -> list[JobCandidateOut]:
     return [job_candidate_helper(doc) for doc in job_candidates]
 
 
+@router.get("")
+async def list_job_candidates_flat(comp_id: str | None = None) -> list[dict]:
+    """Flat enumeration of every job-candidate link, optionally scoped to a
+    company, joined with the job title + candidate name.
+
+    Used by the CV Analyser upload page to populate its picker. Each row
+    also carries `has_analysis` so the picker can short-circuit straight
+    to the result screen for links that already have a cached analysis.
+    """
+    db = get_db()
+
+    # 1. Scope by company: gather the company's job ids first, then filter
+    #    links by job_id. (job_candidates docs don't store comp_id directly,
+    #    but jobs do.)
+    job_query: dict = {}
+    if comp_id:
+        if not ObjectId.is_valid(comp_id):
+            raise HTTPException(status_code=400, detail="Invalid comp_id")
+        job_query["comp_id"] = ObjectId(comp_id)
+
+    jobs = await db.jobs.find(job_query, {"title": 1}).to_list(length=500)
+    if not jobs:
+        return []
+    jobs_by_id = {str(j["_id"]): j for j in jobs}
+    job_id_strs = list(jobs_by_id.keys())
+
+    # 2. Fetch every link belonging to those jobs.
+    links = await db.job_candidates.find(
+        {"job_id": {"$in": job_id_strs}}
+    ).to_list(length=1000)
+    if not links:
+        return []
+
+    # 3. Bulk-fetch candidate names so we don't N+1 per link.
+    cand_oids = [
+        ObjectId(link["cand_id"])
+        for link in links
+        if ObjectId.is_valid(link.get("cand_id", ""))
+    ]
+    cand_docs = await db.candidates.find(
+        {"_id": {"$in": cand_oids}},
+        {"cand_full_name": 1, "name": 1},
+    ).to_list(length=1000)
+    cands_by_id = {str(c["_id"]): c for c in cand_docs}
+
+    # 4. has_analysis flag: which jobcand_ids already have a cached analysis.
+    link_ids = [str(link["_id"]) for link in links]
+    analysed_ids = {
+        a["jobcand_id"]
+        async for a in db.cv_analyses.find(
+            {"jobcand_id": {"$in": link_ids}},
+            {"jobcand_id": 1},
+        )
+    }
+
+    out: list[dict] = []
+    for link in links:
+        job = jobs_by_id.get(str(link["job_id"]))
+        cand = cands_by_id.get(str(link["cand_id"]))
+        out.append({
+            "jobcand_id":     str(link["_id"]),
+            "job_id":         str(link["job_id"]),
+            "cand_id":        str(link["cand_id"]),
+            "job_title":      (job or {}).get("title", "(missing job)"),
+            "cand_full_name": (cand or {}).get("cand_full_name") or (cand or {}).get("name", "(unknown candidate)"),
+            "status":         link.get("status"),
+            "has_analysis":   str(link["_id"]) in analysed_ids,
+        })
+    return out
+
+
 @router.get("/by-candidate/{cand_id}", response_model=list[JobCandidateOut])
 async def list_job_candidates_by_candidate(cand_id: str) -> list[JobCandidateOut]:
     db = get_db()

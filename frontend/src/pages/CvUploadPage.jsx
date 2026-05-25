@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { UploadCloud, FileText, X } from 'lucide-react'
+import { UploadCloud, FileText, X, CheckCircle2 } from 'lucide-react'
 import Sidebar from '../components/common/Sidebar'
 import { api, ApiError } from '../lib/api.js'
 import { useAuth } from '../lib/AuthContext.jsx'
@@ -109,61 +109,65 @@ export default function CvUploadPage() {
   const navigate = useNavigate()
   const { user } = useAuth()
 
-  // Jobs in the user's company - populates the dropdown. Loaded once on
-  // mount; we don't need filtering/pagination here, just the picker list.
-  const [jobs,         setJobs]         = useState([])
-  const [jobsLoading,  setJobsLoading]  = useState(true)
-  // selectedJobId is "" until the user picks; we derive position + JD from
-  // the chosen job at submit time so we never let the form drift out of
-  // sync with the dropdown.
-  const [selectedJobId, setSelectedJobId] = useState('')
+  // Job-candidate links in the user's company - populates the dropdown.
+  // Each row already has job_title + cand_full_name + has_analysis flag
+  // (joined server-side), so the picker can show useful labels without
+  // additional fetches.
+  const [links,          setLinks]          = useState([])
+  const [linksLoading,   setLinksLoading]   = useState(true)
+  const [selectedJobcandId, setSelectedJobcandId] = useState('')
 
-  const [cvFile, setCvFile] = useState(null)
-  const [coverFile, setCoverFile] = useState(null)
+  const [cvFile,     setCvFile]     = useState(null)
+  const [coverFile,  setCoverFile]  = useState(null)
   const [submitting, setSubmitting] = useState(false)
-  const [error, setError] = useState(null)
+  const [error,      setError]      = useState(null)
 
   useEffect(() => {
     if (!user?.comp_id) return
     let cancelled = false
-    api.listJobs({ comp_id: user.comp_id })
+    api.listJobCandidates({ comp_id: user.comp_id })
       .then((data) => {
         if (cancelled) return
-        // Defensive: API should return an array but a 404 / malformed
-        // response would crash the .map below if we don't guard here.
-        setJobs(Array.isArray(data) ? data : [])
+        setLinks(Array.isArray(data) ? data : [])
       })
-      .catch(() => !cancelled && setJobs([]))
-      .finally(() => !cancelled && setJobsLoading(false))
+      .catch(() => !cancelled && setLinks([]))
+      .finally(() => !cancelled && setLinksLoading(false))
     return () => { cancelled = true }
   }, [user?.comp_id])
 
-  const selectedJob = jobs.find((j) => (j.id ?? j._id) === selectedJobId)
+  const selectedLink = links.find((l) => l.jobcand_id === selectedJobcandId)
+  // When the picked link already has a cached analysis, we hide the upload
+  // form and show a "View existing" CTA instead - no need to re-upload to
+  // see what's there.
+  const hasCached = !!selectedLink?.has_analysis
+
+  async function handleViewExisting() {
+    if (!selectedLink) return
+    setSubmitting(true)
+    setError(null)
+    try {
+      const result = await api.getCvAnalysisByJobcand(selectedLink.jobcand_id)
+      navigate('/cv-analysis/result', { state: { analysis: result } })
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Failed to load existing analysis.')
+      setSubmitting(false)
+    }
+  }
 
   async function handleSubmit(e) {
     e.preventDefault()
     setError(null)
-    if (!selectedJob) return setError('Please pick a job to analyse against.')
-    if (!cvFile)      return setError('Please attach a CV PDF.')
+    if (!selectedLink) return setError('Please pick a job-candidate to analyse.')
+    if (!cvFile)       return setError('Please attach a CV PDF.')
 
     const fd = new FormData()
+    fd.append('jobcand_id', selectedLink.jobcand_id)
     fd.append('cv', cvFile)
-    // Position title + JD are sourced from the picked job - no manual
-    // input - so the analyser is always scoring against an actual posting
-    // that exists in the database.
-    fd.append('position_title', selectedJob.title || '')
-    if (selectedJob.description?.trim()) {
-      fd.append('job_description', selectedJob.description.trim())
-    }
     if (coverFile) fd.append('cover_letter', coverFile)
 
     setSubmitting(true)
     try {
       const result = await api.analyseCv(fd)
-      // We pass the analysis through navigation state so the result page
-      // can render without re-fetching. The analysis itself isn't persisted
-      // server-side yet - if you refresh on the result page, you'll need
-      // to re-upload. Add persistence when the team needs share-able links.
       navigate('/cv-analysis/result', { state: { analysis: result } })
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Failed to analyse the CV.')
@@ -181,100 +185,134 @@ export default function CvUploadPage() {
           <div className="mb-6">
             <h1 className="text-4xl font-extrabold tracking-tight text-neutral-800">CV Analyser</h1>
             <p className="text-xs text-neutral-400 mt-1">
-              Pick a job from your company&apos;s postings, upload the candidate&apos;s CV
-              (and optional cover letter), and get an AI-generated fit summary,
-              strengths, improvement areas, and inconsistencies.
+              Pick a candidate, upload their CV, and get an AI-generated fit summary, strengths,
+              improvement areas, and inconsistencies scored against the job description.
             </p>
           </div>
 
           <form onSubmit={handleSubmit} className={`${card.base} flex flex-col gap-5`}>
-            {/* Job picker - replaces the old "Target Position" + "Job Description"
-                manual inputs. Description auto-populates from the selection.   */}
+            {/* Job-candidate picker. Label shows job title + candidate name
+                so the user can disambiguate; (✓) next to a row indicates the
+                link already has a cached analysis. */}
             <div>
-              <label className={form.label}>Job *</label>
+              <label className={form.label}>Job &middot; Candidate *</label>
               <select
-                value={selectedJobId}
-                onChange={(e) => setSelectedJobId(e.target.value)}
-                disabled={jobsLoading || jobs.length === 0}
-                className={`${form.input} ${jobs.length === 0 ? 'opacity-60 cursor-not-allowed' : ''}`}
+                value={selectedJobcandId}
+                onChange={(e) => setSelectedJobcandId(e.target.value)}
+                disabled={linksLoading || links.length === 0}
+                className={`${form.input} ${links.length === 0 ? 'opacity-60 cursor-not-allowed' : ''}`}
               >
                 <option value="">
-                  {jobsLoading
-                    ? 'Loading jobs…'
-                    : jobs.length === 0
-                      ? 'No jobs available'
-                      : 'Select a job…'}
+                  {linksLoading
+                    ? 'Loading…'
+                    : links.length === 0
+                      ? 'No candidates linked to any job yet'
+                      : 'Select a job-candidate…'}
                 </option>
-                {jobs.map((j) => (
-                  <option key={j.id ?? j._id} value={j.id ?? j._id}>
-                    {j.title}
+                {links.map((l) => (
+                  <option key={l.jobcand_id} value={l.jobcand_id}>
+                    {l.job_title} — {l.cand_full_name}
+                    {l.has_analysis ? '  ✓ analysed' : ''}
                   </option>
                 ))}
               </select>
 
-              {/* Helper / empty-state line under the picker. */}
-              {!jobsLoading && jobs.length === 0 && (
+              {!linksLoading && links.length === 0 && (
                 <p className="text-xs text-coral-500 mt-1">
-                  You don&apos;t have any jobs yet.{' '}
+                  No candidates on any job yet.{' '}
                   <Link to="/jobs" className="font-semibold underline underline-offset-2 hover:text-coral-700">
-                    Create one
+                    Add a candidate to a job
                   </Link>{' '}
                   before running an analysis.
                 </p>
               )}
             </div>
 
-            {/* Read-only JD preview - shows the description tied to the picked
-                job so the user knows what the analyser will be scoring against.
-                Collapses to a "no description" hint when the job has none. */}
-            {selectedJob && (
-              <div>
-                <label className={form.label}>
-                  Job Description
-                  <span className="ml-2 text-[10px] font-medium text-neutral-400 normal-case tracking-normal">
-                    (from the selected job)
-                  </span>
-                </label>
-                <div className="w-full rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2 text-sm text-neutral-700 max-h-48 overflow-y-auto leading-relaxed whitespace-pre-wrap">
-                  {selectedJob.description?.trim()
-                    ? selectedJob.description
-                    : <span className="italic text-neutral-400">No description on this job.</span>}
+            {/* Cached-analysis path: show a banner + "View existing" CTA
+                instead of the upload zones. User can delete the cached
+                analysis from the result page if they want to re-run. */}
+            {hasCached ? (
+              <>
+                <div className="flex items-start gap-3 rounded-xl border border-mint-200 bg-mint-50 px-4 py-3">
+                  <CheckCircle2 size={18} className="text-mint-600 shrink-0 mt-0.5" />
+                  <div>
+                    <p className="text-sm font-semibold text-mint-700">Analysis already exists for this candidate.</p>
+                    <p className="text-xs text-mint-700/80 mt-0.5">
+                      Open it below, or delete it from the result page to upload a new CV.
+                    </p>
+                  </div>
                 </div>
-                <p className="text-[11px] text-neutral-400 mt-1">
-                  Edit the JD on the{' '}
-                  <Link
-                    to={`/jobs/${selectedJob.id ?? selectedJob._id}`}
-                    className="font-semibold text-primary-600 hover:text-primary-700"
+
+                {error && <p className={form.error}>{error}</p>}
+
+                <div className="flex justify-end gap-3 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => navigate(-1)}
+                    disabled={submitting}
+                    className={`${button.cancel} px-6 py-2`}
                   >
-                    job detail page
-                  </Link>
-                  {' '}if it needs changes before the analysis.
-                </p>
-              </div>
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleViewExisting}
+                    disabled={submitting}
+                    className={`${button.primary} disabled:opacity-60`}
+                  >
+                    {submitting ? 'Loading…' : 'View Analysis'}
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                {/* Read-only context strip so the user can see what JD will be
+                    used; mirrors the same info from the link's job. */}
+                {selectedLink && (
+                  <div>
+                    <label className={form.label}>
+                      Job Description
+                      <span className="ml-2 text-[10px] font-medium text-neutral-400 normal-case tracking-normal">
+                        (from {selectedLink.job_title})
+                      </span>
+                    </label>
+                    <p className="text-[11px] text-neutral-400">
+                      The analyser uses this job&apos;s description as the source of truth for scoring.{' '}
+                      <Link
+                        to={`/jobs/${selectedLink.job_id}`}
+                        className="font-semibold text-primary-600 hover:text-primary-700"
+                      >
+                        Edit the JD
+                      </Link>
+                      {' '}on the job detail page if it needs changes first.
+                    </p>
+                  </div>
+                )}
+
+                <DropZone label="CV / Resume" file={cvFile} onPick={setCvFile} required />
+                <DropZone label="Cover Letter (optional)" file={coverFile} onPick={setCoverFile} />
+
+                {error && <p className={form.error}>{error}</p>}
+
+                <div className="flex justify-end gap-3 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => navigate(-1)}
+                    disabled={submitting}
+                    className={`${button.cancel} px-6 py-2`}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={submitting || links.length === 0}
+                    className={`${button.primary} disabled:opacity-60`}
+                  >
+                    {submitting ? 'Analysing…' : 'Analyse CV'}
+                  </button>
+                </div>
+              </>
             )}
-
-            <DropZone label="CV / Resume" file={cvFile} onPick={setCvFile} required />
-            <DropZone label="Cover Letter (optional)" file={coverFile} onPick={setCoverFile} />
-
-            {error && <p className={form.error}>{error}</p>}
-
-            <div className="flex justify-end gap-3 pt-1">
-              <button
-                type="button"
-                onClick={() => navigate(-1)}
-                disabled={submitting}
-                className={`${button.cancel} px-6 py-2`}
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                disabled={submitting || jobs.length === 0}
-                className={`${button.primary} disabled:opacity-60`}
-              >
-                {submitting ? 'Analysing…' : 'Analyse CV'}
-              </button>
-            </div>
           </form>
         </div>
       </main>

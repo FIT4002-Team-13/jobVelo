@@ -1,5 +1,7 @@
+import { useState } from 'react'
 import { Navigate, useLocation, useNavigate } from 'react-router-dom'
 import Sidebar from '../components/common/Sidebar'
+import { api, ApiError } from '../lib/api.js'
 import { button, card, page } from '../styles/layout'
 
 // Match the score-bar colour to the metric so the legend is implicit.
@@ -95,6 +97,9 @@ export default function CvAnalysisPage() {
   const location = useLocation()
   const analysis = location.state?.analysis
 
+  const [deleting, setDeleting] = useState(false)
+  const [deleteError, setDeleteError] = useState(null)
+
   // No analysis in nav state means the user landed here cold (refresh,
   // direct URL). Bounce them to the upload page where they can run one.
   if (!analysis) {
@@ -102,6 +107,7 @@ export default function CvAnalysisPage() {
   }
 
   const {
+    analysis_id,
     candidate_name,
     position_title,
     position_fit,
@@ -110,6 +116,32 @@ export default function CvAnalysisPage() {
     inconsistencies   = [],
     cv_path,
   } = analysis
+
+  // Delete drops the cached record so the user can upload a different CV
+  // for the same job-candidate. We confirm via window.confirm to keep this
+  // inline (the destructive action is narrow and rare; no need for a full
+  // modal here). On success, bounce back to the upload page.
+  async function handleDelete() {
+    if (!analysis_id) {
+      setDeleteError('This analysis cannot be deleted (no id).')
+      return
+    }
+    const ok = window.confirm(
+      'Delete this analysis?\n\nThe job-candidate link is kept - you can upload a different CV ' +
+      'right after.'
+    )
+    if (!ok) return
+
+    setDeleteError(null)
+    setDeleting(true)
+    try {
+      await api.deleteCvAnalysis(analysis_id)
+      navigate('/cv-analysis', { replace: true })
+    } catch (err) {
+      setDeleteError(err instanceof ApiError ? err.message : 'Failed to delete analysis.')
+      setDeleting(false)
+    }
+  }
 
   return (
     <div className={page.shell}>
@@ -130,14 +162,34 @@ export default function CvAnalysisPage() {
               <span className="ml-3 text-neutral-500 font-medium">{position_title}</span>
             </p>
           </div>
-          <button
-            type="button"
-            onClick={() => navigate('/cv-analysis')}
-            className={button.primary}
-          >
-            Back
-          </button>
+          <div className="flex items-center gap-3">
+            {/* Delete first - destructive action sits LEFT of the primary so
+                people don't muscle-memory click through it. */}
+            <button
+              type="button"
+              onClick={handleDelete}
+              disabled={deleting}
+              className={`${button.danger} px-5 py-2.5 disabled:opacity-60`}
+              title="Delete this analysis (lets you upload a new CV)"
+            >
+              {deleting ? 'Deleting…' : 'Delete'}
+            </button>
+            <button
+              type="button"
+              onClick={() => navigate('/cv-analysis')}
+              disabled={deleting}
+              className={`${button.primary} disabled:opacity-60`}
+            >
+              Back
+            </button>
+          </div>
         </div>
+
+        {/* Delete errors live up here at the page level (not inside a card)
+            so they don't shove the layout when they appear/disappear. */}
+        {deleteError && (
+          <p className="text-sm text-coral-500 mb-4">{deleteError}</p>
+        )}
 
         {/* Two-column body: PDF preview (2/3) + analysis cards (1/3) */}
         <div className="grid grid-cols-3 gap-5">

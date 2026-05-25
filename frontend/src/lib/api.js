@@ -75,9 +75,7 @@ export const api = {
   deleteInvitation: (id)      => request(`/invitations/${id}`, { method: 'DELETE', auth: true }),
 
   // ---------- jobs -------------------------------------------------------
-  // List jobs, optionally scoped to a company. Used by the CV analyser
-  // upload page to populate the job-picker dropdown:
-  //   api.listJobs({ comp_id })
+  // List jobs, optionally scoped to a company.
   listJobs: (params = {}) => {
     const qs = new URLSearchParams(
       Object.entries(params).filter(([, v]) => v !== undefined && v !== null && v !== '')
@@ -85,10 +83,27 @@ export const api = {
     return request(`/jobs${qs ? `?${qs}` : ''}`, { auth: true })
   },
 
+  // ---------- job-candidate links ---------------------------------------
+  // Flat enumeration with job_title + cand_full_name pre-joined, used by
+  // the CV Analyser picker. Each row also carries `has_analysis`.
+  listJobCandidates: (params = {}) => {
+    const qs = new URLSearchParams(
+      Object.entries(params).filter(([, v]) => v !== undefined && v !== null && v !== '')
+    ).toString()
+    return request(`/job-candidates${qs ? `?${qs}` : ''}`, { auth: true })
+  },
+
   // ---------- CV analysis ----------------------------------------------
-  // Multipart upload: { cv (PDF), cover_letter (optional PDF), position_title }.
-  // Returns the structured analysis used by CvAnalysisPage.
+  // POST is multipart now: { jobcand_id, cv?, cover_letter? }. The CV is
+  // optional when a cached analysis already exists for the jobcand_id -
+  // the backend short-circuits and returns the cached record.
   analyseCv: (formData) => request('/cv-analysis', { method: 'POST', body: formData, auth: true }),
+  // Pure read - returns the existing analysis or throws ApiError(404).
+  getCvAnalysisByJobcand: (jobcandId) =>
+    request(`/cv-analysis/by-jobcand/${encodeURIComponent(jobcandId)}`, { auth: true }),
+  // Removes the record + PDFs. Lets the user upload a different CV.
+  deleteCvAnalysis: (analysisId) =>
+    request(`/cv-analysis/${encodeURIComponent(analysisId)}`, { method: 'DELETE', auth: true }),
 
   // ---------- users ------------------------------------------------------
   // List teammates, optionally filtered by comp_id / role. Used by the
