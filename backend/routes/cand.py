@@ -199,48 +199,95 @@ async def create_candidate_for_job(payload: CandidateCreateForJob) -> dict:
             )
             candidate = await db.candidates.find_one({"_id": candidate["_id"]})
 
-    # 5. Prevent duplicate candidate-job links.
+    # 5. Get or create the job-candidate link.
+    cand_id_str = str(candidate["_id"])
     existing_job_candidate = await db.job_candidates.find_one(
         {
-            "cand_id": str(candidate["_id"]),
+            "cand_id": cand_id_str,
             "job_id": payload.job_id,
         }
     )
 
     if existing_job_candidate:
-        return {
-            "message": "Candidate already linked to this job.",
-            "candidate": candidate_helper(candidate).model_dump(),
-            "job_candidate": job_candidate_helper(existing_job_candidate),
+        job_candidate = existing_job_candidate
+        message = "Candidate already linked to this job."
+    else:
+        job_candidate_doc = {
+            "cand_id": cand_id_str,
+            "job_id": payload.job_id,
+            "cv_analysis": None,
+            "communication_score": None,
+            "skill_score": None,
+            "problem_solving_score": None,
+            "created_at": now,
+            "updated_at": now,
         }
 
-    # 6. Create the job-specific candidate link.
-    job_candidate_doc = {
-        "cand_id": str(candidate["_id"]),
-        "job_id": payload.job_id,
-        "cv_analysis": None,
-        "communication_score": None,
-        "skill_score": None,
-        "problem_solving_score": None,
-        "created_at": now,
-        "updated_at": now,
-    }
+        job_candidate_result = await db.job_candidates.insert_one(job_candidate_doc)
+        job_candidate = await db.job_candidates.find_one(
+            {"_id": job_candidate_result.inserted_id}
+        )
 
-    job_candidate_result = await db.job_candidates.insert_one(job_candidate_doc)
-    created_job_candidate = await db.job_candidates.find_one(
-        {"_id": job_candidate_result.inserted_id}
-    )
+        if not job_candidate:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to create candidate-job link.",
+            )
 
-    if not created_job_candidate:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to create candidate-job link.",
+        message = "Candidate created and linked to job successfully."
+
+    # 6. Create interview + interviewer link whenever an interviewer is assigned.
+    if payload.interviewer_user_id:
+        scheduled_dt = None
+        if payload.scheduled_at:
+            try:
+                scheduled_dt = datetime.fromisoformat(payload.scheduled_at)
+            except ValueError:
+                pass
+
+        intv_status = "scheduled" if scheduled_dt else "not_scheduled"
+
+        existing_interview = await db.interviews.find_one(
+            {"cand_id": cand_id_str, "job_id": payload.job_id}
+        )
+
+        if existing_interview:
+            intv_id = str(existing_interview["_id"])
+            await db.interviews.update_one(
+                {"_id": existing_interview["_id"]},
+                {"$set": {"intv_date_time": scheduled_dt, "intv_status": intv_status, "intv_updated_at": now}},
+            )
+        else:
+            intv_result = await db.interviews.insert_one(
+                {
+                    "cand_id": cand_id_str,
+                    "job_id": payload.job_id,
+                    "intv_date_time": scheduled_dt,
+                    "intv_location": None,
+                    "intv_transcript": None,
+                    "intv_status": intv_status,
+                    "intv_candidate_report": None,
+                    "intv_interviewer_report": None,
+                    "intv_created_at": now,
+                    "intv_updated_at": now,
+                }
+            )
+            intv_id = str(intv_result.inserted_id)
+
+        await db.interview_users.delete_many({"intv_id": intv_id})
+        await db.interview_users.insert_one(
+            {
+                "user_id": payload.interviewer_user_id,
+                "intv_id": intv_id,
+                "intvuser_created_at": now,
+                "intvuser_updated_at": now,
+            }
         )
 
     return {
-        "message": "Candidate created and linked to job successfully.",
+        "message": message,
         "candidate": candidate_helper(candidate).model_dump(),
-        "job_candidate": job_candidate_helper(created_job_candidate),
+        "job_candidate": job_candidate_helper(job_candidate),
     }
 
 
@@ -266,24 +313,25 @@ async def list_candidates(comp_id: str | None = None) -> list[CandidateOut]:
     if not candidates:
         return []
 
-    # One round-trip to gather every link for these candidates, then build
-    # a {cand_id: status} map in Python. cand_id is stored as a STRING in
-    # job_candidates (see create_candidate_for_job), so we match accordingly.
+    # Rollup status from interviews (per UML, status lives on Interview not Job_Candidate).
+    # cand_id is stored as a STRING in both job_candidates and interviews.
     cand_ids = [str(c["_id"]) for c in candidates]
-    links_cursor = db.job_candidates.find(
+    interviews = await db.interviews.find(
         {"cand_id": {"$in": cand_ids}},
-        {"cand_id": 1, "status": 1},
-    )
+        {"cand_id": 1, "intv_status": 1},
+    ).to_list(length=1000)
     statuses: dict[str, str] = {}
-    async for link in links_cursor:
-        cid = link["cand_id"]
-        s = link.get("status")
-        # SCHEDULED dominates EVALUATED in the rollup - if the candidate
-        # has ANY outstanding interview, the dashboard should show that.
+    for intv in interviews:
+        cid = intv.get("cand_id")
+        if not cid:
+            continue
+        s = (intv.get("intv_status") or "").upper()
+        # SCHEDULED dominates all others - if the candidate has ANY pending
+        # interview, the dashboard should flag it.
         if s == "SCHEDULED":
             statuses[cid] = "SCHEDULED"
-        elif s == "EVALUATED" and statuses.get(cid) != "SCHEDULED":
-            statuses[cid] = "EVALUATED"
+        elif s in ("EVALUATED", "HIRED", "REJECTED") and statuses.get(cid) != "SCHEDULED":
+            statuses[cid] = s
 
     return [candidate_helper(c, statuses.get(str(c["_id"]))) for c in candidates]
 

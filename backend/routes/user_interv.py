@@ -11,14 +11,20 @@ from models.user_interview import InterviewUserCreate, InterviewUserOut
 router = APIRouter(prefix="/api/interview-users", tags=["interview_users"])
 
 def interview_user_helper(interview_user: dict) -> InterviewUserOut:
-    """Convert a raw Mongo interview-user link into the API response model."""
+    """Convert a raw Mongo interview-user link into the API response model.
+
+    Timestamps fall back to a legacy `created_at` field, then `datetime.min`,
+    so malformed rows do not 500 the whole endpoint.
+    """
+
+    fallback = interview_user.get("created_at") or datetime.min
 
     return InterviewUserOut(
         intvuser_id=str(interview_user["_id"]),
         user_id=str(interview_user["user_id"]),
         intv_id=str(interview_user["intv_id"]),
-        intvuser_created_at=interview_user["intvuser_created_at"],
-        intvuser_updated_at=interview_user["intvuser_updated_at"],
+        intvuser_created_at=interview_user.get("intvuser_created_at") or fallback,
+        intvuser_updated_at=interview_user.get("intvuser_updated_at") or fallback,
     )
 
 @router.post(

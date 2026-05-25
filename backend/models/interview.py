@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 
 
 # Interview lifecycle used by scheduling and interview progress tracking.
-InterviewStatus = Literal["scheduled", "in_progress", "completed", "cancelled"]
+InterviewStatus = Literal["not_scheduled", "scheduled", "in_progress", "completed", "cancelled", "EVALUATED", "HIRED", "REJECTED"]
 
 
 class InterviewFeedbackSection(BaseModel):
@@ -64,7 +64,7 @@ class InterviewOut(BaseModel):
     intv_id: str
     cand_id: str
     job_id: str
-    intv_date_time: datetime
+    intv_date_time: Optional[datetime] = None
     intv_location: Optional[str] = None
     intv_transcript: Optional[str] = None
     intv_status: InterviewStatus

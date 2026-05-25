@@ -45,17 +45,27 @@ const AVATAR_COLORS = [
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function initials(name = '') {
-  return name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()
+  const safeName = typeof name === 'string' ? name.trim() : ''
+  if (!safeName) return '--'
+
+  return safeName
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((w) => w[0])
+    .join('')
+    .slice(0, 2)
+    .toUpperCase()
 }
 
 function avatarColor(name = '') {
+  const safeName = typeof name === 'string' ? name : ''
   let hash = 0
-  for (const c of name) hash = (hash * 31 + c.charCodeAt(0)) & 0xffffffff
+  for (const c of safeName) hash = (hash * 31 + c.charCodeAt(0)) & 0xffffffff
   return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length]
 }
 
 function formatDate(iso) {
-  if (!iso) return '--'
+  if (!iso || typeof iso !== 'string' || !iso.includes('-')) return '--'
   const [y, m, d] = iso.split('-')
   return `${d}/${m}/${y}`
 }
@@ -63,6 +73,7 @@ function formatDate(iso) {
 function formatDateTime(iso) {
   if (!iso) return '--'
   const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return '--'
   const today = new Date()
   const isToday = d.toDateString() === today.toDateString()
   const time = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
@@ -763,7 +774,7 @@ export default function JobDetailPage() {
                 {candidates.length}
               </span>
               {' / '}
-              {job.candidates_total ?? 0} candidates
+              {job?.candidates_total ?? 0} candidates
             </span>
             <button
               type="button"
