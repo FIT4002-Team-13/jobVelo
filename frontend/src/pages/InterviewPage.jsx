@@ -270,6 +270,7 @@ export default function InterviewPage() {
   const audioContextRef = useRef(null);
   const processorRef = useRef(null);
   const mediaStreamRef = useRef(null);
+  const micStreamRef = useRef(null);
   const partialEntryRef = useRef(null);
   const entryCounterRef = useRef(1);
   const startTimeRef = useRef(Date.now());
@@ -345,11 +346,21 @@ export default function InterviewPage() {
       });
       mediaStreamRef.current = displayStream;
 
+      // Also request microphone access
+      setStatus("Requesting microphone access...");
+      const micStream = await navigator.mediaDevices.getUserMedia({
+        audio: true,
+      });
+      micStreamRef.current = micStream;
+
       const audioContext = new (
         window.AudioContext || window.webkitAudioContext
       )();
       audioContextRef.current = audioContext;
-      const source = audioContext.createMediaStreamSource(displayStream);
+
+      // Create sources for both streams
+      const displaySource = audioContext.createMediaStreamSource(displayStream);
+      const micSource = audioContext.createMediaStreamSource(micStream);
       const processor = audioContext.createScriptProcessor(4096, 1, 1);
       processorRef.current = processor;
 
@@ -367,7 +378,9 @@ export default function InterviewPage() {
         wsRef.current.send(buffer);
       };
 
-      source.connect(processor);
+      // Connect both audio sources to the processor
+      displaySource.connect(processor);
+      micSource.connect(processor);
       processor.connect(audioContext.destination);
 
       // Display the screen share in the video element
@@ -389,9 +402,9 @@ export default function InterviewPage() {
       });
     } catch (error) {
       if (error.name === "NotAllowedError") {
-        setStatus("Screen share cancelled");
+        setStatus("Screen share or microphone access cancelled");
       } else if (error.name === "NotFoundError") {
-        setStatus("No screen available to share");
+        setStatus("No screen or microphone available");
       } else {
         console.error("Unable to start screen share", error);
         setStatus("Unable to start screen share");
@@ -419,6 +432,11 @@ export default function InterviewPage() {
     if (mediaStreamRef.current) {
       mediaStreamRef.current.getTracks().forEach((track) => track.stop());
       mediaStreamRef.current = null;
+    }
+
+    if (micStreamRef.current) {
+      micStreamRef.current.getTracks().forEach((track) => track.stop());
+      micStreamRef.current = null;
     }
 
     if (videoRef.current) {
