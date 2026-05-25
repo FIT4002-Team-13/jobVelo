@@ -46,6 +46,32 @@ async def get_current_user(token: str | None = Depends(oauth2_scheme)) -> dict:
     return user
 
 
+async def get_current_comp_id(user: dict = Depends(get_current_user)) -> ObjectId:
+    """Return the caller's company id as a Mongo ObjectId.
+
+    Every collection that's company-scoped (jobs, candidates, job_candidates,
+    cv_analyses) stores `comp_id` as an ObjectId, so we cast here once and
+    every consuming route just plugs the result straight into a query.
+
+    Raises 400 if the JWT user has no comp_id (shouldn't happen for any
+    properly-created user, but legacy seed accounts might).
+    """
+    raw = user.get("comp_id")
+    if not raw:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Current user is not attached to a company",
+        )
+    if isinstance(raw, ObjectId):
+        return raw
+    if not ObjectId.is_valid(str(raw)):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Current user has an invalid comp_id",
+        )
+    return ObjectId(str(raw))
+
+
 def require_role(*allowed: str):
     """Build a dependency that 403s unless the current user has one of `allowed`
     roles. Use as `Depends(require_role("admin"))` on admin-only routes.

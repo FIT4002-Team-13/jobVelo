@@ -8,7 +8,7 @@ import { flex, card, badge, form, button, modal, page } from '../styles/layout'
 import { fontSize } from '../styles/typography'
 
 import { useAuth } from '../lib/AuthContext.jsx'
-import { api } from '../lib/api.js'
+import { api, authedFetch } from '../lib/api.js'
 import { isEmail, isHttpUrl, isPhone, isFullName, isFutureDateTime } from '../lib/validators.js'
 import { SortMenu, FilterMenu, makeSorter } from '../components/job-candidate/TableControls'
 
@@ -22,21 +22,60 @@ const STATUS_STYLES = {
   Completed:     'bg-mint-500 text-white',
 }
 
-// Only SCHEDULED + EVALUATED are surfaced - HIRED / REJECTED removed.
-// Anything else (including legacy data) falls back to the neutral pill style
-// via the `?? 'bg-neutral-100 ...'` guard at the call site.
+// Candidate-row status palette. Three visual states:
+//   - SCHEDULED  → interview fully set up (has date AND interviewer): neutral grey
+//   - INCOMPLETE → derived client-side when SCHEDULED but missing date or
+//                  interviewer; coral-tinted to read as "needs attention"
+//   - EVALUATED  → interview done, scoring filled: sky blue
+// Anything else (legacy data) falls back to neutral via the `??` guard at
+// the call site.
 const CANDIDATE_STATUS_STYLES = {
-  SCHEDULED: 'bg-neutral-100 text-neutral-500',
-  EVALUATED: 'bg-sky-100 text-sky-600',
+  SCHEDULED:  'bg-neutral-100 text-neutral-500',
+  INCOMPLETE: 'bg-coral-50 text-coral-600',
+  EVALUATED:  'bg-sky-100 text-sky-600',
+}
+
+// Friendly labels - the keys above are loud SHOUTING from the DB enum,
+// the values are what the pill actually shows.
+const CANDIDATE_STATUS_LABELS = {
+  SCHEDULED:  'Scheduled',
+  INCOMPLETE: 'Incomplete',
+  EVALUATED:  'Evaluated',
 }
 
 // Options shown in the candidates-table FilterMenu. Kept in sync with the
 // CANDIDATE_STATUS_STYLES keys above - any new status pill needs a matching
 // entry here so users can filter by it.
 const CANDIDATE_FILTER_OPTIONS = [
-  { value: 'SCHEDULED', label: 'Scheduled' },
-  { value: 'EVALUATED', label: 'Evaluated' },
+  { value: 'SCHEDULED',  label: 'Scheduled'  },
+  { value: 'INCOMPLETE', label: 'Incomplete' },
+  { value: 'EVALUATED',  label: 'Evaluated'  },
 ]
+
+/**
+ * Derive what status pill to show for a candidate row.
+ *
+ * The backend stores SCHEDULED whenever the row is created, even if the
+ * user hasn't actually scheduled the interview yet (no date, no
+ * interviewer). That's a poor signal for the recruiter scanning the
+ * table - "scheduled" suggests "ready to go" when it might not be.
+ *
+ * So at render time we downgrade SCHEDULED → INCOMPLETE when either
+ * scheduled_at or interviewer is missing. EVALUATED rows are left alone -
+ * once an interview is scored we trust the source-of-truth status.
+ *
+ * Missing-status fallback: legacy rows (and rows from creation paths that
+ * forgot to set `status`) come back with `c.status == null`. We treat
+ * those as SCHEDULED here so they go through the same incomplete-check
+ * pipeline and render as a real pill instead of an em-dash.
+ */
+function displayStatus(c) {
+  const base = c?.status || 'SCHEDULED'
+  if (base === 'SCHEDULED' && (!c?.scheduled_at || !c?.interviewer)) {
+    return 'INCOMPLETE'
+  }
+  return base
+}
 
 const AVATAR_COLORS = [
   'bg-primary-500', 'bg-sky-500', 'bg-mint-500', 'bg-coral-500'
@@ -44,13 +83,20 @@ const AVATAR_COLORS = [
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function initials(name = '') {
-  return name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()
+// Both helpers handle null + undefined the same way: empty string fallback.
+// JS's `= ''` default param ONLY kicks in for undefined - passing null
+// (which several candidate fields can be) would crash `for...of null`
+// with "name is not iterable". Use `?? ''` instead.
+
+function initials(name) {
+  const s = name ?? ''
+  return s.split(' ').map(w => w[0] ?? '').join('').slice(0, 2).toUpperCase()
 }
 
-function avatarColor(name = '') {
+function avatarColor(name) {
+  const s = name ?? ''
   let hash = 0
-  for (const c of name) hash = (hash * 31 + c.charCodeAt(0)) & 0xffffffff
+  for (const c of s) hash = (hash * 31 + c.charCodeAt(0)) & 0xffffffff
   return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length]
 }
 
@@ -146,7 +192,7 @@ function AddCandidateModal({ jobId, onClose, onAdded }) {
       scheduled_at: form_state.scheduled_at || null,
     }
     try {
-      const res = await fetch(`/api/jobs/${jobId}/candidates`, {
+      const res = await authedFetch(`/jobs/${jobId}/candidates`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
@@ -507,6 +553,14 @@ function CandidatesTable({ candidates, tab, setTab, onStartInterview, onDelete }
                 </td>
               </tr>
             ) : sorted.map((c, i) => {
+              // Status displayed in the pill is derived (see displayStatus):
+              // a SCHEDULED row missing a date or interviewer becomes INCOMPLETE
+              // so the recruiter can see at a glance what still needs setup.
+              const renderedStatus = displayStatus(c)
+              const statusLabel    = CANDIDATE_STATUS_LABELS[renderedStatus] ?? renderedStatus ?? '—'
+              const hasInterviewer = !!c.interviewer
+              const hasSchedule    = !!c.scheduled_at
+
               // Cells shared by both views (so they read identically across tabs)
               const candidateCell = (
                 <td className="px-4 py-3">
@@ -520,8 +574,8 @@ function CandidatesTable({ candidates, tab, setTab, onStartInterview, onDelete }
               )
               const statusCell = (
                 <td className="px-4 py-3">
-                  <span className={`${badge.sm} ${CANDIDATE_STATUS_STYLES[c.status] ?? 'bg-neutral-100 text-neutral-500'}`}>
-                    {c.status}
+                  <span className={`${badge.sm} ${CANDIDATE_STATUS_STYLES[renderedStatus] ?? 'bg-neutral-100 text-neutral-500'}`}>
+                    {statusLabel}
                   </span>
                 </td>
               )
@@ -530,11 +584,29 @@ function CandidatesTable({ candidates, tab, setTab, onStartInterview, onDelete }
                   {formatScore(c.score)}
                 </td>
               )
-              // Actions: Start Interview is only meaningful for SCHEDULED rows
-              // (so it stays greyed-out on the RANKINGS tab where everything is
-              // typically EVALUATED). Delete is always available - removing a
-              // mis-added candidate from a job shouldn't depend on their state.
-              const canStart = c.status === 'SCHEDULED'
+              // Actions: Start Interview is only meaningful for FULLY-SCHEDULED
+              // rows. Incomplete rows (missing date / interviewer) shouldn't be
+              // startable - you need both pieces to know when + with whom to
+              // begin. Delete is always available.
+              const canStart = renderedStatus === 'SCHEDULED'
+              // Tooltip explains WHY when the button is disabled - missing
+              // pieces are listed specifically so the recruiter knows
+              // exactly what to fix. EVALUATED rows get a different message
+              // since the interview's already done. Active rows get a short
+              // confirmation hint.
+              let startTooltip
+              if (canStart) {
+                startTooltip = 'Start this interview session'
+              } else if (renderedStatus === 'EVALUATED') {
+                startTooltip = 'Interview already completed'
+              } else {
+                const missing = []
+                if (!hasSchedule)    missing.push('a date/time')
+                if (!hasInterviewer) missing.push('an interviewer')
+                startTooltip = missing.length
+                  ? `Add ${missing.join(' and ')} before starting.`
+                  : 'This interview cannot be started.'
+              }
               const actionsCell = (
                 <td className="px-4 py-3">
                   <div className={`${flex.row} gap-2`}>
@@ -542,6 +614,7 @@ function CandidatesTable({ candidates, tab, setTab, onStartInterview, onDelete }
                       type="button"
                       disabled={!canStart}
                       onClick={() => canStart && onStartInterview?.(c)}
+                      title={startTooltip}
                       className={`${flex.row} gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors whitespace-nowrap ${
                         canStart
                           ? 'bg-primary-500 hover:bg-primary-600 text-white'
@@ -612,17 +685,39 @@ function CandidatesTable({ candidates, tab, setTab, onStartInterview, onDelete }
                     <>
                       {candidateCell}
                       {statusCell}
-                      <td className="px-4 py-3 text-neutral-500 whitespace-nowrap">
-                        {formatDateTime(c.scheduled_at)}
+                      {/* Datetime: full timestamp when set, italic muted
+                          "Not scheduled" when missing. The italic + lighter
+                          colour reads as a placeholder rather than data. */}
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        {hasSchedule ? (
+                          <span className="text-neutral-500">{formatDateTime(c.scheduled_at)}</span>
+                        ) : (
+                          <span className="italic text-neutral-400">Not scheduled</span>
+                        )}
                       </td>
                       {scoreCell}
+                      {/* Interviewer: real avatar + name when assigned, a
+                          dashed-circle placeholder + "Not assigned" otherwise.
+                          The dashed circle matches the EmptyAvatar pattern on
+                          JobCard so "empty slot" reads consistently across the
+                          app. */}
                       <td className="px-4 py-3">
-                        <div className={`${flex.row} gap-2`}>
-                          <div className={`w-7 h-7 rounded-pill ${flex.rowCenter} text-white text-xs font-bold shrink-0 ${avatarColor(c.interviewer)}`}>
-                            {initials(c.interviewer)}
+                        {hasInterviewer ? (
+                          <div className={`${flex.row} gap-2`}>
+                            <div className={`w-7 h-7 rounded-pill ${flex.rowCenter} text-white text-xs font-bold shrink-0 ${avatarColor(c.interviewer)}`}>
+                              {initials(c.interviewer)}
+                            </div>
+                            <span className="text-neutral-600">{c.interviewer}</span>
                           </div>
-                          <span className="text-neutral-600">{c.interviewer}</span>
-                        </div>
+                        ) : (
+                          <div className={`${flex.row} gap-2`}>
+                            <div
+                              className="w-7 h-7 rounded-pill border-2 border-dashed border-neutral-300 shrink-0"
+                              aria-hidden
+                            />
+                            <span className="italic text-neutral-400">Not assigned</span>
+                          </div>
+                        )}
                       </td>
                       {actionsCell}
                     </>
@@ -659,8 +754,8 @@ export default function JobDetailPage() {
     async function load() {
       try {
         const [jobRes, candsRes] = await Promise.all([
-          fetch(`/api/jobs/${id}`),
-          fetch(`/api/jobs/${id}/candidates`),
+          authedFetch(`/jobs/${id}`),
+          authedFetch(`/jobs/${id}/candidates`),
         ])
         if (!jobRes.ok) throw new Error('Job not found.')
         setJob(await jobRes.json())

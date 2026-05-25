@@ -23,11 +23,13 @@ from pydantic import BaseModel, Field
 class JobCreate(BaseModel):
     """Body for POST /api/jobs.
 
-    comp_id is required so the job is scoped to the calling user's company.
-    Once auth lands this should come from the session instead of the body.
+    `comp_id` is OPTIONAL and IGNORED by the route - the actual value comes
+    from the JWT. Kept on the schema (with a None default) only so old
+    clients that still send it don't get a 422. Once nothing sends it,
+    drop the field.
     """
 
-    comp_id: str = Field(..., min_length=1)
+    comp_id: str | None = None
     title: str = Field(..., min_length=1, max_length=120)
     description: str = ""
     employment_type: list[str] = []

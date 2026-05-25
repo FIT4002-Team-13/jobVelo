@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import Sidebar from '../components/common/Sidebar'
-import { api } from '../lib/api.js'
+import { api, authedFetch } from '../lib/api.js'
 import { SortMenu, FilterMenu, makeSorter } from '../components/job-candidate/TableControls'
 import { page } from '../styles/layout'
 
@@ -131,9 +131,9 @@ export default function DashboardPage() {
         // empty list shows an empty-state card.
         const [meData, sumRes, jobsRes, candsRes] = await Promise.all([
           api.me(),
-          fetch('/api/dashboard/summary'),
-          fetch('/api/jobs'),
-          fetch('/api/candidates'),
+          authedFetch('/dashboard/summary'),
+          authedFetch('/jobs'),
+          authedFetch('/candidates'),
         ])
         setMe(meData)
         setSummary(await sumRes.json())

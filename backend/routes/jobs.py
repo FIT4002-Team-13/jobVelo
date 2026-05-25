@@ -23,6 +23,7 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 from pydantic import BaseModel, EmailStr, Field
 
 from database import get_db
+from dependencies import get_current_comp_id
 from models.job import JobCreate, JobOut, JobUpdate
 
 router = APIRouter(prefix="/api/jobs", tags=["jobs"])
@@ -106,21 +107,24 @@ async def _job_stats(db, job_ids: list[str]) -> dict[str, dict]:
 
 @router.get("", response_model=list[JobOut])
 async def list_jobs(
-    comp_id: str | None = None,
     db: AsyncIOMotorDatabase = Depends(get_db),
+    comp_id: ObjectId = Depends(get_current_comp_id),
 ) -> list[JobOut]:
-    """List jobs, optionally filtered to a company. Newest-update first.
+    """List jobs in the caller's company. Newest-update first.
+
+    Tenant isolation: comp_id is sourced from the JWT - the client cannot
+    pass a different comp_id to peek at another company's jobs.
 
     Each returned job's `interviewers` array is computed live from the
     job_candidates link table - the field on the job doc itself is just
     a placeholder (`[]` from create_job). This means avatar stacks on
     the JobCard update without needing a separate write path.
-
-    Once routes are auth-gated, replace the optional query param with a
-    forced filter from `user["comp_id"]`.
     """
-    query = {"comp_id": _comp_oid(comp_id)} if comp_id else {}
-    jobs = await db.jobs.find(query).sort("job_last_update_datetime", -1).to_list(length=200)
+    jobs = await (
+        db.jobs.find({"comp_id": comp_id})
+        .sort("job_last_update_datetime", -1)
+        .to_list(length=200)
+    )
 
     stats = await _job_stats(db, [str(j["_id"]) for j in jobs])
     return [
@@ -137,9 +141,13 @@ async def list_jobs(
 async def get_job(
     job_id: str,
     db: AsyncIOMotorDatabase = Depends(get_db),
+    comp_id: ObjectId = Depends(get_current_comp_id),
 ) -> JobOut:
     oid = _validate_oid(job_id)
-    job = await db.jobs.find_one({"_id": oid})
+    # Filter by comp_id at fetch time - returns 404 (not 403) for jobs in
+    # another company so we don't leak existence of records the caller
+    # shouldn't know about.
+    job = await db.jobs.find_one({"_id": oid, "comp_id": comp_id})
     if job is None:
         raise HTTPException(status_code=404, detail="Job not found")
 
@@ -159,10 +167,17 @@ async def get_job(
 async def create_job(
     payload: JobCreate,
     db: AsyncIOMotorDatabase = Depends(get_db),
+    comp_id: ObjectId = Depends(get_current_comp_id),
 ) -> JobOut:
+    """Create a job in the caller's company.
+
+    Any `comp_id` the client sends in the body is IGNORED - we substitute
+    the one derived from the JWT so a user can't create jobs in a company
+    they don't belong to.
+    """
     now = datetime.now(timezone.utc)
     body = payload.model_dump()
-    body["comp_id"] = _comp_oid(body["comp_id"])  # store ObjectId, not string
+    body["comp_id"] = comp_id  # JWT-derived, ignores whatever the client sent
     # `candidates_filled` and `interviewers` are NOT stored on the doc -
     # they're computed live from job_candidates on every read so they can't
     # drift. _serialize fills them with safe defaults (0 / []) when missing.
@@ -182,6 +197,7 @@ async def update_job(
     job_id: str,
     payload: JobUpdate,
     db: AsyncIOMotorDatabase = Depends(get_db),
+    comp_id: ObjectId = Depends(get_current_comp_id),
 ) -> JobOut:
     oid = _validate_oid(job_id)
 
@@ -190,8 +206,10 @@ async def update_job(
         raise HTTPException(status_code=400, detail="No fields to update")
     updates["job_last_update_datetime"] = datetime.now(timezone.utc)
 
+    # Two-part filter: only updates the doc if it ALSO belongs to the
+    # caller's company. Cross-tenant edits hit the 404 branch.
     result = await db.jobs.find_one_and_update(
-        {"_id": oid},
+        {"_id": oid, "comp_id": comp_id},
         {"$set": updates},
         return_document=True,
     )
@@ -210,13 +228,15 @@ async def update_job(
 async def delete_job(
     job_id: str,
     db: AsyncIOMotorDatabase = Depends(get_db),
+    comp_id: ObjectId = Depends(get_current_comp_id),
 ):
     """Delete the job AND all its job_candidates links so we don't leave
     dangling rows pointing at a deleted job. The candidate docs themselves
     are NOT deleted - candidates are shared across many jobs."""
     oid = _validate_oid(job_id)
 
-    result = await db.jobs.delete_one({"_id": oid})
+    # Only delete if the job belongs to the caller's company.
+    result = await db.jobs.delete_one({"_id": oid, "comp_id": comp_id})
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Job not found")
 
@@ -240,12 +260,17 @@ async def delete_job(
 async def list_candidates_for_job(
     job_id: str,
     db: AsyncIOMotorDatabase = Depends(get_db),
+    comp_id: ObjectId = Depends(get_current_comp_id),
 ):
     """Joined view: every candidate linked to this job, flattened with
     interview-style fields (name / status / score / scheduled_at /
-    interviewer) so the table can render directly."""
+    interviewer) so the table can render directly.
+
+    Tenant guard: 404s if the job belongs to a different company - same
+    error shape as a genuinely missing job.
+    """
     oid = _validate_oid(job_id)
-    if not await db.jobs.find_one({"_id": oid}, {"_id": 1}):
+    if not await db.jobs.find_one({"_id": oid, "comp_id": comp_id}, {"_id": 1}):
         raise HTTPException(status_code=404, detail="Job not found")
 
     links = await db.job_candidates.find({"job_id": job_id}).to_list(length=500)
@@ -300,6 +325,7 @@ async def remove_candidate_from_job(
     job_id: str,
     jobcand_id: str,
     db: AsyncIOMotorDatabase = Depends(get_db),
+    comp_id: ObjectId = Depends(get_current_comp_id),
 ):
     """Remove a single candidate-job link.
 
@@ -310,6 +336,12 @@ async def remove_candidate_from_job(
     """
     if not ObjectId.is_valid(jobcand_id):
         raise HTTPException(status_code=400, detail="Invalid jobcand_id")
+
+    # Tenant guard: confirm the job belongs to this company before doing
+    # anything destructive on links beneath it.
+    oid = _validate_oid(job_id)
+    if not await db.jobs.find_one({"_id": oid, "comp_id": comp_id}, {"_id": 1}):
+        raise HTTPException(status_code=404, detail="Job not found")
 
     # Scope by job_id too so an attacker can't delete a random link by id.
     result = await db.job_candidates.delete_one(
@@ -343,6 +375,7 @@ async def add_candidate_to_job(
     job_id: str,
     payload: AddCandidateToJob,
     db: AsyncIOMotorDatabase = Depends(get_db),
+    comp_id: ObjectId = Depends(get_current_comp_id),
 ):
     """Create-or-reuse a candidate AND link them to this job in one call.
 
@@ -352,11 +385,14 @@ async def add_candidate_to_job(
     cand.py so the data ends up in the same shape regardless of which
     entry-point was used.
 
+    Tenant guard: the job must belong to the caller's company - prevents
+    a user from injecting candidates into another company's pipeline.
+
     Returns the joined shape the JobDetailPage table expects:
       { candidate: {flat shape with name/email/etc.}, job: <updated job> }
     """
     oid = _validate_oid(job_id)
-    job = await db.jobs.find_one({"_id": oid})
+    job = await db.jobs.find_one({"_id": oid, "comp_id": comp_id})
     if job is None:
         raise HTTPException(status_code=404, detail="Job not found")
 

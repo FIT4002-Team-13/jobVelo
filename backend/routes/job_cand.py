@@ -15,9 +15,10 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from bson import ObjectId
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
 
 from database import get_db
+from dependencies import get_current_comp_id
 from models.job_candidate import (
     JobCandidateCreate,
     JobCandidateOut,
@@ -91,9 +92,14 @@ async def create_job_candidate(payload: JobCandidateCreate) -> JobCandidateOut:
         )
 
     now = datetime.now(timezone.utc)
+    # status defaults to SCHEDULED on insert - mirrors the other two
+    # creation paths (jobs.add_candidate_to_job, cand.create_candidate_for_job)
+    # so the JobDetailPage table renders a consistent pill no matter which
+    # entry point created the link.
     job_candidate_doc = {
         "cand_id": payload.cand_id,
         "job_id": payload.job_id,
+        "status": "SCHEDULED",
         "cv_analysis": payload.cv_analysis,
         "communication_score": payload.communication_score,
         "skill_score": payload.skill_score,
@@ -112,6 +118,76 @@ async def create_job_candidate(payload: JobCandidateCreate) -> JobCandidateOut:
         )
 
     return job_candidate_helper(created_job_candidate)
+
+
+@router.get("")
+async def list_job_candidates_flat(
+    comp_id: ObjectId = Depends(get_current_comp_id),
+) -> list[dict]:
+    """Flat enumeration of every job-candidate link in the caller's company,
+    joined with the job title + candidate name.
+
+    Used by the CV Analyser upload page to populate its picker. Each row
+    also carries `has_analysis` so the picker can short-circuit straight
+    to the result screen for links that already have a cached analysis.
+
+    Tenant isolation: comp_id comes from the JWT - the client can't ask
+    for another company's link list.
+    """
+    db = get_db()
+
+    # 1. Scope by company: gather the company's job ids first, then filter
+    #    links by job_id. (job_candidates docs don't carry comp_id directly,
+    #    but jobs do, so we do a two-step lookup.)
+    jobs = await db.jobs.find({"comp_id": comp_id}, {"title": 1}).to_list(length=500)
+    if not jobs:
+        return []
+    jobs_by_id = {str(j["_id"]): j for j in jobs}
+    job_id_strs = list(jobs_by_id.keys())
+
+    # 2. Fetch every link belonging to those jobs.
+    links = await db.job_candidates.find(
+        {"job_id": {"$in": job_id_strs}}
+    ).to_list(length=1000)
+    if not links:
+        return []
+
+    # 3. Bulk-fetch candidate names so we don't N+1 per link.
+    cand_oids = [
+        ObjectId(link["cand_id"])
+        for link in links
+        if ObjectId.is_valid(link.get("cand_id", ""))
+    ]
+    cand_docs = await db.candidates.find(
+        {"_id": {"$in": cand_oids}},
+        {"cand_full_name": 1, "name": 1},
+    ).to_list(length=1000)
+    cands_by_id = {str(c["_id"]): c for c in cand_docs}
+
+    # 4. has_analysis flag: which jobcand_ids already have a cached analysis.
+    link_ids = [str(link["_id"]) for link in links]
+    analysed_ids = {
+        a["jobcand_id"]
+        async for a in db.cv_analyses.find(
+            {"jobcand_id": {"$in": link_ids}},
+            {"jobcand_id": 1},
+        )
+    }
+
+    out: list[dict] = []
+    for link in links:
+        job = jobs_by_id.get(str(link["job_id"]))
+        cand = cands_by_id.get(str(link["cand_id"]))
+        out.append({
+            "jobcand_id":     str(link["_id"]),
+            "job_id":         str(link["job_id"]),
+            "cand_id":        str(link["cand_id"]),
+            "job_title":      (job or {}).get("title", "(missing job)"),
+            "cand_full_name": (cand or {}).get("cand_full_name") or (cand or {}).get("name", "(unknown candidate)"),
+            "status":         link.get("status"),
+            "has_analysis":   str(link["_id"]) in analysed_ids,
+        })
+    return out
 
 
 @router.get("/by-job/{job_id}", response_model=list[JobCandidateOut])

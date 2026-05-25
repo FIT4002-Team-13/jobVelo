@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { flex, form as f, button, modal } from '../../styles/layout'
 import { useAuth } from '../../lib/AuthContext.jsx'
+import { authedFetch } from '../../lib/api.js'
 import { toPositiveInt, parseSalary } from '../../lib/validators.js'
 
 // Field length caps - mirror the backend Pydantic limits.
@@ -86,8 +87,11 @@ export default function JobFormModal({ initialJob, onClose, onSaved }) {
         return setError('Pick a salary type (Hourly or Yearly) when entering a salary.')
     }
 
-    // comp_id comes from the JWT-derived user; never trust the form for it.
-    if (!isEdit && !user?.comp_id) return setError('You must be logged in to create a job.')
+    // Auth check: bail before the network round-trip if there's no user
+    // (would 401 server-side anyway). comp_id is no longer sent in the
+    // body - the backend sources it from the JWT, so the client doesn't
+    // need to know or trust it.
+    if (!isEdit && !user) return setError('You must be logged in to create a job.')
 
     setError(null)
     setSubmitting(true)
@@ -102,14 +106,12 @@ export default function JobFormModal({ initialJob, onClose, onSaved }) {
       // Trim it but don't normalise: the user sees back exactly what they typed.
       salary:            String(form.salary).trim(),
       salary_type:       form.salary_type,
-      // Only attach comp_id on create - PUT/update can't change company.
-      ...(isEdit
-        ? { status: form.status }
-        : { comp_id: user.comp_id }),
+      // status is the only edit-only field; comp_id is set server-side now.
+      ...(isEdit ? { status: form.status } : {}),
     }
     try {
-      const res = await fetch(
-        isEdit ? `/api/jobs/${initialJob.id}` : '/api/jobs',
+      const res = await authedFetch(
+        isEdit ? `/jobs/${initialJob.id}` : '/jobs',
         { method: isEdit ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) },
       )
       if (!res.ok) {

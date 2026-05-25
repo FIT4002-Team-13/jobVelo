@@ -13,6 +13,18 @@ export class ApiError extends Error {
   }
 }
 
+// Thin authed-fetch helper: same shape as window.fetch, but injects the
+// Bearer token from authStore so callers that want raw Response objects
+// (status codes, custom error parsing, etc.) don't have to wrestle with
+// auth headers themselves. Used by component-level code that pre-dates
+// the `request()` helper below; new code should prefer `request()`.
+export function authedFetch(path, init = {}) {
+  const token = getToken()
+  const headers = { ...(init.headers || {}) }
+  if (token) headers.Authorization = `Bearer ${token}`
+  return fetch(`${BASE}${path}`, { ...init, headers })
+}
+
 // Auto-detects JSON vs FormData bodies:
 // - plain object → JSON encoded with Content-Type: application/json
 // - FormData     → sent raw (browser sets the multipart boundary header)
