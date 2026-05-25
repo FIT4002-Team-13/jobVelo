@@ -129,7 +129,9 @@ function TranscriptEntry({ entry }) {
   return (
     <div className={`${flex.row} gap-3 py-2 group`}>
       <div
-        className={`w-8 h-8 rounded-pill ${flex.rowCenter} text-white text-xs font-bold shrink-0 ${avatarColor(entry.speaker)}`}
+        className={`w-8 h-8 rounded-pill ${
+          flex.rowCenter
+        } text-white text-xs font-bold shrink-0 ${avatarColor(entry.speaker)}`}
       >
         {initials(entry.speaker)}
       </div>
@@ -281,29 +283,30 @@ export default function InterviewPage() {
       Math.floor((Date.now() - startTimeRef.current) / 1000),
     );
 
-    setTranscript((prev) => {
-      if (isFinal) {
-        const newEntry = {
-          id: entryCounterRef.current++,
-          speaker: "Live",
-          timestamp,
-          text,
-        };
-        const refreshed = partialEntryRef.current
-          ? prev.filter((entry) => entry.id !== partialEntryRef.current)
+    if (isFinal) {
+      const id = entryCounterRef.current++;
+      const prevPartialId = partialEntryRef.current;
+      partialEntryRef.current = null;
+
+      const newEntry = { id, speaker: "Live", timestamp, text };
+      setTranscript((prev) => {
+        const refreshed = prevPartialId
+          ? prev.filter((entry) => entry.id !== prevPartialId)
           : prev;
-
-        partialEntryRef.current = null;
         return [...refreshed, newEntry];
+      });
+    } else {
+      if (!partialEntryRef.current) {
+        partialEntryRef.current = `partial-${entryCounterRef.current++}`;
       }
-
-      const partialId =
-        partialEntryRef.current ?? `partial-${entryCounterRef.current++}`;
-      partialEntryRef.current = partialId;
+      const partialId = partialEntryRef.current;
       const partialEntry = { id: partialId, speaker: "Live", timestamp, text };
 
-      return [...prev.filter((entry) => entry.id !== partialId), partialEntry];
-    });
+      setTranscript((prev) => [
+        ...prev.filter((entry) => entry.id !== partialId),
+        partialEntry,
+      ]);
+    }
   }
 
   function createTranscriptionSocket() {
@@ -544,7 +547,11 @@ export default function InterviewPage() {
             </span>
             <button
               onClick={() => setTranscriptVisible((v) => !v)}
-              className={`text-sm ${transcriptVisible ? "text-neutral-400 hover:text-neutral-600" : "text-primary-500 hover:text-primary-600"} transition-colors`}
+              className={`text-sm ${
+                transcriptVisible
+                  ? "text-neutral-400 hover:text-neutral-600"
+                  : "text-primary-500 hover:text-primary-600"
+              } transition-colors`}
             >
               {transcriptVisible ? "Hide" : "Show"}
             </button>
