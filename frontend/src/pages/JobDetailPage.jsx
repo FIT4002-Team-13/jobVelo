@@ -1169,7 +1169,7 @@ export default function JobDetailPage() {
           onClose={() => setStartTarget(null)}
           // Placeholder for now - eventually this will PATCH the link's
           // status to EVALUATED and open the live-transcription UI.
-          onConfirm={() => setStartTarget(null)}
+          onConfirm={() => navigate(`/interview/${startTarget.id}`)}
         />
       )}
 

@@ -125,7 +125,7 @@ function downsampleBuffer(buffer, inputSampleRate, outputSampleRate = 16000) {
 
 // ── Sub-components ────────────────────────────────────────────────────────────
 
-function TranscriptEntry({ entry }) {
+function TranscriptEntry({ entry, onSaveComment }) {
   return (
     <div className={`${flex.row} gap-3 py-2 group`}>
       <div
@@ -141,18 +141,6 @@ function TranscriptEntry({ entry }) {
           {entry.text}
         </span>
       </div>
-      <button className="opacity-0 group-hover:opacity-100 transition-opacity text-neutral-400 hover:text-neutral-600 shrink-0 p-1">
-        <svg
-          width="14"
-          height="14"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-        >
-          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-        </svg>
-      </button>
     </div>
   );
 }
@@ -279,7 +267,7 @@ export default function InterviewPage() {
 
   function appendTranscript(text, isFinal) {
     const timestamp = formatTimer(
-      Math.floor((Date.now() - startTimeRef.current) / 1000),
+      Math.floor((Date.now() - startTimeRef.current) / 1000)
     );
 
     if (isFinal) {
@@ -311,7 +299,7 @@ export default function InterviewPage() {
   function createTranscriptionSocket() {
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     const socket = new WebSocket(
-      `${protocol}//${window.location.host}/api/realtime/transcribe`,
+      `${protocol}//${window.location.host}/api/realtime/transcribe`
     );
     socket.binaryType = "arraybuffer";
 
@@ -355,9 +343,8 @@ export default function InterviewPage() {
       });
       micStreamRef.current = micStream;
 
-      const audioContext = new (
-        window.AudioContext || window.webkitAudioContext
-      )();
+      const audioContext = new (window.AudioContext ||
+        window.webkitAudioContext)();
       audioContextRef.current = audioContext;
 
       // Create sources for both streams
@@ -375,7 +362,7 @@ export default function InterviewPage() {
         const buffer = downsampleBuffer(
           inputBuffer,
           audioContext.sampleRate,
-          16000,
+          16000
         );
         wsRef.current.send(buffer);
       };
@@ -524,7 +511,11 @@ export default function InterviewPage() {
               View Resume
             </button>
             <button
-              className={`${button.outline} ${isScreenSharing ? "bg-sky-100 text-sky-800 hover:bg-sky-200" : ""}`}
+              className={`${button.outline} ${
+                isScreenSharing
+                  ? "bg-sky-100 text-sky-800 hover:bg-sky-200"
+                  : ""
+              }`}
               onClick={() => void toggleScreenShare()}
             >
               {isScreenSharing ? "Stop screen share" : "Share screen"}
