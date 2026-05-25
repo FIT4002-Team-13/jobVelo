@@ -129,7 +129,9 @@ function TranscriptEntry({ entry }) {
   return (
     <div className={`${flex.row} gap-3 py-2 group`}>
       <div
-        className={`w-8 h-8 rounded-pill ${flex.rowCenter} text-white text-xs font-bold shrink-0 ${avatarColor(entry.speaker)}`}
+        className={`w-8 h-8 rounded-pill ${
+          flex.rowCenter
+        } text-white text-xs font-bold shrink-0 ${avatarColor(entry.speaker)}`}
       >
         {initials(entry.speaker)}
       </div>
@@ -276,38 +278,39 @@ export default function InterviewPage() {
 
   function appendTranscript(text, isFinal) {
     const timestamp = formatTimer(
-      Math.floor((Date.now() - startTimeRef.current) / 1000),
+      Math.floor((Date.now() - startTimeRef.current) / 1000)
     );
 
-    setTranscript((prev) => {
-      if (isFinal) {
-        const newEntry = {
-          id: entryCounterRef.current++,
-          speaker: "Live",
-          timestamp,
-          text,
-        };
-        const refreshed = partialEntryRef.current
-          ? prev.filter((entry) => entry.id !== partialEntryRef.current)
+    if (isFinal) {
+      const id = entryCounterRef.current++;
+      const prevPartialId = partialEntryRef.current;
+      partialEntryRef.current = null;
+
+      const newEntry = { id, speaker: "Live", timestamp, text };
+      setTranscript((prev) => {
+        const refreshed = prevPartialId
+          ? prev.filter((entry) => entry.id !== prevPartialId)
           : prev;
-
-        partialEntryRef.current = null;
         return [...refreshed, newEntry];
+      });
+    } else {
+      if (!partialEntryRef.current) {
+        partialEntryRef.current = `partial-${entryCounterRef.current++}`;
       }
-
-      const partialId =
-        partialEntryRef.current ?? `partial-${entryCounterRef.current++}`;
-      partialEntryRef.current = partialId;
+      const partialId = partialEntryRef.current;
       const partialEntry = { id: partialId, speaker: "Live", timestamp, text };
 
-      return [...prev.filter((entry) => entry.id !== partialId), partialEntry];
-    });
+      setTranscript((prev) => [
+        ...prev.filter((entry) => entry.id !== partialId),
+        partialEntry,
+      ]);
+    }
   }
 
   function createTranscriptionSocket() {
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     const socket = new WebSocket(
-      `${protocol}//${window.location.host}/api/realtime/transcribe`,
+      `${protocol}//${window.location.host}/api/realtime/transcribe`
     );
     socket.binaryType = "arraybuffer";
 
@@ -337,9 +340,8 @@ export default function InterviewPage() {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       mediaStreamRef.current = stream;
 
-      const audioContext = new (
-        window.AudioContext || window.webkitAudioContext
-      )();
+      const audioContext = new (window.AudioContext ||
+        window.webkitAudioContext)();
       audioContextRef.current = audioContext;
       const source = audioContext.createMediaStreamSource(stream);
       const processor = audioContext.createScriptProcessor(4096, 1, 1);
@@ -354,7 +356,7 @@ export default function InterviewPage() {
         const buffer = downsampleBuffer(
           inputBuffer,
           audioContext.sampleRate,
-          16000,
+          16000
         );
         wsRef.current.send(buffer);
       };
@@ -458,7 +460,11 @@ export default function InterviewPage() {
               View Resume
             </button>
             <button
-              className={`${button.outline} ${isTranscribing ? "bg-neutral-100 text-neutral-800 hover:bg-neutral-200" : ""}`}
+              className={`${button.outline} ${
+                isTranscribing
+                  ? "bg-neutral-100 text-neutral-800 hover:bg-neutral-200"
+                  : ""
+              }`}
               onClick={() => void toggleTranscription()}
             >
               {isTranscribing ? "Stop transcription" : "Start transcription"}
@@ -492,7 +498,11 @@ export default function InterviewPage() {
             </span>
             <button
               onClick={() => setTranscriptVisible((v) => !v)}
-              className={`text-sm ${transcriptVisible ? "text-neutral-400 hover:text-neutral-600" : "text-primary-500 hover:text-primary-600"} transition-colors`}
+              className={`text-sm ${
+                transcriptVisible
+                  ? "text-neutral-400 hover:text-neutral-600"
+                  : "text-primary-500 hover:text-primary-600"
+              } transition-colors`}
             >
               {transcriptVisible ? "Hide" : "Show"}
             </button>
