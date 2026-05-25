@@ -257,8 +257,8 @@ export default function InterviewPage() {
   const navigate = useNavigate();
 
   const [transcriptVisible, setTranscriptVisible] = useState(true);
-  const [status, setStatus] = useState("Ready to start transcription");
-  const [isTranscribing, setIsTranscribing] = useState(false);
+  const [status, setStatus] = useState("Ready to start screen share");
+  const [isScreenSharing, setIsScreenSharing] = useState(false);
 
   const [interview] = useState(MOCK_INTERVIEW);
   const [transcript, setTranscript] = useState(INITIAL_TRANSCRIPT);
@@ -273,6 +273,7 @@ export default function InterviewPage() {
   const partialEntryRef = useRef(null);
   const entryCounterRef = useRef(1);
   const startTimeRef = useRef(Date.now());
+  const videoRef = useRef(null);
 
   function appendTranscript(text, isFinal) {
     const timestamp = formatTimer(
@@ -328,20 +329,27 @@ export default function InterviewPage() {
     return socket;
   }
 
-  async function startTranscription() {
+  async function startScreenShare() {
     try {
       const socket = createTranscriptionSocket();
       wsRef.current = socket;
-      setStatus("Requesting microphone access...");
+      setStatus("Requesting screen access...");
 
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      mediaStreamRef.current = stream;
+      const displayStream = await navigator.mediaDevices.getDisplayMedia({
+        audio: {
+          echoCancellation: false,
+          noiseSuppression: false,
+          autoGainControl: false,
+        },
+        video: { cursor: "always" },
+      });
+      mediaStreamRef.current = displayStream;
 
       const audioContext = new (
         window.AudioContext || window.webkitAudioContext
       )();
       audioContextRef.current = audioContext;
-      const source = audioContext.createMediaStreamSource(stream);
+      const source = audioContext.createMediaStreamSource(displayStream);
       const processor = audioContext.createScriptProcessor(4096, 1, 1);
       processorRef.current = processor;
 
@@ -361,16 +369,38 @@ export default function InterviewPage() {
 
       source.connect(processor);
       processor.connect(audioContext.destination);
-      setIsTranscribing(true);
-      setStatus("Listening…");
+
+      // Display the screen share in the video element
+      if (videoRef.current) {
+        videoRef.current.srcObject = displayStream;
+        videoRef.current.play().catch((err) => {
+          console.warn("Video play failed", err);
+        });
+      }
+
+      setIsScreenSharing(true);
+      setStatus("Screen sharing & listening…");
+
+      // Handle when user stops screen share from browser UI
+      displayStream.getTracks().forEach((track) => {
+        track.onended = () => {
+          void stopScreenShare();
+        };
+      });
     } catch (error) {
-      console.error("Unable to start transcription", error);
-      setStatus("Unable to start microphone capture");
-      setIsTranscribing(false);
+      if (error.name === "NotAllowedError") {
+        setStatus("Screen share cancelled");
+      } else if (error.name === "NotFoundError") {
+        setStatus("No screen available to share");
+      } else {
+        console.error("Unable to start screen share", error);
+        setStatus("Unable to start screen share");
+      }
+      setIsScreenSharing(false);
     }
   }
 
-  async function stopTranscription() {
+  async function stopScreenShare() {
     if (processorRef.current) {
       processorRef.current.disconnect();
       processorRef.current.onaudioprocess = null;
@@ -391,6 +421,10 @@ export default function InterviewPage() {
       mediaStreamRef.current = null;
     }
 
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
+
     if (wsRef.current) {
       if (wsRef.current.readyState === WebSocket.OPEN) {
         wsRef.current.close();
@@ -398,21 +432,21 @@ export default function InterviewPage() {
       wsRef.current = null;
     }
 
-    setIsTranscribing(false);
-    setStatus("Transcription stopped");
+    setIsScreenSharing(false);
+    setStatus("Screen share stopped");
   }
 
-  async function toggleTranscription() {
-    if (isTranscribing) {
-      await stopTranscription();
+  async function toggleScreenShare() {
+    if (isScreenSharing) {
+      await stopScreenShare();
     } else {
-      await startTranscription();
+      await startScreenShare();
     }
   }
 
   useEffect(() => {
     return () => {
-      void stopTranscription();
+      void stopScreenShare();
     };
   }, []);
 
@@ -458,10 +492,10 @@ export default function InterviewPage() {
               View Resume
             </button>
             <button
-              className={`${button.outline} ${isTranscribing ? "bg-neutral-100 text-neutral-800 hover:bg-neutral-200" : ""}`}
-              onClick={() => void toggleTranscription()}
+              className={`${button.outline} ${isScreenSharing ? "bg-sky-100 text-sky-800 hover:bg-sky-200" : ""}`}
+              onClick={() => void toggleScreenShare()}
             >
-              {isTranscribing ? "Stop transcription" : "Start transcription"}
+              {isScreenSharing ? "Stop screen share" : "Share screen"}
             </button>
             <div className={`${flex.col} gap-2 text-right`}>
               <div
@@ -508,6 +542,19 @@ export default function InterviewPage() {
                   <TranscriptEntry key={entry.id} entry={entry} />
                 ))
               )}
+            </div>
+          )}
+          {isScreenSharing && (
+            <div className="shrink-0 border-t border-neutral-100 pt-4 px-6 pb-4">
+              <p className="text-xs text-neutral-500 mb-2 font-medium">
+                Screen Share
+              </p>
+              <video
+                ref={videoRef}
+                autoPlay
+                muted
+                className="w-full h-40 bg-neutral-900 rounded-lg object-cover"
+              />
             </div>
           )}
         </div>
