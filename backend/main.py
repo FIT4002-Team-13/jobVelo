@@ -7,6 +7,8 @@ from config import settings
 from database import close_mongo_connection, connect_to_mongo, ensure_indexes, seed_mock_data
 from routes import auth, cand, dashboard, files, invitations, job_cand, jobs, realtime, users
 
+from routes import interview, user_interview
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -45,6 +47,8 @@ app.include_router(cand.router)
 app.include_router(job_cand.router)
 app.include_router(realtime.router)
 app.include_router(users.router)
+app.include_router(interview.router)
+app.include_router(user_interview.router)
 
 
 @app.get("/api/health")
