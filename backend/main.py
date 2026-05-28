@@ -33,9 +33,9 @@ app.add_middleware(
 )
 
 
-# Order is mostly cosmetic - it controls the grouping order in /docs.
-# Each router only registers once; duplicates were causing FastAPI to print
-# 'route already exists' warnings.
+# Add routers here as features land:
+# from routes import auth, interview, cv
+# app.include_router(auth.router)
 app.include_router(auth.router)
 app.include_router(invitations.router)
 app.include_router(files.router)
