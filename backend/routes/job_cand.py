@@ -40,6 +40,8 @@ def job_candidate_helper(job_candidate: dict) -> JobCandidateOut:
         communication_score=job_candidate.get("communication_score"),
         skill_score=job_candidate.get("skill_score"),
         problem_solving_score=job_candidate.get("problem_solving_score"),
+        final_score=job_candidate.get("final_score"),
+        rank=job_candidate.get("rank"),
         created_at=job_candidate.get("created_at") or datetime.now(timezone.utc),
         updated_at=job_candidate.get("updated_at") or datetime.now(timezone.utc),
     )
