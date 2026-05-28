@@ -129,7 +129,7 @@ function CandidateScorePanel({ jobCand, interview, onViewTranscription }) {
           FINAL SCORE
         </p>
 
-        <p className={`mt-1 text-xl font-extrabold leading-none ${hasScore ? 'text-primary-500' : 'text-neutral-500'}`}>
+        <p className={`mt-1 text-4xl font-extrabold leading-none ${hasScore ? 'text-primary-500' : 'text-neutral-500'}`}>
           {finalScore}
         </p>
       </div>
