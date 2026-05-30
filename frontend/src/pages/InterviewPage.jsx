@@ -252,6 +252,7 @@ export default function InterviewPage() {
   const [transcriptVisible, setTranscriptVisible] = useState(true);
   const [status, setStatus] = useState("Ready to start screen share");
   const [isScreenSharing, setIsScreenSharing] = useState(false);
+  const [isPaused, setIsPaused] = useState(false);
 
   const [interview] = useState(MOCK_INTERVIEW);
   const [transcript, setTranscript] = useState(INITIAL_TRANSCRIPT);
@@ -267,11 +268,13 @@ export default function InterviewPage() {
   const partialEntryRef = useRef(null);
   const entryCounterRef = useRef(1);
   const startTimeRef = useRef(Date.now());
+  const pausedTimeRef = useRef(0);
+  const isPausedRef = useRef(false);
   const videoRef = useRef(null);
 
   function appendTranscript(text, isFinal) {
     const timestamp = formatTimer(
-      Math.floor((Date.now() - startTimeRef.current) / 1000)
+      Math.floor((Date.now() - startTimeRef.current) / 1000),
     );
 
     if (isFinal) {
@@ -300,10 +303,27 @@ export default function InterviewPage() {
     }
   }
 
+  function togglePause() {
+    if (isPaused) {
+      // Unpause: restore the start time so timer continues from where it was
+      setIsPaused(false);
+      startTimeRef.current = Date.now() - pausedTimeRef.current;
+    } else {
+      // Pause: save current elapsed time
+      setIsPaused(true);
+      pausedTimeRef.current = Date.now() - startTimeRef.current;
+    }
+  }
+
+  // Sync isPausedRef with isPaused state for use in processor callback
+  useEffect(() => {
+    isPausedRef.current = isPaused;
+  }, [isPaused]);
+
   function createTranscriptionSocket() {
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     const socket = new WebSocket(
-      `${protocol}//${window.location.host}/api/realtime/transcribe`
+      `${protocol}//${window.location.host}/api/realtime/transcribe`,
     );
     socket.binaryType = "arraybuffer";
 
@@ -347,8 +367,9 @@ export default function InterviewPage() {
       });
       micStreamRef.current = micStream;
 
-      const audioContext = new (window.AudioContext ||
-        window.webkitAudioContext)();
+      const audioContext = new (
+        window.AudioContext || window.webkitAudioContext
+      )();
       audioContextRef.current = audioContext;
 
       // Create sources for both streams
@@ -358,6 +379,9 @@ export default function InterviewPage() {
       processorRef.current = processor;
 
       processor.onaudioprocess = (event) => {
+        if (isPausedRef.current) {
+          return; // Don't send audio if paused
+        }
         const inputBuffer = event.inputBuffer.getChannelData(0);
         if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
           return;
@@ -366,7 +390,7 @@ export default function InterviewPage() {
         const buffer = downsampleBuffer(
           inputBuffer,
           audioContext.sampleRate,
-          16000
+          16000,
         );
         wsRef.current.send(buffer);
       };
@@ -463,15 +487,16 @@ export default function InterviewPage() {
 
   useEffect(() => {
     const interval = setInterval(() => {
-      const elapsedSeconds = Math.floor(
-        (Date.now() - startTimeRef.current) / 1000,
-      );
-
-      setTimer(elapsedSeconds);
+      if (!isPaused) {
+        const elapsedSeconds = Math.floor(
+          (Date.now() - startTimeRef.current) / 1000,
+        );
+        setTimer(elapsedSeconds);
+      }
     }, 1000);
 
     return () => clearInterval(interval);
-  }, []);
+  }, [isPaused]);
 
   return (
     <div className="h-screen flex flex-col bg-neutral-50 font-sans overflow-hidden">
@@ -624,12 +649,19 @@ export default function InterviewPage() {
 
           {/* Pause / Complete */}
           <div className={`${flex.row} gap-4 shrink-0`}>
-            <button className="flex-1 py-4 text-base font-semibold text-white bg-coral-400 hover:bg-coral-500 rounded-2xl transition-colors">
-              Pause
+            <button
+              onClick={() => togglePause()}
+              className={`flex-1 py-4 text-base font-semibold text-white rounded-2xl transition-colors ${
+                isPaused
+                  ? "bg-mint-400 hover:bg-mint-500"
+                  : "bg-coral-400 hover:bg-coral-500"
+              }`}
+            >
+              {isPaused ? "Unpause" : "Pause"}
             </button>
             <button
               onClick={() => navigate(`/jobs/${id}`)}
-              className="flex-1 py-4 text-base font-semibold text-neutral-700 bg-mint-400 hover:bg-mint-500 rounded-2xl transition-colors"
+              className="flex-1 py-4 text-base font-semibold text-white bg-sky-300 hover:bg-sky-400 rounded-2xl transition-colors"
             >
               Complete
             </button>
