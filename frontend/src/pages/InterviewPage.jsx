@@ -271,10 +271,18 @@ export default function InterviewPage() {
   const pausedTimeRef = useRef(0);
   const isPausedRef = useRef(false);
   const videoRef = useRef(null);
+  const transcriptContainerRef = useRef(null);
+
+  useEffect(() => {
+    const element = transcriptContainerRef.current;
+    if (element) {
+      element.scrollTop = element.scrollHeight;
+    }
+  }, [transcript]);
 
   function appendTranscript(text, isFinal) {
     const timestamp = formatTimer(
-      Math.floor((Date.now() - startTimeRef.current) / 1000),
+      Math.floor((Date.now() - startTimeRef.current) / 1000)
     );
 
     if (isFinal) {
@@ -323,7 +331,7 @@ export default function InterviewPage() {
   function createTranscriptionSocket() {
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     const socket = new WebSocket(
-      `${protocol}//${window.location.host}/api/realtime/transcribe`,
+      `${protocol}//${window.location.host}/api/realtime/transcribe`
     );
     socket.binaryType = "arraybuffer";
 
@@ -367,9 +375,8 @@ export default function InterviewPage() {
       });
       micStreamRef.current = micStream;
 
-      const audioContext = new (
-        window.AudioContext || window.webkitAudioContext
-      )();
+      const audioContext = new (window.AudioContext ||
+        window.webkitAudioContext)();
       audioContextRef.current = audioContext;
 
       // Create sources for both streams
@@ -390,7 +397,7 @@ export default function InterviewPage() {
         const buffer = downsampleBuffer(
           inputBuffer,
           audioContext.sampleRate,
-          16000,
+          16000
         );
         wsRef.current.send(buffer);
       };
@@ -489,7 +496,7 @@ export default function InterviewPage() {
     const interval = setInterval(() => {
       if (!isPaused) {
         const elapsedSeconds = Math.floor(
-          (Date.now() - startTimeRef.current) / 1000,
+          (Date.now() - startTimeRef.current) / 1000
         );
         setTimer(elapsedSeconds);
       }
@@ -588,7 +595,10 @@ export default function InterviewPage() {
             </button>
           </div>
           {transcriptVisible && (
-            <div className="flex-1 overflow-y-auto px-6 py-3 scrollbar-primary">
+            <div
+              className="flex-1 overflow-y-auto px-6 py-3 scrollbar-primary scroll-auto"
+              ref={transcriptContainerRef}
+            >
               {transcript.length === 0 ? (
                 <p className="text-sm text-neutral-400 text-center mt-8">
                   Transcription will appear here once the interview starts.
