@@ -13,11 +13,6 @@ from typing import Literal
 
 from pydantic import BaseModel
 
-<<<<<<< HEAD
-InvitationStatus = Literal["active", "used"]
-
-
-=======
 from models.user import NonAdminRole
 
 InvitationStatus = Literal["active", "used"]
@@ -31,15 +26,11 @@ class InvitationCreate(BaseModel):
     role: NonAdminRole
 
 
->>>>>>> origin/main
 class InvitationOut(BaseModel):
     inv_id: str
     comp_id: str
     code: str
-<<<<<<< HEAD
-=======
     role: NonAdminRole
->>>>>>> origin/main
     status: InvitationStatus
     user_id: str | None = None
     created_at: datetime

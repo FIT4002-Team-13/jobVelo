@@ -4,13 +4,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from config import settings
-<<<<<<< HEAD
-from database import close_mongo_connection, connect_to_mongo, ensure_indexes
-from routes import auth, files, invitations
-=======
 from database import close_mongo_connection, connect_to_mongo, ensure_indexes, seed_mock_data
 from routes import auth, cand, dashboard, files, invitations, job_cand, jobs, users
->>>>>>> origin/main
 
 
 @asynccontextmanager
@@ -38,15 +33,6 @@ app.add_middleware(
 )
 
 
-<<<<<<< HEAD
-app.include_router(auth.router)
-app.include_router(invitations.router)
-app.include_router(files.router)
-# Add more routers here as features land:
-# from routes import interview, cv
-# app.include_router(interview.router)
-# app.include_router(cv.router)
-=======
 # Order is mostly cosmetic - it controls the grouping order in /docs.
 # Each router only registers once; duplicates were causing FastAPI to print
 # 'route already exists' warnings.
@@ -58,7 +44,6 @@ app.include_router(jobs.router)
 app.include_router(cand.router)
 app.include_router(job_cand.router)
 app.include_router(users.router)
->>>>>>> origin/main
 
 
 @app.get("/api/health")
