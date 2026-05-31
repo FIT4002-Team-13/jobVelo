@@ -40,11 +40,11 @@ class _UserCredentials(BaseModel):
 
 
 class UserCreate(_UserCredentials):
-    """Invited-teammate signup. comp_id is taken from the matched invitation
-    server-side; the user picks their role from the form."""
+    """Invited-teammate signup. Both comp_id AND role are taken from the
+    matched invitation server-side - the admin chose the role at invite
+    generation, so it's NOT a field on this payload."""
 
     invitation_code: str = Field(..., min_length=1, max_length=80)
-    role: NonAdminRole
 
 
 class AdminCreate(_UserCredentials):

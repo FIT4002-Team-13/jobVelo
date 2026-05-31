@@ -15,7 +15,7 @@ from fastapi import APIRouter, Depends, HTTPException, Response, status
 
 from database import get_db
 from dependencies import require_role
-from models.invitation import InvitationOut
+from models.invitation import InvitationCreate, InvitationOut
 
 router = APIRouter(prefix="/api/invitations", tags=["invitations"])
 
@@ -32,10 +32,14 @@ def _generate_code() -> str:
 
 
 def _serialize(doc: dict) -> InvitationOut:
+    # `role` defaults to "interviewer" for legacy invitations created before
+    # the role-on-invite refactor - they had no role attached. Picking the
+    # safest non-admin role keeps existing codes redeemable.
     return InvitationOut(
         inv_id=str(doc["_id"]),
         comp_id=str(doc["comp_id"]),
         code=doc["code"],
+        role=doc.get("role") or "interviewer",
         status=doc["status"],
         user_id=str(doc["user_id"]) if doc.get("user_id") else None,
         created_at=doc["created_at"],
@@ -52,11 +56,17 @@ async def list_invitations(admin=Depends(require_role("admin"))) -> list[Invitat
 
 
 @router.post("", response_model=InvitationOut, status_code=status.HTTP_201_CREATED)
-async def create_invitation(admin=Depends(require_role("admin"))) -> InvitationOut:
+async def create_invitation(
+    payload: InvitationCreate,
+    admin=Depends(require_role("admin")),
+) -> InvitationOut:
     """Generate a fresh invitation code for the admin's company.
 
+    The admin picks the role on this side - the invitee no longer chooses
+    their own role at signup. This keeps role assignment under admin
+    control instead of trusting whoever happens to receive the code.
+
     Retries on the rare collision against an existing code (~10^12 space).
-    The invitation doesn't carry a role - the invitee picks one on signup.
     """
     db = get_db()
     now = datetime.now(timezone.utc)
@@ -64,8 +74,9 @@ async def create_invitation(admin=Depends(require_role("admin"))) -> InvitationO
     for _ in range(5):
         code = _generate_code()
         doc = {
-            "comp_id": admin["comp_id"],
+            "comp_id":    admin["comp_id"],
             "code":       code,
+            "role":       payload.role,
             "status":     "active",
             "user_id":    None,
             "created_at": now,

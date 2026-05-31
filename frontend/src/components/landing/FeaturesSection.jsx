@@ -42,7 +42,7 @@ const features = [
 
 export default function FeaturesSection() {
   return (
-    <section className="relative py-section">
+    <section id="features" className="relative py-section scroll-mt-24">
       <div className="absolute inset-0 -z-10 bg-dotted opacity-50" />
       <div className="container-page">
         <div className="text-center max-w-2xl mx-auto mb-14">

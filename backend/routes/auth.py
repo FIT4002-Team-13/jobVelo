@@ -29,6 +29,7 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 # ---------- serializers --------------------------------------------------
 
 
+<<<<<<< HEAD
 def _user_out(doc: dict) -> UserOut:
     return UserOut(
         userid=str(doc["_id"]),
@@ -38,6 +39,37 @@ def _user_out(doc: dict) -> UserOut:
         role=doc["role"],
         comp_id=str(doc["comp_id"]) if doc.get("comp_id") else None,
         created_at=doc["created_at"],
+=======
+_ALLOWED_ROLES = {"admin", "recruiter", "interviewer", "hiring_manager"}
+
+
+def _user_out(doc: dict) -> UserOut:
+    """Build a UserOut from a Mongo user doc, tolerant of older schema versions.
+
+    The codebase has shipped three user shapes during development:
+      v1 - position / strengths / weaknesses / total_interview / average_score
+      v2 - user_type field (renamed during the role refactor)
+      v3 - current: full_name + role + comp_id
+
+    Old test accounts lack newer fields, so we fall back rather than crash.
+    A fresh database wipe is the proper fix, but for dev convenience this
+    keeps everyone's existing logins working.
+    """
+    # role: prefer 'role' (v3), then 'user_type' (v2), then default. Validate
+    # against the allowed set so Pydantic doesn't reject an unexpected value.
+    role = doc.get("role") or doc.get("user_type") or "interviewer"
+    if role not in _ALLOWED_ROLES:
+        role = "interviewer"
+
+    return UserOut(
+        userid=str(doc["_id"]),
+        username=doc["username"],
+        full_name=doc.get("full_name") or doc["username"],
+        email=doc["email"],
+        role=role,
+        comp_id=str(doc["comp_id"]) if doc.get("comp_id") else None,
+        created_at=doc.get("created_at") or datetime.now(timezone.utc),
+>>>>>>> origin/main
     )
 
 
@@ -76,12 +108,27 @@ class SignupCompanyResponse(BaseModel):
 
 
 class CheckCodeResponse(BaseModel):
+<<<<<<< HEAD
     """Returned by /api/auth/check-code/{code}. comp_name is shown to the
     candidate ("You're about to join Acme Recruiting") so they know which
     company the code is for before they fill in the form."""
 
     valid: bool
     comp_name: str | None = None
+=======
+    """Returned by /api/auth/check-code/{code}.
+
+    comp_name is shown to the candidate ("You're about to join Acme
+    Recruiting") so they know which company the code is for before they
+    fill in the form. `role` is the role the admin attached to the
+    invitation - shown read-only on the signup form since the invitee no
+    longer picks their own role.
+    """
+
+    valid: bool
+    comp_name: str | None = None
+    role: str | None = None
+>>>>>>> origin/main
 
 
 # ---------- company signup (creates company + first admin) --------------
@@ -204,7 +251,17 @@ async def check_code(code: str) -> CheckCodeResponse:
     company = await db.companies.find_one({"_id": inv["comp_id"]})
     if not company:
         return CheckCodeResponse(valid=False)
+<<<<<<< HEAD
     return CheckCodeResponse(valid=True, comp_name=company["comp_name"])
+=======
+    # `role` falls back to "interviewer" for legacy invitations created
+    # before the role-on-invite refactor (same fallback as InvitationOut).
+    return CheckCodeResponse(
+        valid=True,
+        comp_name=company["comp_name"],
+        role=inv.get("role") or "interviewer",
+    )
+>>>>>>> origin/main
 
 
 # ---------- invited user signup (requires invitation code) --------------
@@ -224,9 +281,15 @@ async def signup(payload: UserCreate) -> UserOut:
     both succeed. Only then do we insert the user. If user creation fails,
     we release the invitation back to active.
 
+<<<<<<< HEAD
     The role is taken from the form (UserCreate.role) - we let the
     invitee pick their own role from the non-admin set. comp_id is
     always taken from the invitation, never from the request body.
+=======
+    Both comp_id AND role are taken from the matched invitation - never
+    from the request body. The admin chose the role when they generated
+    the code, so the invitee can't promote themselves.
+>>>>>>> origin/main
     """
     db = get_db()
     code = payload.invitation_code.strip()
@@ -239,13 +302,23 @@ async def signup(payload: UserCreate) -> UserOut:
     if not inv:
         raise HTTPException(status_code=400, detail="Invalid or already-used invitation code")
 
+<<<<<<< HEAD
+=======
+    # Role is sourced from the invitation. The fallback handles legacy
+    # invitations created before the role-on-invite refactor.
+>>>>>>> origin/main
     doc = {
         "username":      payload.username.strip(),
         "full_name":     payload.full_name.strip(),
         "email":         payload.email.lower(),
         "password_hash": hash_password(payload.password),
+<<<<<<< HEAD
         "comp_id":    inv["comp_id"],
         "role":          payload.role,
+=======
+        "comp_id":       inv["comp_id"],
+        "role":          inv.get("role") or "interviewer",
+>>>>>>> origin/main
         "created_at":    datetime.now(timezone.utc),
     }
     try:

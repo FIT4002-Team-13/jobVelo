@@ -13,13 +13,24 @@ from typing import Literal
 
 from pydantic import BaseModel
 
+from models.user import NonAdminRole
+
 InvitationStatus = Literal["active", "used"]
+
+
+class InvitationCreate(BaseModel):
+    """Payload for POST /api/invitations. The admin picks the role the
+    invitee will receive when they redeem the code, so role assignment
+    is centralised instead of left to whoever happens to have the URL."""
+
+    role: NonAdminRole
 
 
 class InvitationOut(BaseModel):
     inv_id: str
     comp_id: str
     code: str
+    role: NonAdminRole
     status: InvitationStatus
     user_id: str | None = None
     created_at: datetime
