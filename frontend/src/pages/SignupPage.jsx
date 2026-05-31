@@ -5,14 +5,20 @@ import AuthLayout from '../components/auth/AuthLayout.jsx'
 import AuthField from '../components/auth/AuthField.jsx'
 import { api, ApiError } from '../lib/api.js'
 import { checkPassword, isPasswordStrong } from '../lib/password.js'
+import { isEmail, isUsername, isFullName } from '../lib/validators.js'
 
-// Roles the invitee can pick. "admin" isn't here on purpose - that role is
-// reserved for the user who created the company.
-const ROLE_OPTIONS = [
-  { value: 'interviewer',    label: 'Interviewer' },
-  { value: 'hiring_manager', label: 'Hiring Manager' },
-  { value: 'recruiter',      label: 'Recruiter' },
-]
+// Invitation codes are generated server-side as INV-XXXX-XXXX (alphanumeric).
+// Catching obvious typos here saves a server round-trip on step 1.
+const CODE_RE = /^INV-[A-Z0-9]{4}-[A-Z0-9]{4}$/
+
+// Roles an invitation can carry, used purely to display a friendly label
+// for the role the admin picked when generating the code. The invitee no
+// longer chooses one themselves - the field is read-only on this form.
+const ROLE_LABELS = {
+  interviewer:    'Interviewer',
+  hiring_manager: 'Hiring Manager',
+  recruiter:      'Recruiter',
+}
 
 // Two-step signup for invited teammates:
 //   step 1 - enter invitation code, validate against backend
@@ -23,12 +29,13 @@ export default function SignupPage() {
   const [step, setStep] = useState(1)
   const [code, setCode] = useState('')
   const [companyName, setCompanyName] = useState('')
+  // Role the admin attached to this invitation. Read-only on the form.
+  const [invitationRole, setInvitationRole] = useState('')
 
   const [form, setForm] = useState({
     username: '',
     full_name: '',
     email: '',
-    role: 'interviewer',
     password: '',
     confirm: '',
   })
@@ -42,15 +49,25 @@ export default function SignupPage() {
   const onCheckCode = async (e) => {
     e.preventDefault()
     setError(null)
-    if (!code.trim()) return
+    const trimmed = code.trim()
+    if (!trimmed) return
+    // Catch obviously-wrong codes (e.g. someone pasted a URL) before
+    // hitting the server. Real validity check still happens server-side.
+    if (!CODE_RE.test(trimmed)) {
+      setError('Invitation codes look like "INV-XXXX-XXXX".')
+      return
+    }
     setSubmitting(true)
     try {
-      const res = await api.checkCode(code.trim())
+      const res = await api.checkCode(trimmed)
       if (!res?.valid) {
         setError('That invitation code is invalid or has already been used.')
         return
       }
       setCompanyName(res.comp_name || '')
+      // Role is now sourced from the invitation. We store it so the form
+      // can display it read-only AND so we can submit nothing for role.
+      setInvitationRole(res.role || 'interviewer')
       setStep(2)
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not reach the server.')
@@ -64,6 +81,18 @@ export default function SignupPage() {
     e.preventDefault()
     setError(null)
 
+    if (!isFullName(form.full_name)) {
+      setError('Please enter a real full name (2-100 characters, includes letters).')
+      return
+    }
+    if (!isUsername(form.username)) {
+      setError('Username must be 3-40 characters: letters, digits, dot, underscore or dash.')
+      return
+    }
+    if (!isEmail(form.email)) {
+      setError('Please enter a valid email address.')
+      return
+    }
     if (!isPasswordStrong(form.password)) {
       setError('Password does not meet the requirements below.')
       return
@@ -80,8 +109,9 @@ export default function SignupPage() {
         username:        form.username.trim(),
         full_name:       form.full_name.trim(),
         email:           form.email.trim().toLowerCase(),
-        role:            form.role,
         password:        form.password,
+        // No `role` field - the backend sources it from the invitation
+        // (UserCreate dropped the field entirely in the role-on-invite refactor).
       })
       navigate('/login', { replace: true, state: { justSignedUp: true } })
     } catch (err) {
@@ -196,14 +226,16 @@ export default function SignupPage() {
           required
         />
 
-        <Select
-          label="Role"
-          name="role"
-          value={form.role}
-          onChange={update}
-          options={ROLE_OPTIONS}
-          required
-        />
+        {/* Role is read-only - the admin who generated this code picked it. */}
+        <div className="block">
+          <span className="block text-sm font-semibold text-neutral-700 mb-1.5">Role</span>
+          <div className="w-full rounded-xl border border-neutral-200 bg-neutral-50 px-4 py-3 text-base text-neutral-700">
+            {ROLE_LABELS[invitationRole] || invitationRole || '—'}
+          </div>
+          <p className="mt-1 text-xs text-neutral-400">
+            Assigned by your admin when this invitation was generated.
+          </p>
+        </div>
 
         <AuthField
           label="Password"
@@ -264,25 +296,3 @@ export default function SignupPage() {
   )
 }
 
-// Inline select component - matches AuthField's visual style. If we end up
-// using it on more pages, lift to components/auth/AuthSelect.jsx.
-function Select({ label, name, value, onChange, options, required }) {
-  return (
-    <label className="block">
-      <span className="block text-sm font-semibold text-neutral-700 mb-1.5">{label}</span>
-      <select
-        name={name}
-        value={value}
-        onChange={onChange}
-        required={required}
-        className="w-full rounded-xl border border-neutral-200 bg-white px-4 py-3 text-base text-ink
-                   outline-none transition-all
-                   focus:border-primary-400 focus:ring-4 focus:ring-primary-100"
-      >
-        {options.map((o) => (
-          <option key={o.value} value={o.value}>{o.label}</option>
-        ))}
-      </select>
-    </label>
-  )
-}

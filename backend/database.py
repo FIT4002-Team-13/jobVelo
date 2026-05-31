@@ -1,3 +1,10 @@
+"""MongoDB connection + index setup.
+
+No mock data is seeded - all jobs, candidates, and link rows are created
+via the real API endpoints. The dashboard shows empty-state messaging
+when collections are empty.
+"""
+
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 
 from config import settings
@@ -46,3 +53,25 @@ async def ensure_indexes() -> None:
     # signup so the index is critical.
     await db.invitations.create_index("code", unique=True)
     await db.invitations.create_index([("comp_id", 1), ("created_at", -1)])
+
+    # Jobs - scoped to a company, sorted by recent activity.
+    await db.jobs.create_index([("comp_id", 1), ("job_last_update_datetime", -1)])
+    await db.jobs.create_index("title")
+
+    # Candidates - scoped to a company, deduped by email within a company.
+    await db.candidates.create_index([("comp_id", 1), ("cand_email", 1)], unique=True)
+    await db.candidates.create_index("cand_full_name")
+
+    # Job-candidates link - the (cand_id, job_id) pair is logically unique.
+    await db.job_candidates.create_index(
+        [("cand_id", 1), ("job_id", 1)],
+        unique=True,
+    )
+    await db.job_candidates.create_index("job_id")
+    await db.job_candidates.create_index("cand_id")
+
+
+# Stub kept so existing callers (main.py lifespan) don't break. Real seeding
+# happens through the API now - this is intentionally a no-op.
+async def seed_mock_data() -> None:
+    return

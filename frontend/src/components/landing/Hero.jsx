@@ -2,6 +2,7 @@ import { motion } from 'framer-motion'
 import { ArrowRight, Sparkles, Star } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import HeroIllustration from '../common/HeroIllustration.jsx'
+import MorphingGradient from '../common/MorphingGradient.jsx'
 
 const fadeUp = {
   hidden: { opacity: 0, y: 24 },
@@ -14,15 +15,17 @@ const fadeUp = {
 
 export default function Hero() {
   return (
-    <section className="relative overflow-hidden">
-      {/* Soft glow background */}
-      <div className="absolute inset-0 -z-10 bg-hero-glow" />
-      {/* Animated blobs */}
-      <div className="absolute -top-24 -left-20 -z-10 h-96 w-96 bg-primary-100/60 animate-blob blur-3xl" />
-      <div className="absolute top-40 -right-16 -z-10 h-80 w-80 bg-coral-100/60 animate-blob blur-3xl"
-           style={{ animationDelay: '-4s' }} />
+    <section className="relative isolate overflow-hidden min-h-screen flex items-center">
+      {/* Morphing pastel-gradient background that follows the cursor.
+          `isolate` on the section creates a stacking context so the
+          gradient's -z-10 stays bounded behind the content within the
+          section, instead of escaping behind the page wrapper.
+          `min-h-screen + flex items-center` makes the hero fill the
+          viewport so the gradient covers the first paint without the
+          next section's white background bleeding into view. */}
+      <MorphingGradient />
 
-      <div className="container-page pt-16 pb-24 lg:pt-24 lg:pb-32 grid lg:grid-cols-2 gap-12 items-center">
+      <div className="container-page py-16 lg:py-24 grid lg:grid-cols-2 gap-12 items-center w-full">
         {/* Left column */}
         <div>
           <motion.div

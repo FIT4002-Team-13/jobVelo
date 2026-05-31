@@ -41,3 +41,26 @@
   background-image: radial-gradient(rgba(15, 23, 42, 0.06) 1px, transparent 1px);
   background-size: 18px 18px;
 }
+
+/* Primary-coloured scrollbar - apply to any scrollable container that
+   wants the branded look instead of the OS default. Falls back to a
+   transparent track + a primary-500 thumb, fully rounded so it reads as
+   a pill. Both Firefox and webkit handled. */
+.scrollbar-primary {
+  scrollbar-color: theme('colors.primary.500') transparent;
+  scrollbar-width: thin;
+}
+.scrollbar-primary::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.scrollbar-primary::-webkit-scrollbar-track {
+  background: transparent;
+}
+.scrollbar-primary::-webkit-scrollbar-thumb {
+  background-color: theme('colors.primary.500');
+  border-radius: 9999px;
+}
+.scrollbar-primary::-webkit-scrollbar-thumb:hover {
+  background-color: theme('colors.primary.600');
+}

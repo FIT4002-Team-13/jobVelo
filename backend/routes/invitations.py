@@ -15,7 +15,11 @@ from fastapi import APIRouter, Depends, HTTPException, Response, status
 
 from database import get_db
 from dependencies import require_role
+<<<<<<< HEAD
 from models.invitation import InvitationOut
+=======
+from models.invitation import InvitationCreate, InvitationOut
+>>>>>>> origin/main
 
 router = APIRouter(prefix="/api/invitations", tags=["invitations"])
 
@@ -32,10 +36,20 @@ def _generate_code() -> str:
 
 
 def _serialize(doc: dict) -> InvitationOut:
+<<<<<<< HEAD
+=======
+    # `role` defaults to "interviewer" for legacy invitations created before
+    # the role-on-invite refactor - they had no role attached. Picking the
+    # safest non-admin role keeps existing codes redeemable.
+>>>>>>> origin/main
     return InvitationOut(
         inv_id=str(doc["_id"]),
         comp_id=str(doc["comp_id"]),
         code=doc["code"],
+<<<<<<< HEAD
+=======
+        role=doc.get("role") or "interviewer",
+>>>>>>> origin/main
         status=doc["status"],
         user_id=str(doc["user_id"]) if doc.get("user_id") else None,
         created_at=doc["created_at"],
@@ -52,11 +66,25 @@ async def list_invitations(admin=Depends(require_role("admin"))) -> list[Invitat
 
 
 @router.post("", response_model=InvitationOut, status_code=status.HTTP_201_CREATED)
+<<<<<<< HEAD
 async def create_invitation(admin=Depends(require_role("admin"))) -> InvitationOut:
     """Generate a fresh invitation code for the admin's company.
 
     Retries on the rare collision against an existing code (~10^12 space).
     The invitation doesn't carry a role - the invitee picks one on signup.
+=======
+async def create_invitation(
+    payload: InvitationCreate,
+    admin=Depends(require_role("admin")),
+) -> InvitationOut:
+    """Generate a fresh invitation code for the admin's company.
+
+    The admin picks the role on this side - the invitee no longer chooses
+    their own role at signup. This keeps role assignment under admin
+    control instead of trusting whoever happens to receive the code.
+
+    Retries on the rare collision against an existing code (~10^12 space).
+>>>>>>> origin/main
     """
     db = get_db()
     now = datetime.now(timezone.utc)
@@ -64,8 +92,14 @@ async def create_invitation(admin=Depends(require_role("admin"))) -> InvitationO
     for _ in range(5):
         code = _generate_code()
         doc = {
+<<<<<<< HEAD
             "comp_id": admin["comp_id"],
             "code":       code,
+=======
+            "comp_id":    admin["comp_id"],
+            "code":       code,
+            "role":       payload.role,
+>>>>>>> origin/main
             "status":     "active",
             "user_id":    None,
             "created_at": now,

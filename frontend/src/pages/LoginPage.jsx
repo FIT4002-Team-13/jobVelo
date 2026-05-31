@@ -24,10 +24,31 @@ export default function LoginPage() {
   const onSubmit = async (e) => {
     e.preventDefault()
     setError(null)
+    // Cheap client-side sanity check. We deliberately DON'T reveal whether
+    // the identifier looks email-shaped or not - the server returns the same
+    // 401 for both shapes, so leaking format hints here would be inconsistent.
+    if (!form.identifier.trim() || !form.password) {
+      setError('Please enter your username/email and password.')
+      return
+    }
     setSubmitting(true)
     try {
       const user = await login(form.identifier.trim(), form.password)
-      const target = fromPath || (user?.role === 'admin' ? '/admin/dashboard' : '/dashboard')
+      // Role-aware redirect.
+      //   - Admins ALWAYS land on /admin/dashboard. Honouring a captured
+      //     fromPath like /dashboard would silently send them past their
+      //     control panel, which surprised people in testing.
+      //   - Non-admins go back to wherever they were trying to reach,
+      //     unless that path is admin-only (in which case we'd just bounce
+      //     them out via RequireRole anyway). Default to /dashboard.
+      const isAdmin = user?.role === 'admin'
+      let target
+      if (isAdmin) {
+        target = '/admin/dashboard'
+      } else {
+        const wantsAdmin = fromPath?.startsWith('/admin')
+        target = fromPath && !wantsAdmin ? fromPath : '/dashboard'
+      }
       navigate(target, { replace: true })
     } catch (err) {
       if (err instanceof ApiError) {
