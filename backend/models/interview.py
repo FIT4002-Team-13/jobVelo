@@ -8,6 +8,13 @@ from pydantic import BaseModel, Field
 # Interview cycle for scheduling + running + post-interview state.
 InterviewStatus = Literal["scheduled", "in_progress", "completed", "cancelled"]
 
+class TranscriptEntry(BaseModel):
+    id:str
+    speaker: str
+    timestamp: str
+    text: str
+    comment: Optional[str] = None
+
 class InterviewCreate(BaseModel):
     """Base payload for creating an interview session.
 
@@ -27,7 +34,7 @@ class InterviewUpdate(BaseModel):
 
     intv_date_time: Optional[datetime] = None
     intv_location: Optional[str] = Field(default=None, max_length=200)
-    intv_transcript: Optional[str] = None
+    intv_transcript: Optional[list[TranscriptEntry]] = None
     intv_status: Optional[InterviewStatus] = None
     intv_candidate_report: Optional[str] = None
     intv_interviewer_report: Optional[str] = None
@@ -40,7 +47,7 @@ class InterviewOut(BaseModel):
     job_id: str
     intv_date_time: datetime
     intv_location: Optional[str] = None
-    intv_transcript: Optional[str] = None
+    intv_transcript: Optional[list[TranscriptEntry]] = None
     intv_status: InterviewStatus
     intv_candidate_report: Optional[str] = None
     intv_interviewer_report: Optional[str] = None

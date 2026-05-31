@@ -255,11 +255,13 @@ export default function InterviewPage() {
   const [isPaused, setIsPaused] = useState(false);
 
   const [interview] = useState(MOCK_INTERVIEW);
+  const [jobId, setJobId] = useState(null);
   const [transcript, setTranscript] = useState(INITIAL_TRANSCRIPT);
   const [scores] = useState(MOCK_SCORES);
   const [questions] = useState(MOCK_QUESTIONS);
   const [timer, setTimer] = useState(0);
 
+  const transcriptRef = useRef([]);
   const wsRef = useRef(null);
   const audioContextRef = useRef(null);
   const processorRef = useRef(null);
@@ -286,16 +288,18 @@ export default function InterviewPage() {
     );
 
     if (isFinal) {
-      const id = entryCounterRef.current++;
+      const entryId = String(entryCounterRef.current++);
       const prevPartialId = partialEntryRef.current;
       partialEntryRef.current = null;
 
-      const newEntry = { id, speaker: "Live", timestamp, text };
+      const newEntry = { id: entryId, speaker: "Live", timestamp, text };
       setTranscript((prev) => {
         const refreshed = prevPartialId
           ? prev.filter((entry) => entry.id !== prevPartialId)
           : prev;
-        return [...refreshed, newEntry];
+        const updated = [...refreshed, newEntry];
+        localStorage.setItem(`transcript-${id}`, JSON.stringify(updated));
+        return updated;
       });
     } else {
       if (!partialEntryRef.current) {
@@ -339,6 +343,7 @@ export default function InterviewPage() {
     socket.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
+        console.log("ws message", data);
         if (data.type === "transcript" && typeof data.text === "string") {
           appendTranscript(data.text, Boolean(data.is_final));
         }
@@ -358,6 +363,7 @@ export default function InterviewPage() {
       wsRef.current = socket;
       setStatus("Requesting screen access...");
 
+      console.log("1: requesting display media");
       const displayStream = await navigator.mediaDevices.getDisplayMedia({
         audio: {
           echoCancellation: false,
@@ -366,17 +372,23 @@ export default function InterviewPage() {
         },
         video: { cursor: "always" },
       });
+      console.log("2: display stream acquired", displayStream.getTracks());
       mediaStreamRef.current = displayStream;
 
       // Also request microphone access
       setStatus("Requesting microphone access...");
+      console.log("3: requesting mic");
       const micStream = await navigator.mediaDevices.getUserMedia({
         audio: true,
       });
+      console.log("4: mic acquired", micStream.getTracks());
       micStreamRef.current = micStream;
 
+      console.log("5: creating audio context");
       const audioContext = new (window.AudioContext ||
         window.webkitAudioContext)();
+      await audioContext.resume();
+      console.log("6: audio context state", audioContext.state);
       audioContextRef.current = audioContext;
 
       // Create sources for both streams
@@ -425,6 +437,7 @@ export default function InterviewPage() {
         };
       });
     } catch (error) {
+      console.error("startScreenShare error:", error.name, error.message, error);
       if (error.name === "NotAllowedError") {
         setStatus("Screen share or microphone access cancelled");
       } else if (error.name === "NotFoundError") {
@@ -438,6 +451,7 @@ export default function InterviewPage() {
   }
 
   async function stopScreenShare() {
+    console.trace("stopScreenShare called");
     if (processorRef.current) {
       processorRef.current.disconnect();
       processorRef.current.onaudioprocess = null;
@@ -504,6 +518,48 @@ export default function InterviewPage() {
 
     return () => clearInterval(interval);
   }, [isPaused]);
+
+  useEffect(() => {
+    transcriptRef.current = transcript;
+  }, [transcript]);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (transcriptRef.current.length) {
+        fetch(`/api/interviews/${id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ intv_transcript: transcriptRef.current }),
+        });
+      }
+    }, 30000);
+    return () => clearInterval(interval);
+  }, [id]);
+
+  useEffect(() => {
+    const local = localStorage.getItem(`transcript-${id}`);
+    if (local) {
+      setTranscript(JSON.parse(local));
+    }
+    fetch(`/api/interviews/${id}`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.job_id) setJobId(data.job_id);
+        if (!local && data.intv_transcript?.length) {
+          setTranscript(data.intv_transcript);
+        }
+      });
+  }, [id]);
+
+  async function completeInterview() {
+    await fetch(`/api/interviews/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ intv_transcript: transcript }),
+    });
+    localStorage.removeItem(`transcript-${id}`);
+    navigate(`/jobs/${jobId}`);
+  }
 
   return (
     <div className="h-screen flex flex-col bg-neutral-50 font-sans overflow-hidden">
@@ -670,7 +726,7 @@ export default function InterviewPage() {
               {isPaused ? "Unpause" : "Pause"}
             </button>
             <button
-              onClick={() => navigate(`/jobs/${id}`)}
+              onClick={() => completeInterview()}
               className="flex-1 py-4 text-base font-semibold text-white bg-sky-300 hover:bg-sky-400 rounded-2xl transition-colors"
             >
               Complete

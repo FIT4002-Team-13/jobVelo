@@ -927,6 +927,21 @@ export default function JobDetailPage() {
     setShowAddCandidate(false);
   }
 
+  async function onConfirmStart() {
+    const res = await fetch("/api/interviews", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        cand_id: startTarget.cand_id,
+        job_id: id,
+        intv_date_time: new Date().toISOString(),
+        intv_status: "in_progress",
+      }),
+    });
+    const interview = await res.json();
+    navigate(`/interview/${interview.intv_id}`);
+  }
+
   // Delete flow:
   //   1. row's trash icon → setDeleteTarget(c) → DeleteCandidateModal opens
   //   2. modal owns the confirm + DELETE request + its own error state
@@ -1169,7 +1184,7 @@ export default function JobDetailPage() {
           onClose={() => setStartTarget(null)}
           // Placeholder for now - eventually this will PATCH the link's
           // status to EVALUATED and open the live-transcription UI.
-          onConfirm={() => navigate(`/interview/${startTarget.id}`)}
+          onConfirm={() => onConfirmStart()}
         />
       )}
 

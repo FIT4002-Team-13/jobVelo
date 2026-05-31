@@ -20,6 +20,8 @@ async def realtime_transcribe(websocket: WebSocket) -> None:
     async def on_transcript(text: str, is_final: bool) -> None:
         await transcript_queue.put({"type": "transcript", "text": text, "is_final": is_final})
 
+        
+
     session = DeepgramSession(on_transcript)
     try:
         await session.open()
