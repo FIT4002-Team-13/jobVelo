@@ -135,20 +135,43 @@ export default function DashboardPage() {
   useEffect(() => {
     async function load() {
       try {
-        // api.me() hits /api/auth/me with the stored JWT.
-        // /api/candidates (cand.py) returns CandidateOut shape with cand_*
-        // prefixed fields - the dashboard renders the new shape directly now,
-        // empty list shows an empty-state card.
-        const [meData, sumRes, jobsRes, candsRes] = await Promise.all([
-          api.me(),
+        // Step 1: who am I? Need userid before /api/applications can scope
+        // to "my candidates" - matches the /candidates page filter.
+        const meData = await api.me()
+
+        // Step 2: parallel fetch the rest. Candidates panel now reads from
+        // /api/applications?user_id=<me> instead of /api/candidates so it
+        // shows the SAME rows as the /candidates page (one per application
+        // where the current user is the interviewer, scoped to the
+        // company server-side).
+        const [sumRes, jobsRes, appsRes] = await Promise.all([
           authedFetch('/api/dashboard/summary'),
           authedFetch('/api/jobs'),
-          authedFetch('/api/candidates'),
+          authedFetch(`/api/applications?user_id=${encodeURIComponent(meData.userid)}`),
         ])
         setMe(meData)
         setSummary(await sumRes.json())
         setJobs(await jobsRes.json())
-        setCandidates(await candsRes.json())
+
+        // Map the application rows into the shape the panel renders
+        // (cand_full_name / cand_email / cand_status / cand_created_at).
+        // Keep `_cand_id` and `_job_id` around so a click can navigate
+        // straight to the candidate-detail page.
+        const apps = await appsRes.json()
+        const rows = Array.isArray(apps)
+          ? apps.map((a) => ({
+              // Application id is unique even when the same candidate has
+              // multiple applications - use it as the React key.
+              cand_id:         a.application_id,
+              cand_full_name:  a.candidate_name,
+              cand_email:      a.email,
+              cand_status:     a.status,
+              cand_created_at: a.interview_datetime,
+              _cand_id:        a.cand_id,
+              _job_id:         a.job_id,
+            }))
+          : []
+        setCandidates(rows)
       } catch (err) {
         console.error('Dashboard fetch failed:', err)
         setError('Failed to load dashboard data.')
@@ -281,18 +304,20 @@ export default function DashboardPage() {
                 />
               ) : (
                 sortedCandidates.map((c) => (
-                  <div
+                  // Whole row is a Link to the candidate-detail page now -
+                  // matches how the /candidates table behaves. The Link uses
+                  // the underlying cand_id + job_id captured during the
+                  // application-mapping (not the application_id we use as the
+                  // row key).
+                  <Link
                     key={c.cand_id}
-                    className="flex items-center justify-between bg-neutral-0 border border-neutral-200 rounded-xl px-4 py-3 hover:shadow-sm transition-shadow"
+                    to={c._cand_id && c._job_id ? `/candidates/${c._cand_id}/${c._job_id}` : '#'}
+                    className="flex items-center justify-between bg-neutral-0 border border-neutral-200 rounded-xl px-4 py-3 hover:shadow-sm hover:border-primary-200 transition-all no-underline"
                   >
                     <div>
                       <p className="text-sm font-semibold text-neutral-800">{c.cand_full_name}</p>
                       <p className="text-xs text-neutral-400 mt-0.5">{c.cand_email}</p>
                     </div>
-                    {/* Status pill replaces the old "View" button - the dashboard
-                        is a glance-view, drill-down lives on the job detail page.
-                        Falls back to a neutral "No application" pill when the
-                        candidate exists as a profile but isn't on any job. */}
                     <span
                       className={`text-xs font-bold px-3 py-1 rounded-pill ${
                         CANDIDATE_STATUS_STYLES[c.cand_status]
@@ -301,7 +326,7 @@ export default function DashboardPage() {
                     >
                       {c.cand_status ?? 'No application'}
                     </span>
-                  </div>
+                  </Link>
                 ))
               )}
             </div>
