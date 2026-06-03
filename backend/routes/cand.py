@@ -326,9 +326,29 @@ async def list_candidates(
     if not candidates:
         return []
 
-    # Rollup status from interviews (per UML, status lives on Interview not Job_Candidate).
+    # Rollup status from job_candidates + interviews. The display priority is:
+    #   SCHEDULED > EVALUATED / HIRED / REJECTED > NOT SCHEDULED > None
+    # so the recruiter scanning the dashboard always sees the *most progressed*
+    # state of any application the candidate is currently on.
+    #
     # cand_id is stored as a STRING in both job_candidates and interviews.
     cand_ids = [str(c["_id"]) for c in candidates]
+
+    # 1. Candidates with at least one job-candidate link default to
+    #    "NOT SCHEDULED" - they're in the pipeline but no interview has been
+    #    booked yet. Profile-only candidates (no link, no interview) stay None
+    #    so the dashboard's "no application" filter drops them.
+    linked_cand_ids: set[str] = set()
+    async for jc in db.job_candidates.find(
+        {"cand_id": {"$in": cand_ids}},
+        {"cand_id": 1},
+    ):
+        cid = jc.get("cand_id")
+        if cid:
+            linked_cand_ids.add(cid)
+
+    # 2. Interview-based statuses override the default. SCHEDULED wins over
+    #    anything else; NOT SCHEDULED only sets if nothing better is recorded.
     interviews = await db.interviews.find(
         {"cand_id": {"$in": cand_ids}},
         {"cand_id": 1, "intv_status": 1},
@@ -338,13 +358,19 @@ async def list_candidates(
         cid = intv.get("cand_id")
         if not cid:
             continue
-        s = (intv.get("intv_status") or "").upper()
-        # SCHEDULED dominates all others - if the candidate has ANY pending
-        # interview, the dashboard should flag it.
+        # `not_scheduled` -> `NOT SCHEDULED`, `scheduled` -> `SCHEDULED`, etc.
+        s = (intv.get("intv_status") or "").upper().replace("_", " ")
         if s == "SCHEDULED":
             statuses[cid] = "SCHEDULED"
         elif s in ("EVALUATED", "HIRED", "REJECTED") and statuses.get(cid) != "SCHEDULED":
             statuses[cid] = s
+        elif s == "NOT SCHEDULED" and cid not in statuses:
+            statuses[cid] = "NOT SCHEDULED"
+
+    # 3. Linked candidates that still have nothing in `statuses` get
+    #    NOT SCHEDULED as the default - "they're applying, just not booked".
+    for cid in linked_cand_ids:
+        statuses.setdefault(cid, "NOT SCHEDULED")
 
     return [candidate_helper(c, statuses.get(str(c["_id"]))) for c in candidates]
 

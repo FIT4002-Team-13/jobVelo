@@ -12,7 +12,7 @@ from pydantic import BaseModel, EmailStr, Field
 #   EVALUATED → all interviews are done (no SCHEDULED left)
 #   None       → no job_candidate links yet (just a profile)
 # Kept in lock-step with JobCandidateStatus on the link doc.
-CandidateRollupStatus = Literal["SCHEDULED", "EVALUATED"]
+CandidateRollupStatus = Literal["NOT SCHEDULED", "SCHEDULED", "EVALUATED", "HIRED", "REJECTED"]
 
 class CandidateCreate(BaseModel):
     """Base payload for creating a standalone candidate profile, used when the system only needs to create the candidate 

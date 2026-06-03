@@ -38,9 +38,9 @@ function statusClass(status) {
     case 'SCHEDULED':
       return 'bg-primary-100 text-primary-600'
     case 'EVALUATED':
-      return 'bg-sky-100 text-sky-600'
-    case 'HIRED':
       return 'bg-mint-100 text-mint-700'
+    case 'HIRED':
+      return 'bg-mint-500 text-white'
     case 'REJECTED':
       return 'bg-coral-100 text-coral-700'
     default:

@@ -332,9 +332,9 @@ function CandidateInfoCard({ candidate, job, interview, onStartInterview, interv
     status === 'SCHEDULED'
       ? 'bg-primary-100 text-primary-600'
       : status === 'EVALUATED'
-      ? 'bg-sky-100 text-sky-600'
-      : status === 'HIRED'
       ? 'bg-mint-100 text-mint-700'
+      : status === 'HIRED'
+      ? 'bg-mint-500 text-white'
       : status === 'REJECTED'
       ? 'bg-coral-100 text-coral-700'
       // NOT SCHEDULED + anything unknown

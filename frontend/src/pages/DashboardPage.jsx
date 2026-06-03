@@ -16,8 +16,9 @@ const JOB_STATUS_OPTIONS = [
   { value: 'Completed',   label: 'Completed'   },
 ]
 const CANDIDATE_FILTER_OPTIONS = [
-  { value: 'SCHEDULED', label: 'Scheduled' },
-  { value: 'EVALUATED', label: 'Evaluated' },
+  { value: 'NOT SCHEDULED', label: 'Not Scheduled' },
+  { value: 'SCHEDULED',     label: 'Scheduled'     },
+  { value: 'EVALUATED',     label: 'Evaluated'     },
 ]
 
 // Solid-fill status pills - kept in sync with JobsPage + JobDetailPage.
@@ -34,8 +35,8 @@ const STATUS_STYLES = {
 const CANDIDATE_STATUS_STYLES = {
   'NOT SCHEDULED': 'bg-neutral-100 text-neutral-500',
   SCHEDULED:       'bg-primary-100 text-primary-600',
-  EVALUATED:       'bg-sky-100 text-sky-600',
-  HIRED:           'bg-mint-100 text-mint-700',
+  EVALUATED:       'bg-mint-100 text-mint-700',
+  HIRED:           'bg-mint-500 text-white',
   REJECTED:        'bg-coral-100 text-coral-700',
 }
 
