@@ -362,8 +362,20 @@ function InterviewerCombobox({ value, onChange, options }) {
 
 // ── Interview Status Panel ────────────────────────────────────────────────────
 
+// Order matches the pipeline progression so the panel reads top-to-bottom
+// from "not started" → "in progress" → "done". The dot colour mirrors the
+// candidate-row pill palette (SCHEDULED = primary, EVALUATED = mint), so
+// users can visually link the count here with the pill on the row.
+const INTERVIEW_STATUS_ROWS = [
+  { key: 'NOT SCHEDULED', label: 'Not Scheduled', dot: 'bg-neutral-400' },
+  { key: 'SCHEDULED',     label: 'Scheduled',     dot: 'bg-primary-500' },
+  { key: 'EVALUATED',     label: 'Evaluated',     dot: 'bg-mint-500'    },
+]
+
 function InterviewStatusPanel({ candidates, job }) {
-  const counts = { SCHEDULED: 0, EVALUATED: 0 }
+  // Start each tracked status at 0 - keeps the row visible even when
+  // nobody's in that bucket yet (an empty job still shows 0/0/0).
+  const counts = INTERVIEW_STATUS_ROWS.reduce((acc, { key }) => ({ ...acc, [key]: 0 }), {})
   let scoreSum = 0, scoreCount = 0
 
   for (const c of candidates) {
@@ -388,10 +400,13 @@ function InterviewStatusPanel({ candidates, job }) {
       </div>
 
       <div className={`${flex.col} gap-1.5`}>
-        {Object.entries(counts).map(([status, count]) => (
-          <div key={status} className={`${flex.rowBetween} text-sm`}>
-            <span className="text-neutral-500 font-medium">{status}</span>
-            <span className="font-bold text-neutral-700">{count}</span>
+        {INTERVIEW_STATUS_ROWS.map(({ key, label, dot }) => (
+          <div key={key} className={`${flex.rowBetween} text-sm`}>
+            <span className={`${flex.row} gap-2`}>
+              <span className={`w-2 h-2 rounded-pill ${dot}`} aria-hidden />
+              <span className="text-neutral-500 font-medium">{label}</span>
+            </span>
+            <span className="font-bold text-neutral-700">{counts[key]}</span>
           </div>
         ))}
       </div>
