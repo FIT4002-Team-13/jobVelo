@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import Sidebar from '../components/common/Sidebar'
 import AddCandidateForm from '../components/candidate/AddCandidateForm'
 import EditCandidateForm from '../components/candidate/EditCandidateForm'
+import { SortMenu, FilterMenu } from '../components/job-candidate/TableControls'
 import { page, card, button } from '../styles/layout'
 import { useAuth } from '../lib/AuthContext.jsx'
 import { authedFetch } from '../lib/api.js'
@@ -67,50 +68,21 @@ const SORT_OPTIONS = [
   { value: 'name_desc', label: 'Name Z - A' },
 ]
 
+// Kept in sync with the dashboard candidates panel + JobDetailPage candidate
+// filter so the same statuses are filterable wherever the user looks. HIRED
+// and REJECTED rows can still exist in the data; they show up under "All"
+// but aren't surfaced as their own filter chips here - rare enough that the
+// noise wasn't worth the extra dropdown options.
 const FILTER_OPTIONS = [
-  { value: '', label: 'All' },
+  { value: '',              label: 'All'           },
   { value: 'NOT SCHEDULED', label: 'Not Scheduled' },
-  { value: 'SCHEDULED', label: 'Scheduled' },
-  { value: 'EVALUATED', label: 'Evaluated' },
-  { value: 'HIRED', label: 'Hired' },
-  { value: 'REJECTED', label: 'Rejected' },
+  { value: 'SCHEDULED',     label: 'Scheduled'     },
+  { value: 'EVALUATED',     label: 'Evaluated'     },
 ]
 
-function OptionsPopup({ options, activeValue, onChange, onClose }) {
-  const popupRef = useRef(null)
-
-  useEffect(() => {
-    function handleClickOutside(event) {
-      if (popupRef.current && !popupRef.current.contains(event.target)) {
-        onClose?.()
-      }
-    }
-    document.addEventListener('mousedown', handleClickOutside)
-    return () => document.removeEventListener('mousedown', handleClickOutside)
-  }, [onClose])
-
-  return (
-    <div ref={popupRef} className="absolute right-0 top-full z-30 mt-3">
-      <div className="w-[230px] rounded-[28px] bg-white p-6 shadow-lg">
-        {options.map((option, index) => (
-          <button
-            key={option.value ?? 'all'}
-            type="button"
-            onClick={() => {
-              onChange(option.value)
-              onClose?.()
-            }}
-            className={`block w-full py-3 text-left text-[18px] font-medium transition-colors hover:text-primary-500 ${
-              activeValue === option.value ? 'text-primary-500' : 'text-neutral-900'
-            } ${index !== options.length - 1 ? 'border-b border-neutral-300' : ''}`}
-          >
-            {option.label}
-          </button>
-        ))}
-      </div>
-    </div>
-  )
-}
+// Previously had a bespoke OptionsPopup component here - replaced by the
+// shared SortMenu / FilterMenu from TableControls so this page reads
+// identically to the dashboard and Jobs/JobDetail pages.
 
 export default function ApplicationsPage() {
   const { user } = useAuth()
@@ -124,8 +96,6 @@ export default function ApplicationsPage() {
 
   const [sortValue, setSortValue] = useState('date')
   const [filterValue, setFilterValue] = useState('')
-  const [showSort, setShowSort] = useState(false)
-  const [showFilter, setShowFilter] = useState(false)
 
   const [showAddModal, setShowAddModal] = useState(false)
   const [showEditModal, setShowEditModal] = useState(false)
@@ -274,47 +244,25 @@ export default function ApplicationsPage() {
             </svg>
           </div>
 
-          <div className="relative">
-            <button
-              type="button"
-              onClick={() => { setShowSort((prev) => !prev); setShowFilter(false) }}
-              className="flex items-center gap-1 text-xs font-medium text-neutral-500 hover:text-neutral-700 transition-colors"
-            >
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M3 6h18M6 12h12M9 18h6" />
-              </svg>
-              Sort
-            </button>
-            {showSort && (
-              <OptionsPopup
-                options={SORT_OPTIONS}
-                activeValue={sortValue}
-                onChange={setSortValue}
-                onClose={() => setShowSort(false)}
-              />
-            )}
-          </div>
+          {/* Shared SortMenu - same compact dropdown used on Dashboard,
+              JobsPage and JobDetailPage. */}
+          <SortMenu
+            value={sortValue}
+            onChange={setSortValue}
+            options={SORT_OPTIONS}
+          />
 
-          <div className="relative">
-            <button
-              type="button"
-              onClick={() => { setShowFilter((prev) => !prev); setShowSort(false) }}
-              className="flex items-center gap-1 text-xs font-medium text-neutral-500 hover:text-neutral-700 transition-colors"
-            >
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />
-              </svg>
-              Filter
-            </button>
-            {showFilter && (
-              <OptionsPopup
-                options={FILTER_OPTIONS}
-                activeValue={filterValue}
-                onChange={setFilterValue}
-                onClose={() => setShowFilter(false)}
-              />
-            )}
-          </div>
+          {/* Shared FilterMenu in single-select mode. We feed the current
+              filterValue as a single-item array (or wrap '' for the "All"
+              sentinel) and unwrap on change. Result: the dropdown lights
+              up "All" when nothing is filtering, exactly like the other
+              status filters across the app. */}
+          <FilterMenu
+            values={[filterValue]}
+            onChange={(newValues) => setFilterValue(newValues[0] ?? '')}
+            options={FILTER_OPTIONS}
+            singleSelect
+          />
         </div>
 
         <div className={`${card.base} overflow-hidden !p-0`}>
