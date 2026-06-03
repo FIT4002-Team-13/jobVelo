@@ -324,15 +324,20 @@ function CandidateInfoCard({ candidate, job, interview, onStartInterview, interv
   const status = (interview?.intv_status ?? 'not_scheduled').replace(/_/g, ' ').toUpperCase()
   const canStartInterview = status === 'SCHEDULED'
 
+  // Unified palette - mirrors JobDetailPage / DashboardPage / ApplicationsPage
+  // so the same status reads identically wherever it appears. Key change:
+  // SCHEDULED now uses primary blue (was grey) so it's visually distinct
+  // from NOT SCHEDULED, which keeps the muted grey.
   const statusClass =
-    status === 'EVALUATED'
-      ? 'bg-primary-100 text-primary-500'
-      : status === 'SCHEDULED'
-      ? 'bg-neutral-200 text-neutral-600'
+    status === 'SCHEDULED'
+      ? 'bg-primary-100 text-primary-600'
+      : status === 'EVALUATED'
+      ? 'bg-sky-100 text-sky-600'
       : status === 'HIRED'
-      ? 'bg-mint-50 text-mint-700'
+      ? 'bg-mint-100 text-mint-700'
       : status === 'REJECTED'
-      ? 'bg-coral-50 text-coral-500'
+      ? 'bg-coral-100 text-coral-700'
+      // NOT SCHEDULED + anything unknown
       : 'bg-neutral-100 text-neutral-500'
 
   return (

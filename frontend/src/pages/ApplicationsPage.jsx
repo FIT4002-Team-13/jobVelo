@@ -27,15 +27,22 @@ function avatarColor(name = '') {
   return colors[Math.abs(hash) % colors.length]
 }
 
+// Unified palette - mirrors JobDetailPage / DashboardPage / CandidateDetailPage
+// so the same status reads identically across the app. Key change: SCHEDULED
+// now flips to primary blue (was grey) so it's visually distinct from
+// NOT SCHEDULED, which stays grey.
 function statusClass(status) {
   switch (status) {
+    case 'NOT SCHEDULED':
+      return 'bg-neutral-100 text-neutral-500'
+    case 'SCHEDULED':
+      return 'bg-primary-100 text-primary-600'
+    case 'EVALUATED':
+      return 'bg-sky-100 text-sky-600'
     case 'HIRED':
       return 'bg-mint-100 text-mint-700'
     case 'REJECTED':
-      return 'bg-coral-100 text-coral-600'
-    case 'EVALUATED':
-      return 'bg-primary-100 text-primary-500'
-    case 'SCHEDULED':
+      return 'bg-coral-100 text-coral-700'
     default:
       return 'bg-neutral-100 text-neutral-500'
   }
