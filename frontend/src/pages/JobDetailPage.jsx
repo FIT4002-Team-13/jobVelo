@@ -518,20 +518,18 @@ function CandidatesTable({ candidates, tab, setTab, onStartInterview, onDelete, 
                 </td>
               </tr>
             ) : sorted.map((c, i) => {
-              // Cells shared by both views (so they read identically across tabs)
+              // Whole row is the click target now - the candidate cell is just
+              // a regular div instead of a nested button. Action buttons below
+              // each call stopPropagation() so they keep their own click handler
+              // without also triggering the row navigation.
               const candidateCell = (
                 <td className="px-4 py-3">
-                  <button
-                    type="button"
-                    onClick={() => onOpenCandidate?.(c)}
-                    className={`${flex.row} gap-3 text-left transition-opacity hover:opacity-80`}
-                    title="Open candidate page"
-                  >
+                  <div className={`${flex.row} gap-3`}>
                     <div className={`w-8 h-8 rounded-pill ${flex.rowCenter} text-white text-xs font-bold shrink-0 ${avatarColor(c.name)}`}>
                       {initials(c.name)}
                     </div>
-                    <span className="font-medium text-neutral-800 hover:text-primary-600">{c.name}</span>
-                  </button>
+                    <span className="font-medium text-neutral-800">{c.name}</span>
+                  </div>
                 </td>
               )
               const statusCell = (
@@ -551,13 +549,16 @@ function CandidatesTable({ candidates, tab, setTab, onStartInterview, onDelete, 
               // typically EVALUATED). Delete is always available - removing a
               // mis-added candidate from a job shouldn't depend on their state.
               const canStart = c.status === 'SCHEDULED'
+              // Wrapper stops row-navigation when clicking inside the actions
+              // column - lets the user hit any button (Start / View / Delete)
+              // without also triggering the open-candidate navigation.
               const actionsCell = (
-                <td className="px-4 py-3">
+                <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                   <div className={`${flex.row} gap-2`}>
                     <button
                       type="button"
                       disabled={!canStart}
-                      onClick={() => canStart && onStartInterview?.(c)}
+                      onClick={(e) => { e.stopPropagation(); canStart && onStartInterview?.(c) }}
                       className={`${flex.row} gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors whitespace-nowrap ${
                         canStart
                           ? 'bg-primary-500 hover:bg-primary-600 text-white'
@@ -569,14 +570,14 @@ function CandidatesTable({ candidates, tab, setTab, onStartInterview, onDelete, 
                       </svg>
                       Start Interview
                     </button>
-                    {/* View - now wired to the candidate-detail page using
-                        cand_id + current job id. Keeping the icon here preserves
-                        the familiar action row while making the flow usable. */}
+                    {/* View - kept for affordance even though the whole row is
+                        clickable now, so users who hover on the icon get a
+                        clear "open" hint. */}
                     <button
                       type="button"
                       title="View candidate details"
                       aria-label="View candidate"
-                      onClick={() => onOpenCandidate?.(c)}
+                      onClick={(e) => { e.stopPropagation(); onOpenCandidate?.(c) }}
                       className={`w-7 h-7 ${flex.rowCenter} rounded-lg text-neutral-400 hover:bg-neutral-100 hover:text-neutral-600 transition-colors`}
                     >
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -585,7 +586,7 @@ function CandidatesTable({ candidates, tab, setTab, onStartInterview, onDelete, 
                     </button>
                     <button
                       type="button"
-                      onClick={() => onDelete?.(c)}
+                      onClick={(e) => { e.stopPropagation(); onDelete?.(c) }}
                       title="Remove this candidate from the job"
                       aria-label="Delete candidate"
                       className={`w-7 h-7 ${flex.rowCenter} rounded-lg text-coral-500 hover:bg-coral-50 hover:text-coral-700 transition-colors`}
@@ -602,7 +603,11 @@ function CandidatesTable({ candidates, tab, setTab, onStartInterview, onDelete, 
               )
 
               return (
-                <tr key={c.id ?? i} className="border-b border-neutral-100 last:border-0 hover:bg-neutral-50 transition-colors">
+                <tr
+                  key={c.id ?? i}
+                  onClick={() => onOpenCandidate?.(c)}
+                  className="border-b border-neutral-100 last:border-0 hover:bg-neutral-50 cursor-pointer transition-colors"
+                >
                   {tab === 'RANKINGS' ? (
                     <>
                       {/* Rank - 1-based since people don't count from zero.

@@ -352,25 +352,26 @@ export default function ApplicationsPage() {
                   </tr>
                 ) : (
                   filteredRows.map((row) => (
+                    // Whole row navigates to the candidate page now. Action
+                    // cells below (CV / CL links, Edit button) all carry
+                    // stopPropagation so they keep their own click without
+                    // also opening the candidate page.
                     <tr
                       key={row.application_id}
-                      className="border-t border-neutral-100 last:border-b-0"
+                      onClick={() => openCandidate(row)}
+                      className="border-t border-neutral-100 last:border-b-0 hover:bg-neutral-50 cursor-pointer transition-colors"
                     >
                       <td className="px-6 py-4">
-                        <button
-                          type="button"
-                          onClick={() => openCandidate(row)}
-                          className="flex items-center gap-3 text-left transition-opacity hover:opacity-80"
-                        >
+                        <div className="flex items-center gap-3">
                           <div
                             className={`flex h-10 w-10 items-center justify-center rounded-pill text-sm font-bold text-white ${avatarColor(row.candidate_name)}`}
                           >
                             {getInitials(row.candidate_name)}
                           </div>
-                          <span className="text-[16px] font-medium text-neutral-800 hover:text-primary-600">
+                          <span className="text-[16px] font-medium text-neutral-800">
                             {row.candidate_name}
                           </span>
-                        </button>
+                        </div>
                       </td>
 
                       <td className="px-6 py-4 text-[16px] text-neutral-800">
@@ -385,7 +386,7 @@ export default function ApplicationsPage() {
                         </span>
                       </td>
 
-                      <td className="px-6 py-4">
+                      <td className="px-6 py-4" onClick={(e) => e.stopPropagation()}>
                         {row.cv_url ? (
                           <a
                             href={row.cv_url}
@@ -400,7 +401,7 @@ export default function ApplicationsPage() {
                         )}
                       </td>
 
-                      <td className="px-6 py-4">
+                      <td className="px-6 py-4" onClick={(e) => e.stopPropagation()}>
                         {row.cover_letter_url ? (
                           <a
                             href={row.cover_letter_url}
@@ -423,10 +424,11 @@ export default function ApplicationsPage() {
                         {formatShortDate(row.interview_datetime)}
                       </td>
 
-                      <td className="px-6 py-4">
+                      <td className="px-6 py-4" onClick={(e) => e.stopPropagation()}>
                         <button
                           type="button"
-                          onClick={() => {
+                          onClick={(e) => {
+                            e.stopPropagation()
                             setSelectedRow(row)
                             setShowEditModal(true)
                           }}
