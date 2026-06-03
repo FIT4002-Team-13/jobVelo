@@ -6,6 +6,7 @@ import StartInterviewModal from '../components/job-candidate/StartInterviewModal
 import EditCandidateForm from '../components/candidate/EditCandidateForm'
 import { card, flex, page } from '../styles/layout'
 import { useAuth } from '../lib/AuthContext.jsx'
+import { authedFetch } from '../lib/api.js'
 
 function formatDate(iso) {
   if (!iso) return '--'
@@ -350,6 +351,22 @@ function CandidateInfoCard({ candidate, job, interview, onStartInterview, interv
         </div>
 
         <div className="flex items-center gap-3">
+          {/* Start Interview is the primary action on this page, so it lives
+              here in the header as a solid CTA (only when the interview is
+              actually scheduled) instead of being tucked into the DATE row. */}
+          {canStartInterview && (
+            <button
+              type="button"
+              onClick={onStartInterview}
+              className="inline-flex items-center gap-2 rounded-xl bg-primary-500 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-primary-600"
+            >
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor">
+                <polygon points="5 3 19 12 5 21 5 3" />
+              </svg>
+              Start Interview
+            </button>
+          )}
+
           <button
             type="button"
             onClick={onEdit}
@@ -378,27 +395,9 @@ function CandidateInfoCard({ candidate, job, interview, onStartInterview, interv
           <p className="mb-1 text-sm font-bold uppercase tracking-wide text-neutral-800">
             DATE
           </p>
-
-          <div className="grid grid-cols-[1fr_272px] items-center gap-4">
-            <p className="min-w-0 text-sm font-medium text-neutral-400">
-              {formatDateTime(interview?.intv_date_time)}
-            </p>
-
-            <div className="flex justify-end">
-              {canStartInterview && (
-                <button
-                  type="button"
-                  onClick={onStartInterview}
-                  className="inline-flex w-[150px] items-center justify-center gap-2 rounded-xl bg-primary-100 px-4 py-0.5 text-sm font-semibold text-primary-500 transition-colors hover:bg-primary-200"
-                >
-                  <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor">
-                    <polygon points="5 3 19 12 5 21 5 3" />
-                  </svg>
-                  Start Interview
-                </button>
-              )}
-            </div>
-          </div>
+          <p className="text-sm font-medium text-neutral-400">
+            {formatDateTime(interview?.intv_date_time)}
+          </p>
         </div>
 
         <div>
@@ -462,22 +461,22 @@ function CandidateInfoCard({ candidate, job, interview, onStartInterview, interv
           <p className="mb-2 text-xs font-bold uppercase tracking-wide text-neutral-800">
             COVER LETTER
           </p>
+          {/* Mirror the CV "View" button exactly so both documents present
+              identically - a greyed-out disabled button when no file exists. */}
           <a
             href={candidate?.cand_cover_letter_url || '#'}
             target="_blank"
             rel="noreferrer"
-            className={`text-sm font-medium underline-offset-2 ${
+            className={`inline-flex min-w-[98px] justify-center rounded-xl px-4 py-0.5 text-sm font-semibold transition-colors ${
               candidate?.cand_cover_letter_url
-                ? 'text-primary-500 hover:underline'
-                : 'pointer-events-none text-neutral-400'
+                ? 'bg-primary-500 text-white hover:bg-primary-600'
+                : 'cursor-not-allowed bg-neutral-300 text-neutral-500'
             }`}
             onClick={(e) => {
               if (!candidate?.cand_cover_letter_url) e.preventDefault()
             }}
           >
-            {candidate?.cand_cover_letter_url
-              ? decodeURIComponent(candidate.cand_cover_letter_url.split('/').pop() || 'Cover Letter')
-              : 'No file'}
+            View
           </a>
         </div>
       </div>
@@ -513,11 +512,11 @@ export default function CandidateDetailPage() {
         setInterviewerUserId('')
 
         const [candRes, jobCandRes, intvRes, jobRes, allJobsRes] = await Promise.all([
-          fetch(`/api/candidates/${candId}`),
-          fetch(`/api/job-candidates/by-candidate/${candId}`),
-          fetch(`/api/interviews?cand_id=${candId}&job_id=${jobId}`),
-          fetch(`/api/jobs/${jobId}`),
-          fetch('/api/jobs'),
+          authedFetch(`/api/candidates/${candId}`),
+          authedFetch(`/api/job-candidates/by-candidate/${candId}`),
+          authedFetch(`/api/interviews?cand_id=${candId}&job_id=${jobId}`),
+          authedFetch(`/api/jobs/${jobId}`),
+          authedFetch('/api/jobs'),
         ])
 
         if (!candRes.ok) throw new Error('Candidate not found.')
@@ -556,7 +555,7 @@ export default function CandidateDetailPage() {
         setJobs(Array.isArray(allJobsData) ? allJobsData : [])
 
         if (selectedInterview?.intv_id && user?.comp_id) {
-          const intvUserRes = await fetch(
+          const intvUserRes = await authedFetch(
             `/api/interview-users/by-interview/${selectedInterview.intv_id}`
           )
 
@@ -568,7 +567,7 @@ export default function CandidateDetailPage() {
 
             if (interviewerUserId) {
               setInterviewerUserId(interviewerUserId)
-              const usersRes = await fetch(`/api/users?comp_id=${user.comp_id}`)
+              const usersRes = await authedFetch(`/api/users`)
 
               if (usersRes.ok) {
                 const usersData = await usersRes.json()
@@ -623,6 +622,9 @@ export default function CandidateDetailPage() {
               onClick={() => navigate(-1)}
               className={`${flex.row} mb-3 gap-2 rounded-lg border border-neutral-200 bg-neutral-0 px-3 py-1.5 text-sm font-semibold text-neutral-600 transition-colors hover:border-primary-200 hover:bg-primary-500/10 hover:text-primary-600`}
             >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/>
+              </svg>
               Back
             </button>
 

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { modal, form } from '../../styles/layout'
 import { isEmail, isPhone, isFullName, isFutureDateTime } from '../../lib/validators.js'
 import { useAuth } from '../../lib/AuthContext.jsx'
+import { authedFetch } from '../../lib/api.js'
 import InterviewerCombobox from './InterviewerCombobox.jsx'
 
 function getFileName(value = '') {
@@ -123,7 +124,7 @@ export default function EditCandidateForm({
     async function loadInterviewers() {
       if (!user?.comp_id) return
       try {
-        const res = await fetch(`/api/users?comp_id=${user.comp_id}&role=interviewer`)
+        const res = await authedFetch(`/api/users?role=interviewer`)
         if (!res.ok) throw new Error()
         const data = await res.json()
         setInterviewers(Array.isArray(data) ? data : [])
@@ -176,7 +177,7 @@ export default function EditCandidateForm({
         : null
 
       // 1. Update candidate profile
-      const candRes = await fetch(`/api/candidates/${formState.cand_id}`, {
+      const candRes = await authedFetch(`/api/candidates/${formState.cand_id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -199,7 +200,7 @@ export default function EditCandidateForm({
       }
 
       // 2. Update application/job/interview side
-      const appRes = await fetch(`/api/applications/${formState.application_id}`, {
+      const appRes = await authedFetch(`/api/applications/${formState.application_id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

@@ -13,6 +13,21 @@ export class ApiError extends Error {
   }
 }
 
+// Drop-in replacement for window.fetch that injects the Bearer token from
+// authStore. Takes the URL EXACTLY as you'd pass to fetch (e.g.
+// "/api/jobs") and returns the raw Response, so call sites that do their
+// own res.ok / res.json() handling keep working unchanged - the only edit
+// needed is `fetch(` → `authedFetch(`.
+//
+// Every data endpoint is tenant-scoped server-side now (comp_id from the
+// JWT), so without this header those requests 401.
+export function authedFetch(url, init = {}) {
+  const token = getToken()
+  const headers = { ...(init.headers || {}) }
+  if (token) headers.Authorization = `Bearer ${token}`
+  return fetch(url, { ...init, headers })
+}
+
 // Auto-detects JSON vs FormData bodies:
 // - plain object → JSON encoded with Content-Type: application/json
 // - FormData     → sent raw (browser sets the multipart boundary header)

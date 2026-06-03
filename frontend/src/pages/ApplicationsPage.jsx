@@ -5,6 +5,7 @@ import AddCandidateForm from '../components/candidate/AddCandidateForm'
 import EditCandidateForm from '../components/candidate/EditCandidateForm'
 import { page, card, button } from '../styles/layout'
 import { useAuth } from '../lib/AuthContext.jsx'
+import { authedFetch } from '../lib/api.js'
 
 function getInitials(name = '') {
   const safeName = typeof name === 'string' ? name.trim() : ''
@@ -124,7 +125,7 @@ export default function ApplicationsPage() {
   const [selectedRow, setSelectedRow] = useState(null)
 
   async function loadApplications() {
-    const res = await fetch(
+    const res = await authedFetch(
       `/api/applications?user_id=${encodeURIComponent(user?.userid || '')}`
     )
     if (!res.ok) throw new Error('Failed to load applications.')
@@ -139,7 +140,7 @@ export default function ApplicationsPage() {
         setError('')
 
         const [jobsRes] = await Promise.all([
-          fetch('/api/jobs'),
+          authedFetch('/api/jobs'),
           loadApplications(),
         ])
 
@@ -249,23 +250,18 @@ export default function ApplicationsPage() {
           </button>
         </div>
 
-        <div className="mb-4 flex justify-end gap-4">
-          <div className="flex items-center gap-2 rounded-xl border border-neutral-200 bg-white px-3 py-2">
+        {/* Controls row - matches the JobsPage search/sort/filter styling so
+            the two pages read identically: same search-bar size, same icon'd
+            sort/filter buttons, vertically centered. */}
+        <div className="mb-5 flex items-center justify-end gap-3">
+          <div className="flex items-center gap-2 rounded-xl border border-neutral-200 bg-neutral-0 px-3 py-1.5">
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Candidate Name"
-              className="w-40 bg-transparent text-sm outline-none placeholder:text-neutral-400"
+              className="w-32 border-none bg-transparent text-sm text-neutral-600 outline-none placeholder:text-neutral-400"
             />
-            <svg
-              width="14"
-              height="14"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              className="text-neutral-400"
-            >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-neutral-400">
               <circle cx="11" cy="11" r="8" />
               <path d="m21 21-4.35-4.35" />
             </svg>
@@ -275,8 +271,11 @@ export default function ApplicationsPage() {
             <button
               type="button"
               onClick={() => { setShowSort((prev) => !prev); setShowFilter(false) }}
-              className="text-sm font-medium text-neutral-400 hover:text-neutral-700"
+              className="flex items-center gap-1 text-xs font-medium text-neutral-500 hover:text-neutral-700 transition-colors"
             >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M3 6h18M6 12h12M9 18h6" />
+              </svg>
               Sort
             </button>
             {showSort && (
@@ -293,8 +292,11 @@ export default function ApplicationsPage() {
             <button
               type="button"
               onClick={() => { setShowFilter((prev) => !prev); setShowSort(false) }}
-              className="text-sm font-medium text-neutral-400 hover:text-neutral-700"
+              className="flex items-center gap-1 text-xs font-medium text-neutral-500 hover:text-neutral-700 transition-colors"
             >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />
+              </svg>
               Filter
             </button>
             {showFilter && (

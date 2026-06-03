@@ -8,7 +8,7 @@ import { flex, card, badge, form, button, modal, page } from '../styles/layout'
 import { fontSize } from '../styles/typography'
 
 import { useAuth } from '../lib/AuthContext.jsx'
-import { api } from '../lib/api.js'
+import { api, authedFetch } from '../lib/api.js'
 import { isEmail, isHttpUrl, isPhone, isFullName, isFutureDateTime } from '../lib/validators.js'
 import { SortMenu, FilterMenu, makeSorter } from '../components/job-candidate/TableControls'
 
@@ -157,7 +157,7 @@ function AddCandidateModal({ jobId, onClose, onAdded }) {
       scheduled_at: form_state.scheduled_at || null,
     }
     try {
-      const res = await fetch(`/api/jobs/${jobId}/candidates`, {
+      const res = await authedFetch(`/api/jobs/${jobId}/candidates`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
@@ -676,8 +676,8 @@ export default function JobDetailPage() {
     async function load() {
       try {
         const [jobRes, candsRes] = await Promise.all([
-          fetch(`/api/jobs/${id}`),
-          fetch(`/api/jobs/${id}/candidates`),
+          authedFetch(`/api/jobs/${id}`),
+          authedFetch(`/api/jobs/${id}/candidates`),
         ])
         if (!jobRes.ok) throw new Error('Job not found.')
         setJob(await jobRes.json())

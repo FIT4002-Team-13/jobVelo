@@ -3,9 +3,10 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from bson import ObjectId
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
 
 from database import get_db
+from dependencies import get_current_comp_id
 from models.candidate import (
     CandidateCreate,
     CandidateCreateForJob,
@@ -72,15 +73,21 @@ def job_candidate_helper(job_candidate: dict) -> dict:
 
 
 @router.post("", response_model=CandidateOut, status_code=status.HTTP_201_CREATED)
-async def create_candidate(payload: CandidateCreate) -> CandidateOut:
-    """Insert a candidate document only.
+async def create_candidate(
+    payload: CandidateCreate,
+    comp_id: ObjectId = Depends(get_current_comp_id),
+) -> CandidateOut:
+    """Insert a candidate document into the caller's company.
+
+    Any `comp_id` on the payload is IGNORED - we substitute the JWT one
+    so a user can't create candidates in another company.
 
     Doesn't create any job link. Use /create-for-job when the popup
     should create the candidate and attach them to a job in one flow.
     """
 
     db = get_db()
-    comp_oid = _comp_oid(payload.comp_id)
+    comp_oid = comp_id  # JWT-derived
 
     existing_candidate = await db.candidates.find_one(
         {
@@ -120,8 +127,14 @@ async def create_candidate(payload: CandidateCreate) -> CandidateOut:
 
 
 @router.post("/create-for-job", status_code=status.HTTP_201_CREATED)
-async def create_candidate_for_job(payload: CandidateCreateForJob) -> dict:
+async def create_candidate_for_job(
+    payload: CandidateCreateForJob,
+    comp_id: ObjectId = Depends(get_current_comp_id),
+) -> dict:
     """Combined popup flow.
+
+    Any `comp_id` on the payload is IGNORED in favour of the JWT one, so
+    cross-tenant writes are impossible regardless of what the client sends.
 
     Behaviour:
       1. reuse candidate if cand_id is provided and valid
@@ -132,7 +145,7 @@ async def create_candidate_for_job(payload: CandidateCreateForJob) -> dict:
 
     db = get_db()
     now = datetime.now(timezone.utc)
-    comp_oid = _comp_oid(payload.comp_id)
+    comp_oid = comp_id  # JWT-derived
 
     candidate = None
 
@@ -292,24 +305,24 @@ async def create_candidate_for_job(payload: CandidateCreateForJob) -> dict:
 
 
 @router.get("", response_model=list[CandidateOut])
-async def list_candidates(comp_id: str | None = None) -> list[CandidateOut]:
-    """List candidates, optionally scoped to a company.
+async def list_candidates(
+    comp_id: ObjectId = Depends(get_current_comp_id),
+) -> list[CandidateOut]:
+    """List candidates in the caller's company.
 
-    Each row also carries `cand_status`, a rollup over all of the
-    candidate's job_candidates links:
-      - "SCHEDULED" if ANY link is still SCHEDULED (something pending)
-      - "EVALUATED" otherwise, when at least one link exists
-      - None        if there's no link at all (profile-only)
+    Each row also carries `cand_status`, a rollup over the candidate's
+    interviews:
+      - "SCHEDULED" if ANY interview is still SCHEDULED (something pending)
+      - "EVALUATED"/"HIRED"/"REJECTED" otherwise, when at least one exists
+      - None        if there's no interview at all (profile-only)
     The rollup makes the dashboard "candidates" panel actionable
     (status badge + filter) without N+1 fetches from the frontend.
+
+    Tenant isolation: comp_id is sourced from the JWT.
     """
     db = get_db()
 
-    query: dict = {}
-    if comp_id:
-        query["comp_id"] = _comp_oid(comp_id)
-
-    candidates = await db.candidates.find(query).to_list(length=100)
+    candidates = await db.candidates.find({"comp_id": comp_id}).to_list(length=100)
     if not candidates:
         return []
 
@@ -337,7 +350,11 @@ async def list_candidates(comp_id: str | None = None) -> list[CandidateOut]:
 
 
 @router.get("/{cand_id}", response_model=CandidateOut)
-async def get_candidate(cand_id: str) -> CandidateOut:
+async def get_candidate(
+    cand_id: str,
+    comp_id: ObjectId = Depends(get_current_comp_id),
+) -> CandidateOut:
+    """Fetch a single candidate. 404s for candidates in another company."""
     db = get_db()
 
     if not ObjectId.is_valid(cand_id):
@@ -346,7 +363,9 @@ async def get_candidate(cand_id: str) -> CandidateOut:
             detail="Invalid candidate id.",
         )
 
-    candidate = await db.candidates.find_one({"_id": ObjectId(cand_id)})
+    candidate = await db.candidates.find_one(
+        {"_id": ObjectId(cand_id), "comp_id": comp_id}
+    )
     if not candidate:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -357,7 +376,12 @@ async def get_candidate(cand_id: str) -> CandidateOut:
 
 
 @router.patch("/{cand_id}", response_model=CandidateOut)
-async def update_candidate(cand_id: str, payload: CandidateUpdate) -> CandidateOut:
+async def update_candidate(
+    cand_id: str,
+    payload: CandidateUpdate,
+    comp_id: ObjectId = Depends(get_current_comp_id),
+) -> CandidateOut:
+    """Patch a candidate. 404s if it isn't in the caller's company."""
     db = get_db()
 
     if not ObjectId.is_valid(cand_id):
@@ -366,7 +390,9 @@ async def update_candidate(cand_id: str, payload: CandidateUpdate) -> CandidateO
             detail="Invalid candidate id.",
         )
 
-    existing_candidate = await db.candidates.find_one({"_id": ObjectId(cand_id)})
+    existing_candidate = await db.candidates.find_one(
+        {"_id": ObjectId(cand_id), "comp_id": comp_id}
+    )
     if not existing_candidate:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

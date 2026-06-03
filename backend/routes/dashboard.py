@@ -11,16 +11,21 @@ The dashboard's candidate list itself is fetched from the real
 
 from datetime import datetime, timezone
 
+from bson import ObjectId
 from fastapi import APIRouter, Depends
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from database import get_db
+from dependencies import get_current_comp_id
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
 
 
 @router.get("/summary")
-async def get_summary(db: AsyncIOMotorDatabase = Depends(get_db)):
+async def get_summary(
+    db: AsyncIOMotorDatabase = Depends(get_db),
+    comp_id: ObjectId = Depends(get_current_comp_id),
+):
     """Return the three counters shown on the dashboard summary cards.
 
     Definitions (matches the labels the user sees on the cards):
@@ -35,7 +40,25 @@ async def get_summary(db: AsyncIOMotorDatabase = Depends(get_db)):
 
     Today is taken in UTC for now - swap to the company's timezone once
     that becomes a stored field on the company document.
+
+    Tenant isolation: every count is restricted to job_candidates whose
+    job_id belongs to the caller's company. job_candidates rows don't carry
+    comp_id directly, so we resolve the company's job ids first and pass
+    them as a `$in` filter into each count query.
     """
+    company_job_ids = [
+        str(j["_id"])
+        async for j in db.jobs.find({"comp_id": comp_id}, {"_id": 1})
+    ]
+    if not company_job_ids:
+        return {
+            "today_interviews":     0,
+            "completed_interviews": 0,
+            "upcoming_interviews":  0,
+        }
+
+    job_scope = {"job_id": {"$in": company_job_ids}}
+
     today_prefix = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     # Anything strictly later than the last second of today (lexicographic
     # compare on ISO-prefixed strings works because of how the format sorts).
@@ -44,11 +67,13 @@ async def get_summary(db: AsyncIOMotorDatabase = Depends(get_db)):
     today_count, completed_count, upcoming_count = await _gather(
         db,
         today_query={
+            **job_scope,
             "status":       "SCHEDULED",
             "scheduled_at": {"$regex": f"^{today_prefix}"},
         },
-        completed_query={"status": "EVALUATED"},
+        completed_query={**job_scope, "status": "EVALUATED"},
         upcoming_query={
+            **job_scope,
             "status":       "SCHEDULED",
             "scheduled_at": {"$gt": end_of_today},
         },

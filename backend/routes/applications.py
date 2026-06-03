@@ -114,10 +114,11 @@ from datetime import datetime, timezone
 from typing import Any
 
 from bson import ObjectId
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 
 from database import get_db
+from dependencies import get_current_comp_id
 
 router = APIRouter(prefix="/api/applications", tags=["applications"])
 
@@ -137,6 +138,7 @@ def _safe_avg_score(job_candidate: dict[str, Any]) -> float | None:
 @router.get("")
 async def list_applications(
     user_id: str = Query(..., description="Current user's MongoDB _id (string)"),
+    comp_id: ObjectId = Depends(get_current_comp_id),
 ) -> list[dict[str, Any]]:
     db = get_db()
 
@@ -146,14 +148,24 @@ async def list_applications(
             detail="Invalid user_id.",
         )
 
-    # Resolve display name for the response rows.
-    interviewer_user = await db.users.find_one(
-        {"_id": ObjectId(user_id)} if ObjectId.is_valid(user_id) else {"_id": None}
+    # Tenant guard: the requested interviewer must belong to the caller's
+    # company. Without this, anyone could pass another company's user_id
+    # and read that interviewer's whole application list.
+    interviewer_user = (
+        await db.users.find_one({"_id": ObjectId(user_id), "comp_id": comp_id})
+        if ObjectId.is_valid(user_id) else None
     )
+    if not interviewer_user:
+        raise HTTPException(status_code=404, detail="User not found")
     interviewer_name = (
-        (interviewer_user.get("full_name") or interviewer_user.get("username") or "")
-        if interviewer_user else ""
+        interviewer_user.get("full_name") or interviewer_user.get("username") or ""
     )
+
+    # Set of the company's job ids - used to drop any application row whose
+    # job belongs to a different company (defence-in-depth on the join below).
+    company_job_ids = {
+        str(j["_id"]) async for j in db.jobs.find({"comp_id": comp_id}, {"_id": 1})
+    }
 
     # Find all interview links for this user directly by ID — no name lookup.
     interview_user_links = await db.interview_users.find(
@@ -194,6 +206,8 @@ async def list_applications(
     matched_job_candidates = [
         jc for jc in all_job_candidates
         if (jc.get("cand_id"), jc.get("job_id")) in assigned_pairs
+        # Only keep rows whose job is in the caller's company.
+        and jc.get("job_id") in company_job_ids
     ]
 
     if not matched_job_candidates:
@@ -272,7 +286,11 @@ class ApplicationUpdate(BaseModel):
 
 
 @router.patch("/{application_id}")
-async def update_application(application_id: str, payload: ApplicationUpdate):
+async def update_application(
+    application_id: str,
+    payload: ApplicationUpdate,
+    comp_id: ObjectId = Depends(get_current_comp_id),
+):
     db = get_db()
 
     if not ObjectId.is_valid(application_id):
@@ -282,8 +300,16 @@ async def update_application(application_id: str, payload: ApplicationUpdate):
     if not application:
         raise HTTPException(status_code=404, detail="Application not found.")
 
+    # Tenant guard: the application's current job AND the target job_id the
+    # caller wants to move it to must both belong to the caller's company.
     old_job_id = application["job_id"]
     cand_id = application["cand_id"]
+    for jid in (old_job_id, payload.job_id):
+        if not jid or not ObjectId.is_valid(jid) or not await db.jobs.find_one(
+            {"_id": ObjectId(jid), "comp_id": comp_id}, {"_id": 1}
+        ):
+            raise HTTPException(status_code=404, detail="Application not found.")
+
     now = datetime.now(timezone.utc)
 
     # 1. Update the job-candidate link.
@@ -348,6 +374,12 @@ async def update_application(application_id: str, payload: ApplicationUpdate):
     if payload.interviewer_user_id:
         if not ObjectId.is_valid(payload.interviewer_user_id):
             raise HTTPException(status_code=400, detail="Invalid interviewer_user_id.")
+
+        # The interviewer being assigned must belong to the caller's company.
+        if not await db.users.find_one(
+            {"_id": ObjectId(payload.interviewer_user_id), "comp_id": comp_id}, {"_id": 1}
+        ):
+            raise HTTPException(status_code=404, detail="Interviewer not found.")
 
         existing_link = await db.interview_users.find_one({
             "intv_id": intv_id_str,

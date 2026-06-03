@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { modal, form } from '../../styles/layout'
 import { useAuth } from '../../lib/AuthContext.jsx'
+import { authedFetch } from '../../lib/api.js'
 import { isEmail, isPhone, isFullName, isFutureDateTime } from '../../lib/validators.js'
 import InterviewerCombobox from './InterviewerCombobox.jsx'
 
@@ -101,7 +102,7 @@ export default function AddCandidateForm({ jobs = [], onClose, onSaved }) {
     async function loadInterviewers() {
       if (!user?.comp_id) return
       try {
-        const res = await fetch(`/api/users?comp_id=${user.comp_id}&role=interviewer`)
+        const res = await authedFetch(`/api/users?role=interviewer`)
         if (!res.ok) throw new Error()
         const data = await res.json()
         setInterviewers(Array.isArray(data) ? data : [])
@@ -149,7 +150,7 @@ export default function AddCandidateForm({ jobs = [], onClose, onSaved }) {
       const cv_url = null
       const cover_letter_url = null
 
-      const res = await fetch(`/api/candidates/create-for-job`, {
+      const res = await authedFetch(`/api/candidates/create-for-job`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
