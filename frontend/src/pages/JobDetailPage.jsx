@@ -22,12 +22,24 @@ const STATUS_STYLES = {
   Completed:     'bg-mint-500 text-white',
 }
 
-// Only SCHEDULED + EVALUATED are surfaced - HIRED / REJECTED removed.
-// Anything else (including legacy data) falls back to the neutral pill style
-// via the `?? 'bg-neutral-100 ...'` guard at the call site.
+// Candidate-row status palette. Same palette is mirrored in DashboardPage,
+// ApplicationsPage, and CandidateDetailPage so a given status reads
+// identically anywhere it appears:
+//   - NOT SCHEDULED → passive grey: candidate added but no interview yet
+//   - SCHEDULED     → primary blue: interview set up, ready to start
+//   - INCOMPLETE    → coral tint: scheduled in name only (missing date /
+//                     interviewer). Derived client-side, see displayStatus.
+//   - EVALUATED     → sky tint: scoring done
+//   - HIRED         → mint: positive outcome
+//   - REJECTED      → coral: negative outcome
+// Anything unknown falls back to neutral via the `??` guard at the call site.
 const CANDIDATE_STATUS_STYLES = {
-  SCHEDULED: 'bg-neutral-100 text-neutral-500',
-  EVALUATED: 'bg-sky-100 text-sky-600',
+  'NOT SCHEDULED': 'bg-neutral-100 text-neutral-500',
+  SCHEDULED:       'bg-primary-100 text-primary-600',
+  INCOMPLETE:      'bg-coral-50 text-coral-600',
+  EVALUATED:       'bg-sky-100 text-sky-600',
+  HIRED:           'bg-mint-100 text-mint-700',
+  REJECTED:        'bg-coral-100 text-coral-700',
 }
 
 // Options shown in the candidates-table FilterMenu. Kept in sync with the

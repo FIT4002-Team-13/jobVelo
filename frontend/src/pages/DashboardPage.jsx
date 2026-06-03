@@ -32,8 +32,11 @@ const STATUS_STYLES = {
 // status looks identical wherever it shows. Soft tint here (vs solid for
 // jobs) because candidates appear in a denser list and solid would shout.
 const CANDIDATE_STATUS_STYLES = {
-  SCHEDULED: 'bg-neutral-100 text-neutral-500',
-  EVALUATED: 'bg-sky-100 text-sky-600',
+  'NOT SCHEDULED': 'bg-neutral-100 text-neutral-500',
+  SCHEDULED:       'bg-primary-100 text-primary-600',
+  EVALUATED:       'bg-sky-100 text-sky-600',
+  HIRED:           'bg-mint-100 text-mint-700',
+  REJECTED:        'bg-coral-100 text-coral-700',
 }
 
 // ── Style tokens for summary cards ──────────────────────────────────────────
@@ -111,6 +114,12 @@ export default function DashboardPage() {
   const candSorter = makeSorter(candSortKey, { nameField: 'cand_full_name', dateField: 'cand_created_at' })
   const candNeedle = candSearch.trim().toLowerCase()
   const visibleCandidates = candidates.filter((c) => {
+    // Dashboard is a glance-view of the active pipeline. A candidate with no
+    // application (cand_status is null) is just a stored profile - not in
+    // the pipeline yet - and showing them here would burn dashboard slots
+    // on rows the recruiter can't act on. Browse / clean-up of profile-only
+    // candidates belongs on a dedicated /candidates page later.
+    if (!c.cand_status) return false
     if (candNeedle) {
       const haystack = `${c.cand_full_name ?? ''} ${c.cand_email ?? ''}`.toLowerCase()
       if (!haystack.includes(candNeedle)) return false
