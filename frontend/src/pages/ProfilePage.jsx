@@ -28,6 +28,21 @@ export default function Profile() {
         .join(' ')
     : '';
 
+  // Note: Strengths are hardcoded for now but will be created by US34
+  const strengths = [
+    {
+      title: "Strong Communication",
+      description: "Clearly explains technical concepts and collaborates well with interviewers. Writes clean, readable code and provides thoughtful comments when needed."
+    },
+    {
+      title: "Fast Learner",
+      description: "Adapts quickly to new technologies and unfamiliar workflows."
+    },
+    {
+      title: "Team Player",
+      description: "Works effectively with cross-functional teams and contributes positively."
+    }
+  ]
   return (
     <div className="flex min-h-screen bg-neutral-50">
 
@@ -65,6 +80,39 @@ export default function Profile() {
 
           </div>
         </div>
+
+        {/* To be refined in US34. Currently uses hardcoded data and comment function does not work. */}
+        <div className="bg-white border rounded-xl p-5 col-span-3 row-span-3 ">
+          <h2 className="text-lg font-semibold text-neutral-800 mb-4">
+            Strengths
+          </h2>
+
+          <div className="space-y-3">
+            {strengths.map((item, idx) => (
+              <div
+                key={idx}
+                className="group bg-neutral-100 rounded-xl px-4 py-3 flex items-center justify-between"
+              >
+                <div>
+                  <p className="text-sm font-bold text-neutral-800">
+                    {item.title}
+                  </p>
+                  <p className="text-sm text-neutral-500 mt-1">
+                    {item.description}
+                  </p>
+                </div>
+                <div className="flex items-center justify-center">
+                  <img 
+                    src={commentIcon} 
+                    alt="Comment" 
+                    className="w-4 h-4 opacity-40 hover:opacity-90 transition shrink-0"
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
         </div>
 
       </main>
