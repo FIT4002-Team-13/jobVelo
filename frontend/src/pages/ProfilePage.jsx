@@ -3,7 +3,8 @@ import Sidebar from '../components/common/Sidebar'
 import { button, modal, page } from '../styles/layout'
 import commentIcon from '../assets/icons/comment.png'
 import StatDelta from '../components/common/StatDelta';
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { api } from "../lib/api";
 
 export default function Profile() {
   const { user } = useAuth();  
@@ -211,6 +212,55 @@ export default function Profile() {
     </div>
   );
 
+  function CompanyProfileTab({ compId }) {
+    const [company, setCompany] = useState(null);
+    const [form, setForm] = useState({});
+    const [loading, setLoading] = useState(true);
+    const [saving, setSaving] = useState(false);
+    const [error, setError] = useState(null);
+    const [success, setSuccess] = useState(false);
+    const fileRef = useRef();
+
+    useEffect(() => {
+      api.getCompany(compId)
+        .then((data) => {
+          setCompany(data);
+          setForm({
+            comp_name: data.comp_name ?? '',
+            comp_industry: data.comp_industry ?? '',
+            comp_description: data.comp_description ?? '',
+            comp_email: data.comp_email ?? '',
+            comp_contact: data.comp_contact ?? '',
+            comp_website: data.comp_website ?? '',
+          });
+        })
+        .catch(() => setError('Failed to load company profile.'))
+        .finally(() => setLoading(false));
+    }, [compId]);
+
+    const handleChange = (e) => {
+      setForm(f => ({ ...f, [e.target.name]: e.target.value }));
+      setSuccess(false);
+    };
+
+    const handleSave = async () => {
+      setSaving(true);
+      setError(null);
+      try {
+        const updated = await api.updateCompany(compId, form);
+        setCompany(updated);
+        setSuccess(true);
+      } catch (e) {
+        setError(e.message || 'Failed to save.');
+      } finally {
+        setSaving(false);
+      }
+    };
+
+    const logoUrl = company?.comp_logo
+      ? `/api/files/${company.comp_logo}`
+      : null;
+
   if (user?.role !== 'admin') {
     return (
       <div className="flex min-h-screen bg-neutral-50">
@@ -278,4 +328,5 @@ export default function Profile() {
       </main>
     </div>
   );
+}
 }
