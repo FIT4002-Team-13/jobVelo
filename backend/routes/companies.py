@@ -76,3 +76,26 @@ async def update_company(
     company = await db.companies.find_one({"_id": ObjectId(comp_id)})
     return _company_out(company)
 
+
+@router.patch("/{comp_id}/logo", response_model=CompanyOut)
+async def update_company_logo(
+    comp_id: str,
+    logo: UploadFile = File(...),
+    current_user=Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    if not ObjectId.is_valid(comp_id):
+        raise HTTPException(status_code=400, detail="Invalid comp_id")
+    
+    if current_user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Only admins can update logo")
+
+    logo_path = await save_upload(logo, subdir="company_logos", key=comp_id)
+    
+    await db.companies.update_one(
+        {"_id": ObjectId(comp_id)},
+        {"$set": {"comp_logo": logo_path}}
+    )
+
+    company = await db.companies.find_one({"_id": ObjectId(comp_id)})
+    return _company_out(company)
