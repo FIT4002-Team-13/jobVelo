@@ -388,6 +388,21 @@ export default function Profile() {
           </div>
         </div>
 
+        {/* Save Row */}
+        <div className="flex justify-end items-center gap-4">
+          {success && <p className="text-sm text-green-500">Changes saved successfully.</p>}
+          {error && <p className="text-sm text-red-500">{error}</p>}
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            className="bg-primary-500 hover:bg-primary-600 text-white text-sm font-semibold py-2 px-6 rounded-xl transition-colors cursor-pointer"      
+            >
+            {saving ? 'Saving...' : 'Save Changes'}
+          </button>
+        </div>
+      </div>
+    );
+  }  
 
 
   if (user?.role !== 'admin') {
