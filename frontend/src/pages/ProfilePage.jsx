@@ -59,11 +59,27 @@ export default function Profile() {
     }
   ]
 
+  // Note: Stats are hardcoded for now but will be created by US35
+  const stats = [
+    { m: "Jan", v: 1.1},
+    { m: "Feb", v: 2.7 },
+    { m: "Mar", v: 5.2 },
+    { m: "Apr", v: 8.2 },
+    { m: "May", v: 6.8 },
+    { m: "Now", v: 7.4 },
+  ];
+  const sorted = [...stats].sort((a, b) => a.v - b.v);
+  const colorMap = new Map();
+  sorted.slice(0, 2).forEach(d => colorMap.set(d.m, "bg-red-200"));
+  sorted.slice(2, 4).forEach(d => colorMap.set(d.m, "bg-blue-200"));
+  sorted.slice(4).forEach(d => colorMap.set(d.m, "bg-green-200"));
+              
+
   return (
     <div className="flex min-h-screen bg-neutral-50">
 
       <Sidebar user={user} />
-
+      
 
       <main className={page.main}>
 
@@ -128,6 +144,53 @@ export default function Profile() {
             ))}
           </div>
         </div>
+
+        {/* To be refined in US35. Currently uses hardcoded data for everything. */}
+        <div className="bg-white border rounded-xl p-5  col-span-2 row-span-5 ">
+            <div className="flex flex-col gap-3">
+            <div>
+              <p className="mt-1 text-sm font-medium text-neutral-500">TOTAL INTERVIEWS</p>
+
+              <div className="flex items-center justify-between">
+                <p className="text-2xl font-bold text-neutral-800">20</p>
+                <StatDelta value="+3%" label="from past 7 days" />
+              </div>
+            </div>
+            <div>
+              <p className="mt-1 text-sm font-medium text-neutral-500 mb-1">HIRE RATE</p>
+
+              <div className="flex items-center justify-between">
+                <p className="text-2xl font-bold text-neutral-800">2</p>
+                <StatDelta value="-50%" label="from last month" />
+              </div>
+            </div>
+            <div>
+              <p className="mt-1 text-sm font-medium text-neutral-500 mb-1">AVERAGE CANDIDATE SCORE</p>
+
+              <div className="flex items-center justify-between">
+                <p className="text-2xl font-bold text-neutral-800">7.4</p>
+                <StatDelta value="+10%" label="from last month" />
+              </div>
+            </div> 
+            <div className="flex flex-col gap-2">
+              <p className="mt-1 text-sm font-medium text-neutral-500 mb-1">
+                SCORE TRENDS
+              </p>
+              <div className="flex items-end gap-2 h-28">
+                {stats.map(d => (
+                    <div key={d.m} className="flex flex-col items-center gap-1 flex-1">
+                      <div
+                        className={`w-8 rounded-t-md ${colorMap.get(d.m)}`}
+                        style={{ height: `${d.v * 12}px` }}
+                      />
+                      <p className="text-xs text-neutral-600">{d.m}</p>
+                    </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+
         {/* To be refined in US34. Currently uses hardcoded data and comment function does not work. */}
         <div className="bg-white border rounded-xl p-5 col-span-3 row-span-4 ">
           <h2 className="text-lg font-semibold text-neutral-800 mb-4">
