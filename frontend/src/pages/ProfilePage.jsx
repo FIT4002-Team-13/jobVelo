@@ -28,7 +28,7 @@ export default function Profile() {
         .join(' ')
     : '';
 
-  // Note: Strengths are hardcoded for now but will be created by US34
+  // Note: Strengths and Improvements are hardcoded for now but will be created by US34
   const strengths = [
     {
       title: "Strong Communication",
@@ -43,6 +43,22 @@ export default function Profile() {
       description: "Works effectively with cross-functional teams and contributes positively."
     }
   ]
+
+  const improvements = [
+    {
+      title: "System Design Depth",
+      description: "Needs stronger understanding of scalable architecture patterns and trade-offs when designing larger systems."
+    },
+    {
+      title: "Edge Case Handling",
+      description: "Occasionally misses less obvious edge cases in problem-solving scenarios, especially under time pressure."
+    },
+    {
+      title: "Code Optimisation",
+      description: "Can improve awareness of time and space complexity when writing initial solutions, with more refinement in later iterations."
+    }
+  ]
+
   return (
     <div className="flex min-h-screen bg-neutral-50">
 
@@ -89,6 +105,37 @@ export default function Profile() {
 
           <div className="space-y-3">
             {strengths.map((item, idx) => (
+              <div
+                key={idx}
+                className="group bg-neutral-100 rounded-xl px-4 py-3 flex items-center justify-between"
+              >
+                <div>
+                  <p className="text-sm font-bold text-neutral-800">
+                    {item.title}
+                  </p>
+                  <p className="text-sm text-neutral-500 mt-1">
+                    {item.description}
+                  </p>
+                </div>
+                <div className="flex items-center justify-center">
+                  <img 
+                    src={commentIcon} 
+                    alt="Comment" 
+                    className="w-4 h-4 opacity-40 hover:opacity-90 transition shrink-0"
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+        {/* To be refined in US34. Currently uses hardcoded data and comment function does not work. */}
+        <div className="bg-white border rounded-xl p-5 col-span-3 row-span-4 ">
+          <h2 className="text-lg font-semibold text-neutral-800 mb-4">
+            Improvements
+          </h2>
+
+          <div className="space-y-3">
+            {improvements.map((item, idx) => (
               <div
                 key={idx}
                 className="group bg-neutral-100 rounded-xl px-4 py-3 flex items-center justify-between"
