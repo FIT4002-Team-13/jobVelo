@@ -95,7 +95,10 @@ export default function Sidebar({ user: userProp }) {
 
       {/* User + Logout */}
       <div className="p-4 border-t border-neutral-200">
-        <div className="flex items-center gap-2.5 mb-3">
+        <div
+          onClick={() => navigate('/profile')}
+          className="flex items-center gap-2.5 mb-3 p-2 rounded-lg cursor-pointer hover:bg-neutral-100 transition"
+        >
           <div className="w-9 h-9 rounded-pill bg-primary-500 flex items-center justify-center text-white font-bold text-sm shrink-0">
             {initials}
           </div>
