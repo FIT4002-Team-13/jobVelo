@@ -220,6 +220,20 @@ export default function Profile() {
     const [error, setError] = useState(null);
     const [success, setSuccess] = useState(false);
     const fileRef = useRef();
+    const handleLogoChange = async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      const formData = new FormData();
+      formData.append('logo', file);
+
+      try {
+        const updated = await api.updateCompanyLogo(compId, formData);
+        setCompany(updated);
+      } catch (e) {
+        setError('Failed to upload logo.');
+      }
+    };
 
     useEffect(() => {
       api.getCompany(compId)
@@ -320,13 +334,10 @@ export default function Profile() {
         {activeTab === 'profile' && profileGrid}    
 
         {activeTab === 'company' && (
-          <div>
-            <p className="text-neutral-400">Company profile coming soon.</p>
-          </div>
+          <CompanyProfileTab compId={user.comp_id} />
         )}
 
       </main>
     </div>
   );
-}
 }
