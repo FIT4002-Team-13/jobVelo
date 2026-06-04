@@ -335,6 +335,59 @@ export default function Profile() {
             </div>
           </div>
 
+          {/* Right — Description + Contact */}
+          <div className="flex flex-col gap-6">
+            <div className="bg-white border rounded-xl p-6 flex flex-col gap-2">
+              <h2 className="text-lg font-semibold text-neutral-800">Company Description</h2>
+              <textarea
+                name="comp_description"
+                value={form.comp_description}
+                onChange={handleChange}
+                maxLength={500}
+                rows={5}
+                className="border rounded-lg px-3 py-2 text-sm text-neutral-800 resize-none focus:outline-none focus:ring-2 focus:ring-primary-300"
+              />
+              <p className="text-xs text-neutral-400 text-right">
+                {(form.comp_description ?? '').length}/500
+              </p>
+            </div>
+
+            <div className="bg-white border rounded-xl p-6 flex flex-col gap-4">
+              <h2 className="text-lg font-semibold text-neutral-800">Contact Details</h2>
+
+              <div className="flex flex-col gap-1">
+                <label className="text-sm text-neutral-500">Email Address</label>
+                <input
+                  name="comp_email"
+                  value={form.comp_email}
+                  onChange={handleChange}
+                  className="border rounded-lg px-3 py-2 text-sm text-neutral-800 focus:outline-none focus:ring-2 focus:ring-primary-300"
+                />
+              </div>
+
+              <div className="flex flex-col gap-1">
+                <label className="text-sm text-neutral-500">Contact Number</label>
+                <input
+                  name="comp_contact"
+                  value={form.comp_contact}
+                  onChange={handleChange}
+                  className="border rounded-lg px-3 py-2 text-sm text-neutral-800 focus:outline-none focus:ring-2 focus:ring-primary-300"
+                />
+              </div>
+
+              <div className="flex flex-col gap-1">
+                <label className="text-sm text-neutral-500">Website</label>
+                <input
+                  name="comp_website"
+                  value={form.comp_website}
+                  onChange={handleChange}
+                  className="border rounded-lg px-3 py-2 text-sm text-neutral-800 focus:outline-none focus:ring-2 focus:ring-primary-300"
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+
 
 
   if (user?.role !== 'admin') {
