@@ -283,6 +283,60 @@ export default function Profile() {
       ? `/api/files/${company.comp_logo}`
       : null;
 
+    return (
+      <div className="flex flex-col gap-6">
+        <div className="grid grid-cols-[2fr_3fr] gap-6 items-start">
+
+          {/* Left — Company Branding */}
+          <div className="bg-white border rounded-xl p-6 flex flex-col gap-5">
+            <h2 className="text-lg font-semibold text-neutral-800">Company Branding</h2>
+
+            {/* Logo */}
+            <div className="border rounded-xl p-4 flex flex-col items-center gap-3">
+              {logoUrl
+                ? <img src={`${logoUrl}?t=${Date.now()}`} alt="Company logo" className="h-40 object-contain" />
+                : <div className="h-20 w-20 rounded-full bg-neutral-200 flex items-center justify-center text-neutral-400 text-sm">No logo</div>
+              }
+              <button
+                onClick={() => fileRef.current?.click()}
+                className="text-sm text-primary-500 flex items-center gap-1 hover:underline"
+              >
+                ✏️ Edit Logo
+              </button>
+              <input
+                ref={fileRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={handleLogoChange}
+              />
+            </div>
+
+            {/* Company Name */}
+            <div className="flex flex-col gap-1">
+              <label className="text-sm text-neutral-500">Company Name</label>
+              <input
+                name="comp_name"
+                value={form.comp_name}
+                onChange={handleChange}
+                className="border rounded-lg px-3 py-2 text-sm text-neutral-800 focus:outline-none focus:ring-2 focus:ring-primary-300"
+              />
+            </div>
+
+            {/* Industry */}
+            <div className="flex flex-col gap-1">
+              <label className="text-sm text-neutral-500">Industry</label>
+              <input
+                name="comp_industry"
+                value={form.comp_industry}
+                onChange={handleChange}
+                className="border rounded-lg px-3 py-2 text-sm text-neutral-800 focus:outline-none focus:ring-2 focus:ring-primary-300"
+              />
+            </div>
+          </div>
+
+
+
   if (user?.role !== 'admin') {
     return (
       <div className="flex min-h-screen bg-neutral-50">
