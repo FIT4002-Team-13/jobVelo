@@ -239,6 +239,8 @@ export default function Profile() {
       api.getCompany(compId)
         .then((data) => {
           setCompany(data);
+                console.log('company data:', data);
+
           setForm({
             comp_name: data.comp_name ?? '',
             comp_industry: data.comp_industry ?? '',
@@ -258,6 +260,12 @@ export default function Profile() {
     };
 
     const handleSave = async () => {
+
+      if (!form.comp_name.trim()) return setError('Company name is required.');
+      if (!form.comp_industry.trim()) return setError('Industry is required.');
+      if (!form.comp_email.trim()) return setError('Email is required.');
+      if (!form.comp_contact.trim()) return setError('Contact number is required.');
+
       setSaving(true);
       setError(null);
       try {
