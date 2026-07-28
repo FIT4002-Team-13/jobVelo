@@ -19,6 +19,11 @@ jobs:
         with:
           python-version: "3.12"
 
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: pip-${{ hashFiles('backend/requirements*.txt') }}
+
       #install dependencies
       - run: pip install -r backend/requirements.txt
       #install dev dependencies (linter and test runner)
@@ -35,6 +40,11 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
+
+      - uses: actions/cache@v4
+        with:
+          path: frontend/node_modules
+          key: npm-${{ hashFiles('frontend/package-lock.json')}}
       - run: npm ci --prefix frontend
       - run: npm test --prefix frontend
       - run: npm run build --prefix frontend
