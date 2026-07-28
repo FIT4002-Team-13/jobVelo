@@ -1,14 +1,12 @@
 import { render, screen } from "@testing-library/react";
-import App from "../App";
+import Logo from "../components/common/Logo";
 
-test("renders the Smart Recruit heading", () => {
-  render(<App />);
-  expect(screen.getByText("Smart Recruit")).toBeInTheDocument();
+test("renders the Smart Recruit logo", () => {
+  render(<Logo />);
+  expect(screen.getByAltText("Smart Recruit")).toBeInTheDocument();
 });
 
-test("renders the subtitle", () => {
-  render(<App />);
-  expect(
-    screen.getByText("Real-Time Interview Intelligence System")
-  ).toBeInTheDocument();
+test("applies custom className", () => {
+  render(<Logo imgClassName="h-8 w-auto" />);
+  expect(screen.getByAltText("Smart Recruit")).toHaveClass("h-8");
 });
