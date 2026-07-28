@@ -199,16 +199,20 @@ function FeedbackPanel({
 }) {
   const [activeTab, setActiveTab] = useState('candidate')
 
-  const interviewDone = interview?.intv_status && !['scheduled', 'not_scheduled'].includes(interview.intv_status)
-
-  const panelHeight = interviewDone
-    ? candidateTableHeight
-    : candidateTableHeight / 2
-
-  const activeReport =
-    activeTab === 'candidate'
-      ? interview?.intv_candidate_report
-      : interview?.intv_interviewer_report
+  // Check the actual report fields rather than the interview's status flag.
+  // intv_status can disagree with the truth in either direction (marked
+  // "completed" before reports land, or marked "scheduled" while the LLM
+  // pipeline has already filled in one of the two reports). The fields
+  // themselves are the source of truth for what we can render.
+  const candidateReport   = interview?.intv_candidate_report
+  const interviewerReport = interview?.intv_interviewer_report
+  const activeReport      = activeTab === 'candidate' ? candidateReport : interviewerReport
+  const hasActiveReport   = !!activeReport
+  // Panel grows to full height when either tab has something to show, so
+  // switching between tabs doesn't make the card jump in size if only one
+  // report has been generated so far.
+  const hasAnyReport      = !!candidateReport || !!interviewerReport
+  const panelHeight       = hasAnyReport ? candidateTableHeight : candidateTableHeight / 2
 
   const summary = activeReport?.summary ?? ''
   const strengthsItems = activeReport?.strengths?.items ?? []
@@ -217,7 +221,9 @@ function FeedbackPanel({
   const improvementsJustification = activeReport?.improvements?.justification ?? ''
 
   const handleDownload = () => {
-    if (!interviewDone) return
+    // Only fire the download when the report actually exists on the doc -
+    // otherwise the backend would just hand back an empty file.
+    if (!hasActiveReport) return
 
     if (activeTab === 'candidate') {
       onDownloadCandidateReport?.()
@@ -244,9 +250,12 @@ function FeedbackPanel({
         <button
           type="button"
           onClick={handleDownload}
-          disabled={!interviewDone}
+          disabled={!hasActiveReport}
+          title={hasActiveReport
+            ? `Download the ${activeTab} report`
+            : `No ${activeTab} report has been generated yet.`}
           className={`rounded-xl px-5 py-0.5 text-sm font-semibold text-white transition-colors ${
-            interviewDone
+            hasActiveReport
               ? 'bg-primary-500 hover:bg-primary-600'
               : 'cursor-not-allowed bg-neutral-400'
           }`}
@@ -273,7 +282,7 @@ function FeedbackPanel({
         </button>
       </div>
 
-      {interviewDone ? (
+      {hasActiveReport ? (
         <div className="grid flex-1 grid-cols-3 gap-6">
           <ReportCard title="SUMMARY" bgClass="bg-neutral-50">
             <p className="text-sm leading-7 text-neutral-900">{summary}</p>
@@ -310,9 +319,13 @@ function FeedbackPanel({
           </ReportCard>
         </div>
       ) : (
+        // Per-tab empty state - shows on whichever tab is active when that
+        // specific report hasn't been generated yet. Switching tabs still
+        // works, so a user can see the other tab's report if only one has
+        // landed.
         <div className="flex flex-1 items-center justify-center rounded-2xl bg-neutral-50 px-6 py-10">
           <p className="text-center text-md font-semibold text-neutral-500">
-            Interview is incomplete. No feedback generated yet.
+            No {activeTab} report generated yet.
           </p>
         </div>
       )}
