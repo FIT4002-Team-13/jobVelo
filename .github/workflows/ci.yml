@@ -21,14 +21,12 @@ jobs:
 
       #install dependencies
       - run: pip install -r backend/requirements.txt
-      #install the linter
-      - run: pip install ruff
+      #install dev dependencies (linter and test runner)
+      - run: pip install -r backend/requirements-dev.txt
       #Checks linter against backend code
       - run: ruff check backend/
-
-      #Uncomment these when tests have been added
-      #- run: pip install pytest
-      #- run: pytest backend/
+      #Run unit tests
+      - run: python -m pytest backend/tests/
 
   frontend:
     runs-on: ubuntu-latest
