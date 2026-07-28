@@ -1,8 +1,10 @@
 from unittest.mock import AsyncMock, patch
+
 import pytest
 from fastapi.testclient import TestClient
 
 from main import app
+
 
 @pytest.fixture
 def client():
@@ -11,8 +13,7 @@ def client():
         patch("database.connect_to_mongo", new_callable=AsyncMock),
         patch("database.ensure_indexes", new_callable=AsyncMock),
         patch("database.close_mongo_connection", new_callable=AsyncMock),
+        TestClient(app) as c,
     ):
-        with TestClient(app) as c:
-            #Hands test client to each test that asks for it and cleans up after
-            yield c
+        yield c
 

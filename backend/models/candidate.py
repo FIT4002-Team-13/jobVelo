@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Literal, Optional
+from typing import Literal
 
 from pydantic import BaseModel, EmailStr, Field
 
@@ -20,9 +20,9 @@ class CandidateCreate(BaseModel):
 
     cand_full_name: str = Field(..., min_length=1, max_length=100)
     cand_email: EmailStr
-    cand_phone: Optional[str] = Field(default=None, max_length=30)
-    cand_cv_url: Optional[str] = None
-    cand_cover_letter_url: Optional[str] = None
+    cand_phone: str | None = Field(default=None, max_length=30)
+    cand_cv_url: str | None = None
+    cand_cover_letter_url: str | None = None
     comp_id: str = Field(..., min_length=1)
 
 class CandidateCreateForJob(BaseModel):
@@ -37,23 +37,23 @@ class CandidateCreateForJob(BaseModel):
       - if omitted, the backend creates the candidate first and then links it
     """
 
-    cand_id: Optional[str] = Field(default=None, min_length=1)
+    cand_id: str | None = Field(default=None, min_length=1)
     cand_full_name: str = Field(..., min_length=1, max_length=100)
     cand_email: EmailStr
-    cand_phone: Optional[str] = Field(default=None, max_length=30)
-    cand_cv_url: Optional[str] = None
-    cand_cover_letter_url: Optional[str] = None
+    cand_phone: str | None = Field(default=None, max_length=30)
+    cand_cv_url: str | None = None
+    cand_cover_letter_url: str | None = None
     comp_id: str = Field(..., min_length=1)
     job_id: str = Field(..., min_length=1)
 
 class CandidateUpdate(BaseModel):
     """Payload for updating a candidate profile. All fields optional."""
 
-    cand_full_name: Optional[str] = Field(default=None, min_length=1, max_length=100)
-    cand_email: Optional[EmailStr] = None
-    cand_phone: Optional[str] = Field(default=None, max_length=30)
-    cand_cv_url: Optional[str] = None
-    cand_cover_letter_url: Optional[str] = None
+    cand_full_name: str | None = Field(default=None, min_length=1, max_length=100)
+    cand_email: EmailStr | None = None
+    cand_phone: str | None = Field(default=None, max_length=30)
+    cand_cv_url: str | None = None
+    cand_cover_letter_url: str | None = None
 
 class CandidateOut(BaseModel):
     """Safe public representation of a candidate document. 
@@ -65,12 +65,12 @@ class CandidateOut(BaseModel):
     cand_id: str
     cand_full_name: str
     cand_email: EmailStr
-    cand_phone: Optional[str] = None
-    cand_cv_url: Optional[str] = None
-    cand_cover_letter_url: Optional[str] = None
+    cand_phone: str | None = None
+    cand_cv_url: str | None = None
+    cand_cover_letter_url: str | None = None
     comp_id: str
     cand_created_at: datetime
     cand_updated_at: datetime
     # Rolled-up status across all of this candidate's job_candidates links.
     # None means the candidate has no link yet (profile-only).
-    cand_status: Optional[CandidateRollupStatus] = None
+    cand_status: CandidateRollupStatus | None = None
