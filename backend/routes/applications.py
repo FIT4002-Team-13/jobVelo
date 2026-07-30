@@ -270,9 +270,9 @@ async def list_applications(
         dt = row.get("interview_datetime")
 
         if dt is None:
-            return datetime.min
+            return datetime.min.replace(tzinfo=timezone.utc)
 
-        return dt.replace(tzinfo=None) if dt.tzinfo else dt
+        return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
 
 
     rows.sort(key=_sort_key, reverse=True)

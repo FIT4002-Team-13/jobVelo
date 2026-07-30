@@ -32,7 +32,7 @@ def interview_user_helper(interview_user: dict) -> InterviewUserOut:
     so malformed rows do not 500 the whole endpoint.
     """
 
-    fallback = interview_user.get("created_at") or datetime.min.replace(tzinfo=timezone(timedelta(hours=10), 'AEST'))
+    fallback = interview_user.get("created_at") or datetime.min.replace(tzinfo=timezone.utc)
 
     return InterviewUserOut(
         intvuser_id=str(interview_user["_id"]),
