@@ -1,4 +1,4 @@
-"""Job-post routes.
+r"""Job-post routes.
 
   company -1---N-> jobs  -N---N-> candidates   (bridged by job_candidates)
                        \__________ user (the recruiter/admin) creating it

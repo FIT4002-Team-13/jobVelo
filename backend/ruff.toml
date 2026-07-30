@@ -1,0 +1,3 @@
+[lint]
+ignore = ["B008", "S112", "BLE001"]
+extend-select = ["I"]

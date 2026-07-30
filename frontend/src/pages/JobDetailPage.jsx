@@ -5,7 +5,6 @@ import JobFormModal from '../components/job-candidate/JobFormModal'
 import StartInterviewModal from '../components/job-candidate/StartInterviewModal'
 import DeleteCandidateModal from '../components/job-candidate/DeleteCandidateModal'
 import { flex, card, badge, form, button, modal, page } from '../styles/layout'
-import { fontSize } from '../styles/typography'
 
 import { useAuth } from '../lib/AuthContext.jsx'
 import { api, authedFetch } from '../lib/api.js'

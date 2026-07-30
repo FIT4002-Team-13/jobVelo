@@ -222,7 +222,7 @@ function DeleteConfirmModal({ job, onClose, onDeleted }) {
         </div>
         <h2 className="text-base font-bold text-neutral-800 text-center mb-1">Delete Job Posting</h2>
         <p className="text-sm text-neutral-500 text-center mb-6">
-          Are you sure you want to delete <span className="font-semibold text-neutral-700">"{job.title}"</span>? This cannot be undone.
+          Are you sure you want to delete <span className="font-semibold text-neutral-700">&quot;{job.title}&quot;</span>? This cannot be undone.
         </p>
         {error && <p className="text-xs text-coral-500 text-center mb-3">{error}</p>}
         <div className="flex gap-3">
