@@ -82,14 +82,14 @@ const interviews = [
     cand_id: "cand_1",
     job_id: "job_1",
     intv_date_time: "2026-05-15T12:00:00Z",
-    intv_status: "completed",
+    intv_status: "evaluated",
   },
   {
     intv_id: "intv_2",
     cand_id: "cand_2",
     job_id: "job_1",
     intv_date_time: "2026-05-15T12:00:00Z",
-    intv_status: "completed",
+    intv_status: "evaluated",
   },
   {
     intv_id: "intv_3",
@@ -103,14 +103,14 @@ const interviews = [
     cand_id: "cand_4",
     job_id: "job_1",
     intv_date_time: "2026-05-15T12:00:00Z",
-    intv_status: "completed",
+    intv_status: "evaluated",
   },
   {
     intv_id: "intv_5",
     cand_id: "cand_5",
     job_id: "job_1",
     intv_date_time: "2026-05-15T12:00:00Z",
-    intv_status: "completed",
+    intv_status: "evaluated",
   }
 ];
 

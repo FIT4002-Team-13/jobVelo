@@ -30,6 +30,10 @@ async def _interview_in_company(db, interview: dict, comp_id: ObjectId) -> bool:
 def interview_helper(interview: dict) -> InterviewOut:
     """Convert a raw Mongo interview document into the API response model."""
 
+    raw_status = interview["intv_status"]
+    if raw_status == "EVALUATED":
+        raw_status = "evaluated"
+
     return InterviewOut(
         intv_id=str(interview["_id"]),
         cand_id=str(interview["cand_id"]),
@@ -37,7 +41,7 @@ def interview_helper(interview: dict) -> InterviewOut:
         intv_date_time=interview["intv_date_time"],
         intv_location=interview.get("intv_location"),
         intv_transcript=interview.get("intv_transcript"),
-        intv_status=interview["intv_status"],
+        intv_status=raw_status,
         intv_candidate_report=interview.get("intv_candidate_report"),
         intv_interviewer_report=interview.get("intv_interviewer_report"),
         intv_created_at=interview["intv_created_at"],

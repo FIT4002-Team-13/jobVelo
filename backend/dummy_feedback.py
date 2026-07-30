@@ -64,7 +64,7 @@ async def main():
         "intv_date_time": now,
         "intv_location": None,
         "intv_transcript": "Interviewer: Tell me about yourself.\nCandidate: I am a bob and I like donut.",
-        "intv_status": "completed",
+        "intv_status": "evaluated",
         "intv_candidate_report": {
             "summary": "Good interview! everyone like donut.",
             "strengths": {
