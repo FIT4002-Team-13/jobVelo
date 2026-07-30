@@ -5,7 +5,9 @@ run python dummy_feedback.py
 """
 import asyncio
 from datetime import datetime, timezone
-from database import connect_to_mongo, close_mongo_connection, get_db
+
+from database import close_mongo_connection, connect_to_mongo, get_db
+
 
 async def main():
     await connect_to_mongo()

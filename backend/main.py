@@ -10,7 +10,19 @@ from database import (
     ensure_indexes,
     seed_mock_data,
 )
-from routes import auth, cand, dashboard, files, invitations, job_cand, jobs, users
+from routes import (
+    applications,
+    auth,
+    cand,
+    dashboard,
+    files,
+    interv,
+    invitations,
+    job_cand,
+    jobs,
+    user_interv,
+    users,
+)
 
 
 @asynccontextmanager

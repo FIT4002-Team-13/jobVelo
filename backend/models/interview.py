@@ -1,10 +1,9 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Literal, Optional
+from typing import Literal
 
 from pydantic import BaseModel, Field
-
 
 # Interview lifecycle used by scheduling and interview progress tracking.
 InterviewStatus = Literal["not_scheduled", "scheduled", "in_progress", "completed", "cancelled", "evaluated", "HIRED", "REJECTED"]
@@ -16,7 +15,7 @@ class InterviewFeedbackSection(BaseModel):
     """
 
     items: list[str] = Field(default_factory=list)
-    justification: Optional[str] = None
+    justification: str | None = None
 
 
 class InterviewFeedback(BaseModel):
@@ -24,7 +23,7 @@ class InterviewFeedback(BaseModel):
     Create/update payload for an interview feedback report.
     """
 
-    summary: Optional[str] = None
+    summary: str | None = None
     strengths: InterviewFeedbackSection = Field(default_factory=InterviewFeedbackSection)
     improvements: InterviewFeedbackSection = Field(default_factory=InterviewFeedbackSection)
 
@@ -38,7 +37,7 @@ class InterviewCreate(BaseModel):
     cand_id: str = Field(..., min_length=1)
     job_id: str = Field(..., min_length=1)
     intv_date_time: datetime
-    intv_location: Optional[str] = Field(default=None, max_length=200)
+    intv_location: str | None = Field(default=None, max_length=200)
     intv_status: InterviewStatus = "scheduled"
 
 
@@ -48,12 +47,12 @@ class InterviewUpdate(BaseModel):
     All fields optional - the caller sends only what they want to change.
     """
 
-    intv_date_time: Optional[datetime] = None
-    intv_location: Optional[str] = Field(default=None, max_length=200)
-    intv_transcript: Optional[str] = None
-    intv_status: Optional[InterviewStatus] = None
-    intv_candidate_report: Optional[InterviewFeedback] = None
-    intv_interviewer_report: Optional[InterviewFeedback] = None
+    intv_date_time: datetime | None = None
+    intv_location: str | None = Field(default=None, max_length=200)
+    intv_transcript: str | None = None
+    intv_status: InterviewStatus | None = None
+    intv_candidate_report: InterviewFeedback | None = None
+    intv_interviewer_report: InterviewFeedback | None = None
 
 
 class InterviewOut(BaseModel):
@@ -64,11 +63,11 @@ class InterviewOut(BaseModel):
     intv_id: str
     cand_id: str
     job_id: str
-    intv_date_time: Optional[datetime] = None
-    intv_location: Optional[str] = None
-    intv_transcript: Optional[str] = None
+    intv_date_time: datetime | None = None
+    intv_location: str | None = None
+    intv_transcript: str | None = None
     intv_status: InterviewStatus
-    intv_candidate_report: Optional[InterviewFeedback] = None
-    intv_interviewer_report: Optional[InterviewFeedback] = None
+    intv_candidate_report: InterviewFeedback | None = None
+    intv_interviewer_report: InterviewFeedback | None = None
     intv_created_at: datetime
     intv_updated_at: datetime

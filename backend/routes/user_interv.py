@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from bson import ObjectId
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -32,7 +32,7 @@ def interview_user_helper(interview_user: dict) -> InterviewUserOut:
     so malformed rows do not 500 the whole endpoint.
     """
 
-    fallback = interview_user.get("created_at") or datetime.min
+    fallback = interview_user.get("created_at") or datetime.datetime.min.replace(tzinfo=timezone(timedelta(hours=10), 'AEST'))
 
     return InterviewUserOut(
         intvuser_id=str(interview_user["_id"]),

@@ -110,7 +110,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from bson import ObjectId
@@ -269,7 +269,7 @@ async def list_applications(
     def _sort_key(row):
         dt = row.get("interview_datetime")
         if dt is None:
-            return datetime.min
+            return datetime.datetime.min.replace(tzinfo=timezone(timedelta(hours=10), 'AEST'))
         if hasattr(dt, "tzinfo") and dt.tzinfo is not None:
             return dt.replace(tzinfo=None)
         return dt

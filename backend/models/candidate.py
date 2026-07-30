@@ -45,8 +45,8 @@ class CandidateCreateForJob(BaseModel):
     cand_cover_letter_url: str | None = None
     comp_id: str = Field(..., min_length=1)
     job_id: str = Field(..., min_length=1)
-    interviewer_user_id: Optional[str] = Field(default=None)
-    scheduled_at: Optional[str] = Field(default=None)
+    interviewer_user_id: str | None = Field(default=None)
+    scheduled_at: str | None = Field(default=None)
 
 class CandidateUpdate(BaseModel):
     """Payload for updating a candidate profile. All fields optional."""
