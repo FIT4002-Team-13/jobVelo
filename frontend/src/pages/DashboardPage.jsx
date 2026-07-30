@@ -11,11 +11,13 @@ import { page } from '../styles/layout'
 //     `cand_status` field (SCHEDULED / EVALUATED). Kept in sync with the
 //     filter on JobDetailPage so the UX is identical across pages.
 const JOB_STATUS_OPTIONS = [
+  { value: '',            label: 'All'         },
   { value: 'Pending',     label: 'Pending'     },
   { value: 'In Progress', label: 'In Progress' },
   { value: 'Completed',   label: 'Completed'   },
 ]
 const CANDIDATE_FILTER_OPTIONS = [
+  { value: '',              label: 'All'           },
   { value: 'NOT SCHEDULED', label: 'Not Scheduled' },
   { value: 'SCHEDULED',     label: 'Scheduled'     },
   { value: 'EVALUATED',     label: 'Evaluated'     },
@@ -98,10 +100,10 @@ export default function DashboardPage() {
   // Search + sort + filter state, one set per panel.
   const [jobSearch,        setJobSearch]        = useState('')
   const [jobSortKey,       setJobSortKey]       = useState('latest')
-  const [jobStatusFilters, setJobStatusFilters] = useState([])
+  const [jobFilter,        setJobFilter]        = useState('')
   const [candSearch,       setCandSearch]       = useState('')
   const [candSortKey,      setCandSortKey]      = useState('latest')
-  const [candFilters,      setCandFilters]      = useState([])
+  const [candFilter,       setCandFilter]       = useState('')
 
   // Derived lists - search → filter → sort. Computed each render; cheap
   // enough at dashboard sizes that useMemo is overkill.
@@ -109,7 +111,7 @@ export default function DashboardPage() {
   const jobNeedle = jobSearch.trim().toLowerCase()
   const visibleJobs = jobs
     .filter(j => !jobNeedle || (j.title ?? '').toLowerCase().includes(jobNeedle))
-    .filter(j => jobStatusFilters.length === 0 || jobStatusFilters.includes(j.status))
+    .filter(j => !jobFilter || j.status === jobFilter)
   const sortedJobs = jobSorter ? [...visibleJobs].sort(jobSorter) : visibleJobs
 
   const candSorter = makeSorter(candSortKey, { nameField: 'cand_full_name', dateField: 'cand_created_at' })
@@ -125,9 +127,8 @@ export default function DashboardPage() {
       const haystack = `${c.cand_full_name ?? ''} ${c.cand_email ?? ''}`.toLowerCase()
       if (!haystack.includes(candNeedle)) return false
     }
-    // candFilters is empty when no filter is active. With singleSelect on
-    // FilterMenu it'll always have 0 or 1 entries.
-    if (candFilters.length > 0 && !candFilters.includes(c.cand_status)) return false
+    // candFilter is '' for "All"; otherwise the selected status.
+    if (candFilter && c.cand_status !== candFilter) return false
     return true
   })
   const sortedCandidates = candSorter ? [...visibleCandidates].sort(candSorter) : visibleCandidates
@@ -241,7 +242,12 @@ export default function DashboardPage() {
                   onChange={setJobSearch}
                 />
                 <SortMenu value={jobSortKey} onChange={setJobSortKey} />
-                <FilterMenu values={jobStatusFilters} onChange={setJobStatusFilters} options={JOB_STATUS_OPTIONS} />
+                <FilterMenu
+                  values={[jobFilter]}
+                  onChange={(newValues) => setJobFilter(newValues[0] ?? '')}
+                  options={JOB_STATUS_OPTIONS}
+                  singleSelect
+                />
               </div>
             </div>
 
@@ -292,7 +298,12 @@ export default function DashboardPage() {
                 <SortMenu value={candSortKey} onChange={setCandSortKey} />
                 {/* Candidate filter is single-select so it stays consistent
                     with the JobDetailPage one (which has 2 options today). */}
-                <FilterMenu values={candFilters} onChange={setCandFilters} options={CANDIDATE_FILTER_OPTIONS} singleSelect />
+                <FilterMenu
+                  values={[candFilter]}
+                  onChange={(newValues) => setCandFilter(newValues[0] ?? '')}
+                  options={CANDIDATE_FILTER_OPTIONS}
+                  singleSelect
+                />
               </div>
             </div>
 
