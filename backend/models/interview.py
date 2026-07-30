@@ -36,6 +36,7 @@ class InterviewUpdate(BaseModel):
     intv_location: Optional[str] = Field(default=None, max_length=200)
     intv_transcript: Optional[list[TranscriptEntry]] = None
     intv_status: Optional[InterviewStatus] = None
+    intv_duration_seconds: Optional[int] = None
     intv_candidate_report: Optional[str] = None
     intv_interviewer_report: Optional[str] = None
 
@@ -49,6 +50,7 @@ class InterviewOut(BaseModel):
     intv_location: Optional[str] = None
     intv_transcript: Optional[list[TranscriptEntry]] = None
     intv_status: InterviewStatus
+    intv_duration_seconds: Optional[int] = None
     intv_candidate_report: Optional[str] = None
     intv_interviewer_report: Optional[str] = None
     intv_created_at: datetime

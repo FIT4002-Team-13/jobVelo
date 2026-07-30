@@ -521,6 +521,7 @@ function CandidatesTable({
   setTab,
   onStartInterview,
   onDelete,
+  onOpenInterview,
 }) {
   const [search, setSearch] = useState("");
   // SortMenu is only consulted while the SCHEDULES tab is active. The
@@ -719,17 +720,20 @@ function CandidatesTable({
                 // typically EVALUATED). Delete is always available - removing a
                 // mis-added candidate from a job shouldn't depend on their state.
                 const canStart = c.status === "SCHEDULED";
+                const hasCompletedInterview = Boolean(c.intv_completed);
                 const actionsCell = (
                   <td className="px-4 py-3">
                     <div className={`${flex.row} gap-2`}>
                       <button
                         type="button"
-                        disabled={!canStart}
-                        onClick={() => canStart && onStartInterview?.(c)}
+                        disabled={!canStart || hasCompletedInterview}
+                        onClick={() =>
+                          canStart && !hasCompletedInterview && onStartInterview?.(c)
+                        }
                         className={`${
                           flex.row
                         } gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors whitespace-nowrap ${
-                          canStart
+                          canStart && !hasCompletedInterview
                             ? "bg-primary-500 hover:bg-primary-600 text-white"
                             : "bg-neutral-100 text-neutral-400 cursor-not-allowed"
                         }`}
@@ -749,9 +753,19 @@ function CandidatesTable({
                         up once /candidates/:id lands. */}
                       <button
                         type="button"
-                        title="View candidate details"
-                        aria-label="View candidate"
-                        className={`w-7 h-7 ${flex.rowCenter} rounded-lg text-neutral-400 hover:bg-neutral-100 hover:text-neutral-600 transition-colors`}
+                        title={hasCompletedInterview ? "Open completed interview" : "View candidate details"}
+                        aria-label={hasCompletedInterview ? "Open completed interview" : "View candidate"}
+                        onClick={(event) => {
+                          event.preventDefault();
+                          event.stopPropagation();
+                          if (!hasCompletedInterview || !c.intv_id) return;
+                          onOpenInterview?.(c.intv_id);
+                        }}
+                        className={`w-7 h-7 ${flex.rowCenter} rounded-lg ${
+                          hasCompletedInterview
+                            ? "text-mint-600 hover:bg-mint-50 hover:text-mint-700"
+                            : "text-neutral-400 hover:bg-neutral-100 hover:text-neutral-600"
+                        } transition-colors`}
                       >
                         <svg
                           width="14"
@@ -1180,6 +1194,7 @@ export default function JobDetailPage() {
             setTab={setTab}
             onStartInterview={(c) => setStartTarget(c)}
             onDelete={(c) => setDeleteTarget(c)}
+            onOpenInterview={(intvId) => navigate(`/interview/${intvId}`)}
           />
         </div>
       </main>

@@ -247,6 +247,7 @@ export default function InterviewPage() {
   const [status, setStatus] = useState("Ready to start screen share");
   const [isScreenSharing, setIsScreenSharing] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
+  const [isCompleted, setIsCompleted] = useState(false);
 
   const { user } = useAuth();
   const [candidateName, setCandidateName] = useState("");
@@ -534,7 +535,7 @@ export default function InterviewPage() {
 
   useEffect(() => {
     const interval = setInterval(() => {
-      if (!isPaused) {
+      if (!isPaused && !isCompleted) {
         const elapsedSeconds = Math.floor(
           (Date.now() - startTimeRef.current) / 1000
         );
@@ -543,7 +544,7 @@ export default function InterviewPage() {
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [isPaused]);
+  }, [isPaused, isCompleted]);
 
   useEffect(() => {
     transcriptRef.current = transcript;
@@ -551,7 +552,7 @@ export default function InterviewPage() {
 
   useEffect(() => {
     const interval = setInterval(() => {
-      if (transcriptRef.current.length) {
+      if (!isCompleted && transcriptRef.current.length) {
         fetch(`/api/interviews/${id}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
@@ -560,7 +561,7 @@ export default function InterviewPage() {
       }
     }, 30000);
     return () => clearInterval(interval);
-  }, [id]);
+  }, [id, isCompleted]);
 
   function syncCounterFromEntries(entries) {
     const maxId = entries.reduce((max, e) => {
@@ -586,6 +587,28 @@ export default function InterviewPage() {
     fetch(`/api/interviews/${id}`)
       .then((r) => r.json())
       .then((data) => {
+        const serverTranscript = Array.isArray(data.intv_transcript)
+          ? data.intv_transcript
+          : [];
+        const completed = data.intv_status === "completed";
+
+        setIsCompleted(completed);
+        if (completed) {
+          setStatus("Interview completed");
+          setTimer(data.intv_duration_seconds ?? 0);
+          if (serverTranscript.length) {
+            setTranscript(serverTranscript);
+            syncCounterFromEntries(serverTranscript);
+          } else if (!hasLocal) {
+            setTranscript([]);
+          }
+        } else {
+          if (!hasLocal && serverTranscript.length) {
+            setTranscript(serverTranscript);
+            syncCounterFromEntries(serverTranscript);
+          }
+        }
+
         if (data.job_id) {
           setJobId(data.job_id);
           fetch(`/api/jobs/${data.job_id}`)
@@ -602,19 +625,25 @@ export default function InterviewPage() {
             })
             .catch(() => {});
         }
-        if (!hasLocal && data.intv_transcript?.length) {
-          setTranscript(data.intv_transcript);
-          syncCounterFromEntries(data.intv_transcript);
-        }
       });
   }, [id]);
 
   async function completeInterview() {
+    if (isCompleted) {
+      return;
+    }
+
     await fetch(`/api/interviews/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ intv_transcript: transcript }),
+      body: JSON.stringify({
+        intv_transcript: transcript,
+        intv_status: "completed",
+        intv_duration_seconds: timer,
+      }),
     });
+    setIsCompleted(true);
+    setStatus("Interview completed");
     localStorage.removeItem(`transcript-${id}`);
     navigate(`/jobs/${jobId}`);
   }
@@ -664,8 +693,9 @@ export default function InterviewPage() {
                 isScreenSharing
                   ? "bg-sky-100 text-sky-800 hover:bg-sky-200"
                   : ""
-              }`}
-              onClick={() => void toggleScreenShare()}
+              } ${isCompleted ? "opacity-60 cursor-not-allowed" : ""}`}
+              onClick={() => !isCompleted && void toggleScreenShare()}
+              disabled={isCompleted}
             >
               {isScreenSharing ? "Stop screen share" : "Share screen"}
             </button>
@@ -773,18 +803,26 @@ export default function InterviewPage() {
           {/* Pause / Complete */}
           <div className={`${flex.row} gap-4 shrink-0`}>
             <button
-              onClick={() => togglePause()}
-              className={`flex-1 py-4 text-base font-semibold text-white rounded-2xl transition-colors ${
-                isPaused
-                  ? "bg-mint-400 hover:bg-mint-500"
-                  : "bg-coral-400 hover:bg-coral-500"
+              onClick={() => !isCompleted && togglePause()}
+              disabled={isCompleted}
+              className={`flex-1 py-4 text-base font-semibold rounded-2xl transition-colors ${
+                isCompleted
+                  ? "bg-neutral-300 text-neutral-500 cursor-not-allowed"
+                  : isPaused
+                  ? "bg-mint-400 hover:bg-mint-500 text-white"
+                  : "bg-coral-400 hover:bg-coral-500 text-white"
               }`}
             >
               {isPaused ? "Unpause" : "Pause"}
             </button>
             <button
               onClick={() => completeInterview()}
-              className="flex-1 py-4 text-base font-semibold text-white bg-sky-300 hover:bg-sky-400 rounded-2xl transition-colors"
+              disabled={isCompleted}
+              className={`flex-1 py-4 text-base font-semibold rounded-2xl transition-colors ${
+                isCompleted
+                  ? "bg-neutral-300 text-neutral-500 cursor-not-allowed"
+                  : "text-white bg-sky-300 hover:bg-sky-400"
+              }`}
             >
               Complete
             </button>
