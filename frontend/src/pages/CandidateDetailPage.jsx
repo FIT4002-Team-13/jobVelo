@@ -58,19 +58,19 @@ function ScoreBarRow({ label, value, colorClass }) {
     : `${Math.min((Number(value) / 10) * 100, 100)}%`
 
   return (
-    <div className="grid grid-cols-[1.55fr_2fr_0.35fr] items-center gap-x-4 ">
-      <p className="text-xs font-medium leading-[1.1] text-neutral-800 ">
+    <div className='grid grid-cols-[1.55fr_2fr_0.35fr] items-center gap-x-4 '>
+      <p className='text-xs font-medium leading-[1.1] text-neutral-800 '>
         {label}
       </p>
 
-      <div className="h-1 w-full rounded-pill bg-neutral-200 ">
+      <div className='h-1 w-full rounded-pill bg-neutral-200 '>
         <div
           className={`h-1 rounded-pill ${isMissing ? 'bg-neutral-300' : colorClass}`}
           style={{ width }}
         />
       </div>
 
-      <p className="text-right text-xs font-medium leading-none text-neutral-800">
+      <p className='text-right text-xs font-medium leading-none text-neutral-800'>
         {displayValue}
       </p>
     </div>
@@ -192,7 +192,6 @@ function BulletList({ items = [] }) {
 
 function FeedbackPanel({
   interview,
-  jobCand,
   candidateTableHeight = 230,
   onDownloadCandidateReport,
   onDownloadInterviewerReport,
@@ -333,7 +332,7 @@ function FeedbackPanel({
   )
 }
 
-function CandidateInfoCard({ candidate, job, interview, onStartInterview, interviewer, jobCand, onEdit }) {
+function CandidateInfoCard({ candidate, job, interview, onStartInterview, interviewer, onEdit }) {
   const status = (interview?.intv_status ?? 'not_scheduled').replace(/_/g, ' ').toUpperCase()
   const canStartInterview = status === 'SCHEDULED'
 

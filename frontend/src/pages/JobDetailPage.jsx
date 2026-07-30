@@ -371,7 +371,7 @@ const INTERVIEW_STATUS_ROWS = [
   { key: 'EVALUATED',     label: 'Evaluated',     dot: 'bg-mint-500'    },
 ]
 
-function InterviewStatusPanel({ candidates, job }) {
+function InterviewStatusPanel({ candidates}) {
   // Start each tracked status at 0 - keeps the row visible even when
   // nobody's in that bucket yet (an empty job still shows 0/0/0).
   const counts = INTERVIEW_STATUS_ROWS.reduce((acc, { key }) => ({ ...acc, [key]: 0 }), {})
@@ -882,7 +882,7 @@ export default function JobDetailPage() {
           </div>
 
           {/* Interview Status */}
-          <InterviewStatusPanel candidates={candidates} job={job} />
+          <InterviewStatusPanel candidates={candidates} />
         </div>
 
         {/* Candidates section - tabs are now inside CandidatesTable so they
