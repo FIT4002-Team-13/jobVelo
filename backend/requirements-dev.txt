@@ -1,0 +1,4 @@
+pytest
+httpx
+pytest-asyncio
+ruff
