@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { flex, card, button, badge } from "../styles/layout";
+import { useAuth } from "../lib/AuthContext.jsx";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -24,13 +25,6 @@ const SCORE_COLORS = {
 
 // ── Placeholder data — replace with API calls when endpoints are ready ─────────
 
-const MOCK_INTERVIEW = {
-  candidate_name: "Super Mario",
-  candidate_role: "Front End Developer",
-  interviewer_name: "John Doe",
-  interviewer_role: "Senior Engineer",
-  cv_url: null,
-};
 
 const INITIAL_TRANSCRIPT = [];
 
@@ -254,7 +248,10 @@ export default function InterviewPage() {
   const [isScreenSharing, setIsScreenSharing] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
 
-  const [interview] = useState(MOCK_INTERVIEW);
+  const { user } = useAuth();
+  const [candidateName, setCandidateName] = useState("");
+  const [candidateRole, setCandidateRole] = useState("");
+  const [cvUrl, setCvUrl] = useState(null);
   const [jobId, setJobId] = useState(null);
   const [transcript, setTranscript] = useState(INITIAL_TRANSCRIPT);
   const [scores] = useState(MOCK_SCORES);
@@ -391,8 +388,6 @@ export default function InterviewPage() {
       console.log("6: audio context state", audioContext.state);
       audioContextRef.current = audioContext;
 
-      // Create sources for both streams
-      const displaySource = audioContext.createMediaStreamSource(displayStream);
       const micSource = audioContext.createMediaStreamSource(micStream);
       const processor = audioContext.createScriptProcessor(4096, 1, 1);
       processorRef.current = processor;
@@ -414,9 +409,13 @@ export default function InterviewPage() {
         wsRef.current.send(buffer);
       };
 
-      // Connect both audio sources to the processor
-      displaySource.connect(processor);
       micSource.connect(processor);
+      // Only connect display audio if the stream actually has audio tracks
+      // (macOS getDisplayMedia returns video-only by default).
+      if (displayStream.getAudioTracks().length > 0) {
+        const displaySource = audioContext.createMediaStreamSource(displayStream);
+        displaySource.connect(processor);
+      }
       processor.connect(audioContext.destination);
 
       // Display the screen share in the video element
@@ -437,13 +436,28 @@ export default function InterviewPage() {
         };
       });
     } catch (error) {
+      if (audioContextRef.current) {
+        audioContextRef.current.close().catch(() => {});
+        audioContextRef.current = null;
+      }
+      if (mediaStreamRef.current) {
+        mediaStreamRef.current.getTracks().forEach((t) => t.stop());
+        mediaStreamRef.current = null;
+      }
+      if (micStreamRef.current) {
+        micStreamRef.current.getTracks().forEach((t) => t.stop());
+        micStreamRef.current = null;
+      }
+      if (wsRef.current) {
+        wsRef.current.close();
+        wsRef.current = null;
+      }
       console.error("startScreenShare error:", error.name, error.message, error);
       if (error.name === "NotAllowedError") {
         setStatus("Screen share or microphone access cancelled");
       } else if (error.name === "NotFoundError") {
         setStatus("No screen or microphone available");
       } else {
-        console.error("Unable to start screen share", error);
         setStatus("Unable to start screen share");
       }
       setIsScreenSharing(false);
@@ -451,7 +465,20 @@ export default function InterviewPage() {
   }
 
   async function stopScreenShare() {
-    console.trace("stopScreenShare called");
+    // Stop media tracks first (synchronous) so the OS releases the screen
+    // recording session before any async work. If this runs during page unload
+    // via `void stopScreenShare()`, the async parts below may never execute —
+    // but the tracks must be stopped or macOS hangs the next getDisplayMedia.
+    if (mediaStreamRef.current) {
+      mediaStreamRef.current.getTracks().forEach((track) => track.stop());
+      mediaStreamRef.current = null;
+    }
+
+    if (micStreamRef.current) {
+      micStreamRef.current.getTracks().forEach((track) => track.stop());
+      micStreamRef.current = null;
+    }
+
     if (processorRef.current) {
       processorRef.current.disconnect();
       processorRef.current.onaudioprocess = null;
@@ -465,16 +492,6 @@ export default function InterviewPage() {
         console.warn("Audio context close failed", err);
       }
       audioContextRef.current = null;
-    }
-
-    if (mediaStreamRef.current) {
-      mediaStreamRef.current.getTracks().forEach((track) => track.stop());
-      mediaStreamRef.current = null;
-    }
-
-    if (micStreamRef.current) {
-      micStreamRef.current.getTracks().forEach((track) => track.stop());
-      micStreamRef.current = null;
     }
 
     if (videoRef.current) {
@@ -507,6 +524,15 @@ export default function InterviewPage() {
   }, []);
 
   useEffect(() => {
+    const stopTracksSync = () => {
+      mediaStreamRef.current?.getTracks().forEach((t) => t.stop());
+      micStreamRef.current?.getTracks().forEach((t) => t.stop());
+    };
+    window.addEventListener("beforeunload", stopTracksSync);
+    return () => window.removeEventListener("beforeunload", stopTracksSync);
+  }, []);
+
+  useEffect(() => {
     const interval = setInterval(() => {
       if (!isPaused) {
         const elapsedSeconds = Math.floor(
@@ -536,17 +562,49 @@ export default function InterviewPage() {
     return () => clearInterval(interval);
   }, [id]);
 
+  function syncCounterFromEntries(entries) {
+    const maxId = entries.reduce((max, e) => {
+      const n = parseInt(e.id, 10);
+      return isNaN(n) ? max : Math.max(max, n);
+    }, 0);
+    entryCounterRef.current = maxId + 1;
+  }
+
   useEffect(() => {
+    let hasLocal = false;
     const local = localStorage.getItem(`transcript-${id}`);
     if (local) {
-      setTranscript(JSON.parse(local));
+      try {
+        const entries = JSON.parse(local);
+        setTranscript(entries);
+        syncCounterFromEntries(entries);
+        hasLocal = true;
+      } catch {
+        localStorage.removeItem(`transcript-${id}`);
+      }
     }
     fetch(`/api/interviews/${id}`)
       .then((r) => r.json())
       .then((data) => {
-        if (data.job_id) setJobId(data.job_id);
-        if (!local && data.intv_transcript?.length) {
+        if (data.job_id) {
+          setJobId(data.job_id);
+          fetch(`/api/jobs/${data.job_id}`)
+            .then((r) => r.json())
+            .then((job) => { if (job.title) setCandidateRole(job.title); })
+            .catch(() => {});
+        }
+        if (data.cand_id) {
+          fetch(`/api/candidates/${data.cand_id}`)
+            .then((r) => r.json())
+            .then((cand) => {
+              if (cand.cand_full_name) setCandidateName(cand.cand_full_name);
+              if (cand.cand_cv_url) setCvUrl(cand.cand_cv_url);
+            })
+            .catch(() => {});
+        }
+        if (!hasLocal && data.intv_transcript?.length) {
           setTranscript(data.intv_transcript);
+          syncCounterFromEntries(data.intv_transcript);
         }
       });
   }, [id]);
@@ -573,10 +631,10 @@ export default function InterviewPage() {
                 Candidate
               </span>
               <span className="text-2xl font-bold text-neutral-800">
-                {interview.candidate_name}
+                {candidateName || "—"}
               </span>
               <span className="text-sm text-neutral-400">
-                {interview.candidate_role}
+                {candidateRole || "—"}
               </span>
             </div>
             <div className={flex.col}>
@@ -584,10 +642,10 @@ export default function InterviewPage() {
                 Interviewer
               </span>
               <span className="text-2xl font-bold text-neutral-800">
-                {interview.interviewer_name}
+                {user?.full_name || "—"}
               </span>
               <span className="text-sm text-neutral-400">
-                {interview.interviewer_role}
+                {user?.role || "—"}
               </span>
             </div>
           </div>
@@ -596,9 +654,8 @@ export default function InterviewPage() {
           <div className={`${flex.row} gap-4`}>
             <button
               className={button.primary}
-              onClick={() =>
-                interview.cv_url && window.open(interview.cv_url, "_blank")
-              }
+              onClick={() => cvUrl && window.open(cvUrl, "_blank")}
+              disabled={!cvUrl}
             >
               View Resume
             </button>

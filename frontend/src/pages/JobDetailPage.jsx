@@ -927,6 +927,22 @@ export default function JobDetailPage() {
   }
 
   async function onConfirmStart() {
+    // Resume an existing in-progress or scheduled interview rather than
+    // creating a duplicate every time the button is clicked.
+    const existingRes = await fetch(
+      `/api/interviews?cand_id=${startTarget.cand_id}&job_id=${id}`
+    );
+    if (existingRes.ok) {
+      const existing = await existingRes.json();
+      const resumable = existing.find(
+        (i) => i.intv_status === "in_progress" || i.intv_status === "scheduled"
+      );
+      if (resumable) {
+        navigate(`/interview/${resumable.intv_id}`);
+        return;
+      }
+    }
+
     const res = await fetch("/api/interviews", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
