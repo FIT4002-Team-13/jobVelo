@@ -5,7 +5,9 @@ via the real API endpoints. The dashboard shows empty-state messaging
 when collections are empty.
 """
 
+import certifi
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
+from pymongo.errors import ConfigurationError, PyMongoError, ServerSelectionTimeoutError
 
 from config import settings
 
@@ -19,8 +21,17 @@ mongo = _Mongo()
 
 
 async def connect_to_mongo() -> None:
-    mongo.client = AsyncIOMotorClient(settings.mongodb_uri)
-    mongo.db = mongo.client[settings.mongodb_db]
+    try:
+        mongo.client = AsyncIOMotorClient(
+            settings.mongodb_uri,
+            tls=True,
+            tlsCAFile=certifi.where(),
+        )
+        mongo.db = mongo.client[settings.mongodb_db]
+    except (ConfigurationError, ServerSelectionTimeoutError, PyMongoError, OSError) as exc:
+        mongo.client = None
+        mongo.db = None
+        raise RuntimeError("Unable to connect to MongoDB") from exc
 
 
 async def close_mongo_connection() -> None:
@@ -29,7 +40,8 @@ async def close_mongo_connection() -> None:
 
 
 def get_db() -> AsyncIOMotorDatabase:
-    assert mongo.db is not None, "Mongo not initialised - call connect_to_mongo()"
+    if mongo.db is None:
+        raise RuntimeError("Mongo not initialised - call connect_to_mongo()")
     return mongo.db
 
 
