@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, UTC
+from datetime import datetime, timezone
 
 from bson import ObjectId
 from fastapi import APIRouter, HTTPException, status
@@ -40,7 +40,7 @@ async def create_interview(payload: InterviewCreate) -> InterviewOut:
     separately through /api/interview-users.
     """
     db = get_db()
-    now = datetime.now(UTC)
+    now = datetime.now(timezone.utc)
 
     interview_doc = {
         "cand_id": payload.cand_id,
@@ -135,7 +135,7 @@ async def update_interview(intv_id: str, payload: InterviewUpdate) -> InterviewO
     if not update_data:
         return interview_helper(existing_interview)
 
-    update_data["intv_updated_at"] = datetime.now(UTC)
+    update_data["intv_updated_at"] = datetime.now(timezone.utc)
 
     await db.interviews.update_one(
         {"_id": ObjectId(intv_id)},

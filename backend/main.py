@@ -27,9 +27,14 @@ from routes import (
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    await connect_to_mongo()
-    await ensure_indexes()
-    await seed_mock_data()
+    try:
+        await connect_to_mongo()
+        await ensure_indexes()
+        await seed_mock_data()
+    except Exception:
+        app.state.mongo_available = False
+    else:
+        app.state.mongo_available = True
     yield
     await close_mongo_connection()
 
@@ -40,6 +45,7 @@ app = FastAPI(
     description="Real-Time Interview Intelligence System",
     lifespan=lifespan,
 )
+app.state.mongo_available = False
 
 app.add_middleware(
     CORSMiddleware,

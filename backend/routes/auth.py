@@ -14,7 +14,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from pydantic import BaseModel, EmailStr, ValidationError
-from pymongo.errors import DuplicateKeyError
+from pymongo.errors import ConfigurationError, DuplicateKeyError, PyMongoError, ServerSelectionTimeoutError
 
 from database import get_db
 from dependencies import get_current_user
@@ -316,12 +316,25 @@ async def signup(payload: UserCreate) -> UserOut:
     summary="Exchange username/email + password for a JWT",
 )
 async def login(payload: LoginRequest) -> LoginResponse:
-    db = get_db()
+    try:
+        db = get_db()
+    except RuntimeError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Database unavailable",
+        ) from exc
+
     identifier = payload.identifier.strip()
 
-    user = await db.users.find_one(
-        {"$or": [{"email": identifier.lower()}, {"username": identifier}]}
-    )
+    try:
+        user = await db.users.find_one(
+            {"$or": [{"email": identifier.lower()}, {"username": identifier}]}
+        )
+    except (ConfigurationError, ServerSelectionTimeoutError, PyMongoError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Database unavailable",
+        ) from exc
 
     # Constant-time-ish: always verify even when the user doesn't exist.
     DUMMY_HASH = "$2b$12$abcdefghijklmnopqrstuuPj0ZILcQ4N3WVrxEYJhOQEAa7DpL7Tq"
