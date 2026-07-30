@@ -4,10 +4,25 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from config import settings
-from database import close_mongo_connection, connect_to_mongo, ensure_indexes, seed_mock_data
-from routes import auth, cand, dashboard, files, invitations, job_cand, jobs, realtime, users
-
-from routes import interview, user_interview
+from database import (
+    close_mongo_connection,
+    connect_to_mongo,
+    ensure_indexes,
+    seed_mock_data,
+)
+from routes import (
+    auth,
+    cand,
+    dashboard,
+    files,
+    interview,
+    invitations,
+    job_cand,
+    jobs,
+    realtime,
+    user_interview,
+    users,
+)
 
 
 @asynccontextmanager

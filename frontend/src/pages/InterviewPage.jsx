@@ -125,7 +125,7 @@ function downsampleBuffer(buffer, inputSampleRate, outputSampleRate = 16000) {
 
 // ── Sub-components ────────────────────────────────────────────────────────────
 
-function TranscriptEntry({ entry, onSaveComment }) {
+function TranscriptEntry({ entry }) {
   return (
     <div className={`${flex.row} gap-3 py-2 group`}>
       <div

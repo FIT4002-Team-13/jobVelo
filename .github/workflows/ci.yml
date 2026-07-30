@@ -19,16 +19,19 @@ jobs:
         with:
           python-version: "3.12"
 
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: pip-${{ hashFiles('backend/requirements*.txt') }}
+
       #install dependencies
       - run: pip install -r backend/requirements.txt
-      #install the linter
-      - run: pip install ruff
+      #install dev dependencies (linter and test runner)
+      - run: pip install -r backend/requirements-dev.txt
       #Checks linter against backend code
       - run: ruff check backend/
-
-      #Uncomment these when tests have been added
-      #- run: pip install pytest
-      #- run: pytest backend/
+      #Run unit tests
+      - run: python -m pytest backend/tests/
 
   frontend:
     runs-on: ubuntu-latest
@@ -37,5 +40,12 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
-      - run: npm ci --prefix frontend
+
+      - uses: actions/cache@v4
+        with:
+          path: frontend/node_modules
+          key: npm-${{ hashFiles('frontend/package-lock.json')}}
+      - run: npm install --prefix frontend
+      - run: npm run lint --prefix frontend
+      - run: npm test --prefix frontend
       - run: npm run build --prefix frontend
