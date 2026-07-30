@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, UTC
+from datetime import UTC, datetime
 
 from bson import ObjectId
 from fastapi import APIRouter, HTTPException, status
@@ -9,6 +9,7 @@ from database import get_db
 from models.user_interview import InterviewUserCreate, InterviewUserOut
 
 router = APIRouter(prefix="/api/interview-users", tags=["interview_users"])
+
 
 def interview_user_helper(interview_user: dict) -> InterviewUserOut:
     """Convert a raw Mongo interview-user link into the API response model."""
@@ -20,6 +21,7 @@ def interview_user_helper(interview_user: dict) -> InterviewUserOut:
         intvuser_created_at=interview_user["intvuser_created_at"],
         intvuser_updated_at=interview_user["intvuser_updated_at"],
     )
+
 
 @router.post(
     "",
@@ -66,6 +68,7 @@ async def create_interview_user(payload: InterviewUserCreate) -> InterviewUserOu
 
     return interview_user_helper(created_link)
 
+
 @router.get(
     "/by-interview/{intv_id}",
     response_model=list[InterviewUserOut],
@@ -76,6 +79,7 @@ async def list_interview_users_by_interview(intv_id: str) -> list[InterviewUserO
     links = await db.interview_users.find({"intv_id": intv_id}).to_list(length=100)
     return [interview_user_helper(doc) for doc in links]
 
+
 @router.get(
     "/by-user/{user_id}",
     response_model=list[InterviewUserOut],
@@ -85,6 +89,7 @@ async def list_interview_users_by_user(user_id: str) -> list[InterviewUserOut]:
     db = get_db()
     links = await db.interview_users.find({"user_id": user_id}).to_list(length=100)
     return [interview_user_helper(doc) for doc in links]
+
 
 @router.get(
     "/{intvuser_id}",
