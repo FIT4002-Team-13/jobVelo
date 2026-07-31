@@ -260,12 +260,16 @@ export default function InterviewPage() {
   const [timer, setTimer] = useState(0);
 
   const transcriptRef = useRef([]);
+  const timerRef = useRef(0);
   const wsRef = useRef(null);
+  const wsDisplayRef = useRef(null);
   const audioContextRef = useRef(null);
   const processorRef = useRef(null);
+  const displayProcessorRef = useRef(null);
   const mediaStreamRef = useRef(null);
   const micStreamRef = useRef(null);
   const partialEntryRef = useRef(null);
+  const displayPartialEntryRef = useRef(null);
   const entryCounterRef = useRef(1);
   const startTimeRef = useRef(Date.now());
   const pausedTimeRef = useRef(0);
@@ -280,17 +284,17 @@ export default function InterviewPage() {
     }
   }, [transcript]);
 
-  function appendTranscript(text, isFinal) {
+  function appendTranscript(text, isFinal, speaker, partialRef) {
     const timestamp = formatTimer(
       Math.floor((Date.now() - startTimeRef.current) / 1000)
     );
 
     if (isFinal) {
       const entryId = String(entryCounterRef.current++);
-      const prevPartialId = partialEntryRef.current;
-      partialEntryRef.current = null;
+      const prevPartialId = partialRef.current;
+      partialRef.current = null;
 
-      const newEntry = { id: entryId, speaker: "Live", timestamp, text };
+      const newEntry = { id: entryId, speaker, timestamp, text };
       setTranscript((prev) => {
         const refreshed = prevPartialId
           ? prev.filter((entry) => entry.id !== prevPartialId)
@@ -300,11 +304,11 @@ export default function InterviewPage() {
         return updated;
       });
     } else {
-      if (!partialEntryRef.current) {
-        partialEntryRef.current = `partial-${entryCounterRef.current++}`;
+      if (!partialRef.current) {
+        partialRef.current = `partial-${entryCounterRef.current++}`;
       }
-      const partialId = partialEntryRef.current;
-      const partialEntry = { id: partialId, speaker: "Live", timestamp, text };
+      const partialId = partialRef.current;
+      const partialEntry = { id: partialId, speaker, timestamp, text };
 
       setTranscript((prev) => [
         ...prev.filter((entry) => entry.id !== partialId),
@@ -330,7 +334,7 @@ export default function InterviewPage() {
     isPausedRef.current = isPaused;
   }, [isPaused]);
 
-  function createTranscriptionSocket() {
+  function createTranscriptionSocket(speaker, partialRef) {
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     const socket = new WebSocket(
       `${protocol}//${window.location.host}/api/realtime/transcribe`
@@ -341,27 +345,28 @@ export default function InterviewPage() {
     socket.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
-        console.log("ws message", data);
         if (data.type === "transcript" && typeof data.text === "string") {
-          appendTranscript(data.text, Boolean(data.is_final));
+          appendTranscript(data.text, Boolean(data.is_final), speaker, partialRef);
         }
       } catch (err) {
         console.error("Failed to parse transcription event", err);
       }
     };
-    socket.onerror = () => setStatus("Microphone connection error");
-    socket.onclose = () => setStatus("Transcription stopped");
+    socket.onerror = () => setStatus("Connection error");
+    socket.onclose = () => {};
 
     return socket;
   }
 
   async function startScreenShare() {
+    const interviewerLabel = user?.full_name || "Interviewer";
+    const candidateLabel = candidateName || "Candidate";
+
     try {
-      const socket = createTranscriptionSocket();
-      wsRef.current = socket;
+      // Mic socket — always created
+      wsRef.current = createTranscriptionSocket(interviewerLabel, partialEntryRef);
       setStatus("Requesting screen access...");
 
-      console.log("1: requesting display media");
       const displayStream = await navigator.mediaDevices.getDisplayMedia({
         audio: {
           echoCancellation: false,
@@ -370,56 +375,53 @@ export default function InterviewPage() {
         },
         video: { cursor: "always" },
       });
-      console.log("2: display stream acquired", displayStream.getTracks());
       mediaStreamRef.current = displayStream;
 
-      // Also request microphone access
       setStatus("Requesting microphone access...");
-      console.log("3: requesting mic");
       const micStream = await navigator.mediaDevices.getUserMedia({
         audio: true,
       });
-      console.log("4: mic acquired", micStream.getTracks());
       micStreamRef.current = micStream;
 
-      console.log("5: creating audio context");
-      const audioContext = new (window.AudioContext ||
-        window.webkitAudioContext)();
+      const audioContext = new (window.AudioContext || window.webkitAudioContext)();
       await audioContext.resume();
-      console.log("6: audio context state", audioContext.state);
       audioContextRef.current = audioContext;
 
+      // Mic processor → mic WebSocket (Interviewer)
       const micSource = audioContext.createMediaStreamSource(micStream);
-      const processor = audioContext.createScriptProcessor(4096, 1, 1);
-      processorRef.current = processor;
+      const micProcessor = audioContext.createScriptProcessor(4096, 1, 1);
+      processorRef.current = micProcessor;
 
-      processor.onaudioprocess = (event) => {
-        if (isPausedRef.current) {
-          return; // Don't send audio if paused
-        }
+      micProcessor.onaudioprocess = (event) => {
+        if (isPausedRef.current) return;
         const inputBuffer = event.inputBuffer.getChannelData(0);
-        if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
-          return;
-        }
-
-        const buffer = downsampleBuffer(
-          inputBuffer,
-          audioContext.sampleRate,
-          16000
-        );
-        wsRef.current.send(buffer);
+        if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
+        wsRef.current.send(downsampleBuffer(inputBuffer, audioContext.sampleRate, 16000));
       };
 
-      micSource.connect(processor);
-      // Only connect display audio if the stream actually has audio tracks
-      // (macOS getDisplayMedia returns video-only by default).
-      if (displayStream.getAudioTracks().length > 0) {
-        const displaySource = audioContext.createMediaStreamSource(displayStream);
-        displaySource.connect(processor);
-      }
-      processor.connect(audioContext.destination);
+      micSource.connect(micProcessor);
+      micProcessor.connect(audioContext.destination);
 
-      // Display the screen share in the video element
+      // Display audio processor → separate WebSocket (Candidate)
+      // macOS getDisplayMedia returns video-only by default — skip if no audio tracks.
+      if (displayStream.getAudioTracks().length > 0) {
+        wsDisplayRef.current = createTranscriptionSocket(candidateLabel, displayPartialEntryRef);
+
+        const displaySource = audioContext.createMediaStreamSource(displayStream);
+        const displayProcessor = audioContext.createScriptProcessor(4096, 1, 1);
+        displayProcessorRef.current = displayProcessor;
+
+        displayProcessor.onaudioprocess = (event) => {
+          if (isPausedRef.current) return;
+          const inputBuffer = event.inputBuffer.getChannelData(0);
+          if (!wsDisplayRef.current || wsDisplayRef.current.readyState !== WebSocket.OPEN) return;
+          wsDisplayRef.current.send(downsampleBuffer(inputBuffer, audioContext.sampleRate, 16000));
+        };
+
+        displaySource.connect(displayProcessor);
+        displayProcessor.connect(audioContext.destination);
+      }
+
       if (videoRef.current) {
         videoRef.current.srcObject = displayStream;
         videoRef.current.play().catch((err) => {
@@ -428,13 +430,14 @@ export default function InterviewPage() {
       }
 
       setIsScreenSharing(true);
-      setStatus("Screen sharing & listening…");
+      setStatus(
+        displayStream.getAudioTracks().length > 0
+          ? "Screen sharing & listening (interviewer + candidate)…"
+          : "Screen sharing & listening (interviewer mic only)…"
+      );
 
-      // Handle when user stops screen share from browser UI
       displayStream.getTracks().forEach((track) => {
-        track.onended = () => {
-          void stopScreenShare();
-        };
+        track.onended = () => { void stopScreenShare(); };
       });
     } catch (error) {
       if (audioContextRef.current) {
@@ -452,6 +455,10 @@ export default function InterviewPage() {
       if (wsRef.current) {
         wsRef.current.close();
         wsRef.current = null;
+      }
+      if (wsDisplayRef.current) {
+        wsDisplayRef.current.close();
+        wsDisplayRef.current = null;
       }
       console.error("startScreenShare error:", error.name, error.message, error);
       if (error.name === "NotAllowedError") {
@@ -486,6 +493,12 @@ export default function InterviewPage() {
       processorRef.current = null;
     }
 
+    if (displayProcessorRef.current) {
+      displayProcessorRef.current.disconnect();
+      displayProcessorRef.current.onaudioprocess = null;
+      displayProcessorRef.current = null;
+    }
+
     if (audioContextRef.current) {
       try {
         await audioContextRef.current.close();
@@ -504,6 +517,13 @@ export default function InterviewPage() {
         wsRef.current.close();
       }
       wsRef.current = null;
+    }
+
+    if (wsDisplayRef.current) {
+      if (wsDisplayRef.current.readyState === WebSocket.OPEN) {
+        wsDisplayRef.current.close();
+      }
+      wsDisplayRef.current = null;
     }
 
     setIsScreenSharing(false);
@@ -551,12 +571,19 @@ export default function InterviewPage() {
   }, [transcript]);
 
   useEffect(() => {
+    timerRef.current = timer;
+  }, [timer]);
+
+  useEffect(() => {
     const interval = setInterval(() => {
       if (!isCompleted && transcriptRef.current.length) {
         fetch(`/api/interviews/${id}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ intv_transcript: transcriptRef.current }),
+          body: JSON.stringify({
+            intv_transcript: transcriptRef.current,
+            intv_duration_seconds: timerRef.current,
+          }),
         });
       }
     }, 30000);
@@ -606,6 +633,9 @@ export default function InterviewPage() {
           if (!hasLocal && serverTranscript.length) {
             setTranscript(serverTranscript);
             syncCounterFromEntries(serverTranscript);
+          }
+          if (data.intv_duration_seconds) {
+            startTimeRef.current = Date.now() - data.intv_duration_seconds * 1000;
           }
         }
 
