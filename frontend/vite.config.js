@@ -14,7 +14,7 @@ export default defineConfig({
       // ws:true is required so /api WebSocket upgrades (e.g. realtime
       // interview transcription) get proxied through to FastAPI in dev.
       "/api": {
-        target: "http://localhost:8000",
+        target: "http://127.0.0.1:8000",
         changeOrigin: true,
         ws: true,
       },
