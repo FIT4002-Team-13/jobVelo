@@ -48,7 +48,7 @@ export default function TestimonialsSection() {
                   <Star key={k} size={16} className="fill-coral-400 stroke-coral-400" />
                 ))}
               </div>
-              <blockquote className="text-base text-neutral-700 leading-relaxed">"{q.body}"</blockquote>
+              <blockquote className="text-base text-neutral-700 leading-relaxed">&quot;{q.body}&quot;</blockquote>
               <figcaption className="mt-5 flex items-center gap-3">
                 <span className="h-10 w-10 rounded-pill" style={{ background: q.avatar }} />
                 <div>
