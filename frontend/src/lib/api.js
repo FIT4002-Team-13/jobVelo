@@ -84,4 +84,10 @@ export const api = {
     ).toString()
     return request(`/users${qs ? `?${qs}` : ''}`, { auth: true })
   },
+
+  // ---------- companies --------------------------------------------------
+  getCompany:    (comp_id)          => request(`/companies/${comp_id}`,  { auth: true }),
+  updateCompany: (comp_id, payload) => request(`/companies/${comp_id}`,  { method: 'PUT', body: payload, auth: true }),
+  updateCompanyLogo: (comp_id, formData) => request(`/companies/${comp_id}/logo`, { method: 'PATCH', body: formData, auth: true }),
+
 }

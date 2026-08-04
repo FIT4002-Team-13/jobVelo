@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion'
-import { ArrowRight, Sparkles } from 'lucide-react'
+import { ArrowRight, Sparkles, Star } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import HeroIllustration from '../common/HeroIllustration.jsx'
 import MorphingGradient from '../common/MorphingGradient.jsx'
