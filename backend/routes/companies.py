@@ -1,15 +1,13 @@
 from __future__ import annotations
 
 from bson import ObjectId
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from motor.motor_asyncio import AsyncIOMotorDatabase
-
-from fastapi import File, UploadFile
-from services.file_storage import save_upload
 
 from database import get_db
 from dependencies import get_current_user
 from models.company import CompanyOut
+from services.file_storage import save_upload
 
 router = APIRouter(prefix="/api/companies", tags=["companies"])
 
