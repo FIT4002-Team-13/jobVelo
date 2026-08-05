@@ -7,7 +7,7 @@ import DeleteCandidateModal from "../components/job-candidate/DeleteCandidateMod
 import { flex, card, badge, form, button, modal, page } from "../styles/layout";
 
 import { useAuth } from "../lib/AuthContext.jsx";
-import { api, authedFetch } from "../lib/api.js";
+import { api } from "../lib/api.js";
 import {
   isEmail,
   isHttpUrl,
@@ -545,6 +545,7 @@ function CandidatesTable({
   onStartInterview,
   onDelete,
   onOpenInterview,
+  onOpenCandidate,
 }) {
   const [search, setSearch] = useState("");
   // SortMenu is only consulted while the SCHEDULES tab is active. The
