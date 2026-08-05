@@ -25,6 +25,7 @@ from models.cv_analysis import (
     CvAnalysisBullet,
     CvAnalysisOut,
     CvAnalysisPositionFit,
+    CvAnalysisQuestion,
 )
 from services.file_storage import delete_upload, save_upload
 from services.gemini_service import analyse_cv
@@ -54,6 +55,15 @@ def _serialise(doc: dict, *, cached: bool = False) -> CvAnalysisOut:
     defaults rather than 500-ing the response. The `cached` flag is set
     by the caller (True when we hit the cache, False on fresh generation).
     """
+    # Ignore any interview_questions doc entry that doesn't match the
+    # enum'd shape (Pydantic would 500 the response on a bad category).
+    _valid_questions = []
+    for q in (doc.get("interview_questions") or []):
+        try:
+            _valid_questions.append(CvAnalysisQuestion(**q))
+        except Exception:
+            continue
+
     return CvAnalysisOut(
         analysis_id=str(doc["_id"]),
         jobcand_id=doc["jobcand_id"],
@@ -63,6 +73,7 @@ def _serialise(doc: dict, *, cached: bool = False) -> CvAnalysisOut:
         key_strengths=[CvAnalysisBullet(**b) for b in (doc.get("key_strengths") or [])],
         improvements=[CvAnalysisBullet(**b) for b in (doc.get("improvements") or [])],
         inconsistencies=[CvAnalysisBullet(**b) for b in (doc.get("inconsistencies") or [])],
+        interview_questions=_valid_questions,
         cv_path=doc["cv_path"],
         cover_letter_path=doc.get("cover_letter_path"),
         created_at=doc["created_at"],
@@ -180,12 +191,13 @@ async def analyse(
         "comp_id":           str(candidate.get("comp_id") or job.get("comp_id") or ""),
         "candidate_name":    candidate_name or result.get("candidate_name"),
         "position_title":    position_title,
-        "position_fit":      result.get("position_fit") or {},
-        "key_strengths":     result.get("key_strengths") or [],
-        "improvements":      result.get("improvements") or [],
-        "inconsistencies":   result.get("inconsistencies") or [],
-        "cv_path":           cv_path,
-        "cover_letter_path": cl_path,
+        "position_fit":        result.get("position_fit") or {},
+        "key_strengths":       result.get("key_strengths") or [],
+        "improvements":        result.get("improvements") or [],
+        "inconsistencies":     result.get("inconsistencies") or [],
+        "interview_questions": result.get("interview_questions") or [],
+        "cv_path":             cv_path,
+        "cover_letter_path":   cl_path,
         "created_at":        now,
     }
     inserted = await db.cv_analyses.insert_one(doc)

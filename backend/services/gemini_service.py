@@ -64,6 +64,13 @@ return a single JSON object with this shape:
   ],
   "inconsistencies": [                       // 0-5 items, empty list is fine
     { "title": string, "detail": string }    // contradictions or unexplained gaps
+  ],
+  "interview_questions": [                   // 4-6 items, ready-to-ask questions
+    {
+      "category": "technical" | "behavioral" | "experience",
+      "question": string,                    // one clean sentence, no placeholders
+      "rationale": string                    // one sentence: what this probes; cite CV/JD
+    }
   ]
 }
 
@@ -74,6 +81,12 @@ Rules:
   not generic advice.
 - `inconsistencies`: ONLY include real CV/cover-letter contradictions or
   unexplained gaps - DO NOT pad with stylistic notes.
+- `interview_questions`: 4-6 items covering at least two categories.
+  Every question must be grounded - either in the CV (probe a specific
+  past role / project / claim) or in the JD (probe a required skill the
+  CV leaves ambiguous). No generic "tell me about yourself" filler.
+  `rationale` is for the interviewer, not the candidate - a one-sentence
+  note on what the answer would reveal.
 - When a Job Description is supplied, treat it as the SINGLE SOURCE OF
   TRUTH for fit scoring:
     * `relevant_experience` - alignment between past work and the JD's
@@ -87,6 +100,8 @@ Rules:
     * `improvements` - JD requirements the candidate is missing or weak on.
     * `inconsistencies` - claims that contradict each other OR claims
       that don't square with the JD's reality.
+    * `interview_questions` - weight toward probing the JD's must-haves
+      that the CV leaves thin or unproven.
 - When NO Job Description is supplied, fall back to scoring against the
   position_title alone with industry-standard expectations; be
   conservative with high scores.

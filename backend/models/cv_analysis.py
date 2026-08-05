@@ -13,7 +13,7 @@ re-upload required, just retrieve and serve.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Optional
+from typing import Literal, Optional
 
 from pydantic import BaseModel
 
@@ -23,6 +23,18 @@ class CvAnalysisBullet(BaseModel):
 
     title: str
     detail: str
+
+
+class CvAnalysisQuestion(BaseModel):
+    """One suggested interview question the recruiter can ask the candidate.
+
+    `category` is a bucket tag the UI uses to colour-code the question chip;
+    keep the value space tight so the frontend palette doesn't drift.
+    """
+
+    category: Literal["technical", "behavioral", "experience"]
+    question: str
+    rationale: str
 
 
 class CvAnalysisPositionFit(BaseModel):
@@ -36,19 +48,21 @@ class CvAnalysisPositionFit(BaseModel):
 class CvAnalysisOut(BaseModel):
     """Public response model used by every CV-analysis endpoint."""
 
-    analysis_id:       str
-    jobcand_id:        str
-    candidate_name:    Optional[str] = None
-    position_title:    str
-    position_fit:      CvAnalysisPositionFit
-    key_strengths:     list[CvAnalysisBullet] = []
-    improvements:      list[CvAnalysisBullet] = []
-    inconsistencies:   list[CvAnalysisBullet] = []
+    analysis_id:         str
+    jobcand_id:          str
+    candidate_name:      Optional[str] = None
+    position_title:      str
+    position_fit:        CvAnalysisPositionFit
+    key_strengths:       list[CvAnalysisBullet] = []
+    improvements:        list[CvAnalysisBullet] = []
+    inconsistencies:     list[CvAnalysisBullet] = []
+    # Suggested questions the recruiter can ask, grounded in the CV / JD.
+    interview_questions: list[CvAnalysisQuestion] = []
     # Storage paths so the frontend can preview the PDFs via /api/files.
-    cv_path:           str
-    cover_letter_path: Optional[str] = None
-    created_at:        datetime
+    cv_path:             str
+    cover_letter_path:   Optional[str] = None
+    created_at:          datetime
     # True when the response came from the cache (existing record) instead
     # of from a fresh LLM call. Lets the frontend show a subtle "cached"
     # indicator if it wants - cosmetic only.
-    cached:            bool = False
+    cached:              bool = False

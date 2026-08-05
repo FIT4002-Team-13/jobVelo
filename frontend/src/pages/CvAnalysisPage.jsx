@@ -62,6 +62,54 @@ function BulletCard({ title, items, emptyText }) {
   )
 }
 
+// ── Question card (Suggested Interview Questions) ────────────────────────
+// Different shape from BulletCard (category chip + question + rationale)
+// so it's a dedicated component rather than shoehorning it into the
+// title/detail layout.
+
+// Category → chip colour, kept in the same family as the status pill palette
+// used elsewhere. Any unknown category falls back to neutral.
+const QUESTION_CATEGORY_STYLES = {
+  technical:  'bg-primary-100 text-primary-600',
+  behavioral: 'bg-mint-100 text-mint-700',
+  experience: 'bg-coral-100 text-coral-700',
+}
+
+function QuestionCard({ items, emptyText }) {
+  return (
+    <div className={`${card.sm}`}>
+      <h3 className="text-lg font-bold text-neutral-800 mb-3">Suggested Interview Questions</h3>
+      {items.length === 0 ? (
+        <p className="text-sm text-neutral-400 italic">{emptyText}</p>
+      ) : (
+        <ul className="flex flex-col gap-4">
+          {items.map((q, i) => (
+            <li key={i} className="text-sm">
+              <div className="flex items-start gap-2">
+                <span
+                  className={`text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-pill shrink-0 mt-0.5 ${
+                    QUESTION_CATEGORY_STYLES[q.category] ?? 'bg-neutral-100 text-neutral-500'
+                  }`}
+                >
+                  {q.category}
+                </span>
+                <p className="font-semibold text-neutral-700 leading-relaxed">
+                  {q.question}
+                </p>
+              </div>
+              {q.rationale && (
+                <p className="text-neutral-500 leading-relaxed pl-3 mt-1 italic">
+                  {q.rationale}
+                </p>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  )
+}
+
 // ── PDF preview ──────────────────────────────────────────────────────────
 // Uses the browser's built-in PDF viewer via <iframe>. Good enough for an
 // MVP; if the team wants paging + zoom controls matching the mockup,
@@ -111,9 +159,10 @@ export default function CvAnalysisPage() {
     candidate_name,
     position_title,
     position_fit,
-    key_strengths     = [],
-    improvements      = [],
-    inconsistencies   = [],
+    key_strengths       = [],
+    improvements        = [],
+    inconsistencies     = [],
+    interview_questions = [],
     cv_path,
   } = analysis
 
@@ -229,6 +278,11 @@ export default function CvAnalysisPage() {
               title="Inconsistencies"
               items={inconsistencies}
               emptyText="No inconsistencies found."
+            />
+
+            <QuestionCard
+              items={interview_questions}
+              emptyText="No interview questions suggested."
             />
           </div>
         </div>

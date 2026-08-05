@@ -186,7 +186,8 @@ export default function CvUploadPage() {
             <h1 className="text-4xl font-extrabold tracking-tight text-neutral-800">CV Analyser</h1>
             <p className="text-xs text-neutral-400 mt-1">
               Pick a candidate, upload their CV, and get an AI-generated fit summary, strengths,
-              improvement areas, and inconsistencies scored against the job description.
+              improvement areas, inconsistencies, and a set of suggested interview questions -
+              all scored against the job description.
             </p>
           </div>
 
