@@ -35,9 +35,13 @@ const STATUS_STYLES = {
 // Anything else (including legacy data) falls back to the neutral pill style
 // via the `?? 'bg-neutral-100 ...'` guard at the call site.
 const CANDIDATE_STATUS_STYLES = {
-  SCHEDULED: "bg-neutral-100 text-neutral-500",
-  EVALUATED: "bg-sky-100 text-sky-600",
-};
+  'NOT SCHEDULED': 'bg-neutral-100 text-neutral-500',
+  SCHEDULED:       'bg-primary-100 text-primary-600',
+  INCOMPLETE:      'bg-coral-50 text-coral-600',
+  EVALUATED:       'bg-sky-100 text-sky-600',
+  HIRED:           'bg-mint-500 text-white',
+  REJECTED:        'bg-coral-100 text-coral-700',
+}
 
 // Options shown in the candidates-table FilterMenu. Kept in sync with the
 // CANDIDATE_STATUS_STYLES keys above - any new status pill needs a matching
@@ -56,25 +60,30 @@ const AVATAR_COLORS = [
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function initials(name = "") {
-  return name
-    .split(" ")
+function initials(name = '') {
+  const safeName = typeof name === 'string' ? name.trim() : ''
+  if (!safeName) return '--'
+
+  return safeName
+    .split(/\s+/)
+    .filter(Boolean)
     .map((w) => w[0])
-    .join("")
+    .join('')
     .slice(0, 2)
-    .toUpperCase();
+    .toUpperCase()
 }
 
-function avatarColor(name = "") {
-  let hash = 0;
-  for (const c of name) hash = (hash * 31 + c.charCodeAt(0)) & 0xffffffff;
-  return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
+function avatarColor(name = '') {
+  const safeName = typeof name === 'string' ? name : ''
+  let hash = 0
+  for (const c of safeName) hash = (hash * 31 + c.charCodeAt(0)) & 0xffffffff
+  return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length]
 }
 
 function formatDate(iso) {
-  if (!iso) return "--";
-  const [y, m, d] = iso.split("-");
-  return `${d}/${m}/${y}`;
+  if (!iso || typeof iso !== 'string' || !iso.includes('-')) return '--'
+  const [y, m, d] = iso.split('-')
+  return `${d}/${m}/${y}`
 }
 
 function formatDateTime(iso) {
@@ -439,10 +448,21 @@ function InterviewerCombobox({ value, onChange, options }) {
 
 // ── Interview Status Panel ────────────────────────────────────────────────────
 
-function InterviewStatusPanel({ candidates }) {
-  const counts = { SCHEDULED: 0, EVALUATED: 0 };
-  let scoreSum = 0,
-    scoreCount = 0;
+// Order matches the pipeline progression so the panel reads top-to-bottom
+// from "not started" → "in progress" → "done". The dot colour mirrors the
+// candidate-row pill palette (SCHEDULED = primary, EVALUATED = mint), so
+// users can visually link the count here with the pill on the row.
+const INTERVIEW_STATUS_ROWS = [
+  { key: 'NOT SCHEDULED', label: 'Not Scheduled', dot: 'bg-neutral-400' },
+  { key: 'SCHEDULED',     label: 'Scheduled',     dot: 'bg-primary-500' },
+  { key: 'EVALUATED',     label: 'Evaluated',     dot: 'bg-mint-500'    },
+]
+
+function InterviewStatusPanel({ candidates}) {
+  // Start each tracked status at 0 - keeps the row visible even when
+  // nobody's in that bucket yet (an empty job still shows 0/0/0).
+  const counts = INTERVIEW_STATUS_ROWS.reduce((acc, { key }) => ({ ...acc, [key]: 0 }), {})
+  let scoreSum = 0, scoreCount = 0
 
   for (const c of candidates) {
     if (counts[c.status] !== undefined) counts[c.status]++;
@@ -471,10 +491,13 @@ function InterviewStatusPanel({ candidates }) {
       </div>
 
       <div className={`${flex.col} gap-1.5`}>
-        {Object.entries(counts).map(([status, count]) => (
-          <div key={status} className={`${flex.rowBetween} text-sm`}>
-            <span className="text-neutral-500 font-medium">{status}</span>
-            <span className="font-bold text-neutral-700">{count}</span>
+        {INTERVIEW_STATUS_ROWS.map(({ key, label, dot }) => (
+          <div key={key} className={`${flex.rowBetween} text-sm`}>
+            <span className={`${flex.row} gap-2`}>
+              <span className={`w-2 h-2 rounded-pill ${dot}`} aria-hidden />
+              <span className="text-neutral-500 font-medium">{label}</span>
+            </span>
+            <span className="font-bold text-neutral-700">{counts[key]}</span>
           </div>
         ))}
       </div>
@@ -522,6 +545,7 @@ function CandidatesTable({
   onStartInterview,
   onDelete,
   onOpenInterview,
+  onOpenCandidate,
 }) {
   const [search, setSearch] = useState("");
   // SortMenu is only consulted while the SCHEDULES tab is active. The
@@ -806,14 +830,15 @@ function CandidatesTable({
                   </td>
                 );
 
-                return (
-                  <tr
-                    key={c.id ?? i}
-                    className="border-b border-neutral-100 last:border-0 hover:bg-neutral-50 transition-colors"
-                  >
-                    {tab === "RANKINGS" ? (
-                      <>
-                        {/* Rank - 1-based since people don't count from zero.
+              return (
+                <tr
+                  key={c.id ?? i}
+                  onClick={() => onOpenCandidate?.(c)}
+                  className="border-b border-neutral-100 last:border-0 hover:bg-neutral-50 cursor-pointer transition-colors"
+                >
+                  {tab === 'RANKINGS' ? (
+                    <>
+                      {/* Rank - 1-based since people don't count from zero.
                           Top three use the medal palette (🥇 gold / 🥈 silver
                           / 🥉 bronze) for at-a-glance pecking order. Everyone
                           else renders in plain neutral. All non-bold per spec. */}
@@ -1182,7 +1207,7 @@ export default function JobDetailPage() {
           </div>
 
           {/* Interview Status */}
-          <InterviewStatusPanel candidates={candidates} job={job} />
+          <InterviewStatusPanel candidates={candidates} />
         </div>
 
         {/* Candidates section - tabs are now inside CandidatesTable so they
@@ -1195,6 +1220,9 @@ export default function JobDetailPage() {
             onStartInterview={(c) => setStartTarget(c)}
             onDelete={(c) => setDeleteTarget(c)}
             onOpenInterview={(intvId) => navigate(`/interview/${intvId}`)}
+            onOpenCandidate={(c) => {
+              navigate(`/candidates/${c.cand_id}/${id}`)
+            }}
           />
         </div>
       </main>

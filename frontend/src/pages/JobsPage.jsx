@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import Sidebar from '../components/common/Sidebar'
 import JobFormModal from '../components/job-candidate/JobFormModal'
 import { SortMenu, FilterMenu, makeSorter } from '../components/job-candidate/TableControls'
+import { authedFetch } from '../lib/api.js'
 import { button, modal, page } from '../styles/layout'
 
 const JOB_STATUS_OPTIONS = [
@@ -226,7 +227,7 @@ function DeleteConfirmModal({ job, onClose, onDeleted }) {
   async function handleDelete() {
     setDeleting(true)
     try {
-      const res = await fetch(`/api/jobs/${job.id}`, { method: 'DELETE' })
+      const res = await authedFetch(`/api/jobs/${job.id}`, { method: 'DELETE' })
       if (!res.ok) throw new Error('Failed to delete.')
       onDeleted(job.id)
     } catch (err) {
@@ -277,7 +278,7 @@ export default function JobsPage() {
   const [deleteTarget, setDeleteTarget] = useState(null)
 
   useEffect(() => {
-    fetch('/api/jobs')
+    authedFetch('/api/jobs')
       .then(r => r.json())
       .then(setJobs)
       .catch(() => setError('Failed to load jobs.'))

@@ -21,13 +21,18 @@ from config import settings
 logger = logging.getLogger(__name__)
 
 # Subdirs callers pass in. Anything else is rejected to prevent surprise paths.
-_KNOWN_SUBDIRS = {"company_logos"}
+_KNOWN_SUBDIRS = {"company_logos", "candidate_docs"}
 
 # Conservative extension allow-list per subdir.
 _ALLOWED_EXTS = {
     "company_logos": {".png", ".jpg", ".jpeg", ".webp"},
+    "candidate_docs": {".pdf"},
 }
 
+_MAX_BYTES_BY_SUBDIR = {
+    "company_logos": 5 * 1024 * 1024,   # 5 MB
+    "candidate_docs": 20 * 1024 * 1024, # 20 MB
+}
 _MAX_BYTES = 5 * 1024 * 1024  # 5 MB ceiling for logos.
 
 

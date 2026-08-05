@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { flex, form as f, button, modal } from '../../styles/layout'
 import { useAuth } from '../../lib/AuthContext.jsx'
+import { authedFetch } from '../../lib/api.js'
 import { toPositiveInt, parseSalary } from '../../lib/validators.js'
 
 // Field length caps - mirror the backend Pydantic limits.
@@ -108,7 +109,7 @@ export default function JobFormModal({ initialJob, onClose, onSaved }) {
         : { comp_id: user.comp_id }),
     }
     try {
-      const res = await fetch(
+      const res = await authedFetch(
         isEdit ? `/api/jobs/${initialJob.id}` : '/api/jobs',
         { method: isEdit ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) },
       )

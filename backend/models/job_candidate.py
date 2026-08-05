@@ -62,6 +62,8 @@ class JobCandidateOut(BaseModel):
     communication_score: float | None = None
     skill_score: float | None = None
     problem_solving_score: float | None = None
+    final_score: float | None = None
+    rank: int | None = None
     created_at: datetime
     updated_at: datetime
 

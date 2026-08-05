@@ -6,7 +6,7 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 # Interview cycle for scheduling + running + post-interview state.
-InterviewStatus = Literal["scheduled", "in_progress", "completed", "cancelled"]
+InterviewStatus = Literal["not_scheduled", "scheduled", "in_progress", "completed", "cancelled"]
 
 
 class TranscriptEntry(BaseModel):
@@ -15,6 +15,24 @@ class TranscriptEntry(BaseModel):
     timestamp: str
     text: str
     comment: str | None = None
+
+class InterviewFeedbackSection(BaseModel):
+    """
+    Create/update payload for one section of the interview feedback report.
+    """
+
+    items: list[str] = Field(default_factory=list)
+    justification: str | None = None
+
+
+class InterviewFeedback(BaseModel):
+    """
+    Create/update payload for an interview feedback report.
+    """
+
+    summary: str | None = None
+    strengths: InterviewFeedbackSection = Field(default_factory=InterviewFeedbackSection)
+    improvements: InterviewFeedbackSection = Field(default_factory=InterviewFeedbackSection)
 
 
 class InterviewCreate(BaseModel):
