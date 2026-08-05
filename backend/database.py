@@ -5,7 +5,9 @@ via the real API endpoints. The dashboard shows empty-state messaging
 when collections are empty.
 """
 
+import certifi
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
+from pymongo.errors import ConfigurationError, PyMongoError, ServerSelectionTimeoutError
 
 from config import settings
 
@@ -19,8 +21,17 @@ mongo = _Mongo()
 
 
 async def connect_to_mongo() -> None:
-    mongo.client = AsyncIOMotorClient(settings.mongodb_uri)
-    mongo.db = mongo.client[settings.mongodb_db]
+    try:
+        mongo.client = AsyncIOMotorClient(
+            settings.mongodb_uri,
+            tls=True,
+            tlsCAFile=certifi.where(),
+        )
+        mongo.db = mongo.client[settings.mongodb_db]
+    except (ConfigurationError, ServerSelectionTimeoutError, PyMongoError, OSError) as exc:
+        mongo.client = None
+        mongo.db = None
+        raise RuntimeError("Unable to connect to MongoDB") from exc
 
 
 async def close_mongo_connection() -> None:
@@ -29,7 +40,8 @@ async def close_mongo_connection() -> None:
 
 
 def get_db() -> AsyncIOMotorDatabase:
-    assert mongo.db is not None, "Mongo not initialised - call connect_to_mongo()"
+    if mongo.db is None:
+        raise RuntimeError("Mongo not initialised - call connect_to_mongo()")
     return mongo.db
 
 
@@ -70,17 +82,16 @@ async def ensure_indexes() -> None:
     await db.job_candidates.create_index("job_id")
     await db.job_candidates.create_index("cand_id")
 
-    # Interview-user link - the (user_id, intv_id) pair is logically unique.
-    await db.interview_users.create_index(
-        [("user_id", 1), ("intv_id", 1)],
-        unique=True,
-    )
-    await db.interview_users.create_index("user_id")
-    await db.interview_users.create_index("intv_id")
-
-    # Interviews - indexed by candidate and job for fast lookup in various contexts.
+    # Interviews - common lookups by candidate and job.
     await db.interviews.create_index("cand_id")
     await db.interviews.create_index("job_id")
+    await db.interviews.create_index("intv_status")
+    await db.interviews.create_index("intv_date_time")
+
+    # Interview-Users - one user can only be linked once to the same interview.
+    await db.user_interviews.create_index([("user_id", 1), ("intv_id", 1)], unique=True)
+    await db.user_interviews.create_index("intv_id")
+    await db.user_interviews.create_index("user_id")
 
 
 # Stub kept so existing callers (main.py lifespan) don't break. Real seeding

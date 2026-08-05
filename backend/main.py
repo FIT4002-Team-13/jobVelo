@@ -16,20 +16,26 @@ from routes import (
     cand,
     dashboard,
     files,
-    interv,
+    interview,
     invitations,
     job_cand,
     jobs,
-    user_interv,
+    realtime,
+    user_interview,
     users,
 )
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    await connect_to_mongo()
-    await ensure_indexes()
-    await seed_mock_data()
+    try:
+        await connect_to_mongo()
+        await ensure_indexes()
+        await seed_mock_data()
+    except Exception:
+        app.state.mongo_available = False
+    else:
+        app.state.mongo_available = True
     yield
     await close_mongo_connection()
 
@@ -40,6 +46,7 @@ app = FastAPI(
     description="Real-Time Interview Intelligence System",
     lifespan=lifespan,
 )
+app.state.mongo_available = False
 
 app.add_middleware(
     CORSMiddleware,
@@ -60,10 +67,12 @@ app.include_router(dashboard.router)
 app.include_router(jobs.router)
 app.include_router(cand.router)
 app.include_router(job_cand.router)
+app.include_router(realtime.router)
 app.include_router(users.router)
-app.include_router(interv.router)
-app.include_router(user_interv.router)
+app.include_router(interview.router)
+app.include_router(user_interview.router)
 app.include_router(applications.router)
+
 @app.get("/api/health")
 async def health() -> dict[str, str]:
     return {"status": "ok"}

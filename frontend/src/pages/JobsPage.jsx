@@ -101,6 +101,26 @@ function EmptyAvatar() {
 
 function JobCard({ job, onEdit, onDelete }) {
   const navigate = useNavigate()
+  const [interviewState, setInterviewState] = useState({ loading: true, completed: false })
+
+  useEffect(() => {
+    let active = true
+    async function load() {
+      try {
+        const res = await fetch(`/api/interviews?job_id=${job.id}`)
+        if (!res.ok) throw new Error('Failed to load interviews')
+        const interviews = await res.json()
+        if (!active) return
+        const completed = interviews.some((item) => item.intv_status === 'completed')
+        setInterviewState({ loading: false, completed })
+      } catch {
+        if (active) setInterviewState({ loading: false, completed: false })
+      }
+    }
+    load()
+    return () => { active = false }
+  }, [job.id])
+
   // Show up to 3 avatars; anything beyond collapses into a grey "+N" chip.
   const visibleAvatars = job.interviewers?.slice(0, 3) ?? []
   const overflow = (job.interviewers?.length ?? 0) - visibleAvatars.length
@@ -155,6 +175,11 @@ function JobCard({ job, onEdit, onDelete }) {
           {interviewers}
         </span>
         interviewers
+        {interviewState.loading ? (
+          <span className="ml-2 text-neutral-400">Checking…</span>
+        ) : interviewState.completed ? (
+          <span className="ml-2 font-semibold text-mint-600">Completed</span>
+        ) : null}
       </div>
 
       {/* Avatars - render dashed placeholders when nobody is assigned so the
