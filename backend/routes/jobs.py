@@ -261,6 +261,14 @@ async def list_candidates_for_job(
     out = []
     for link in links:
         c = cands_by_id.get(link.get("cand_id"), {})
+        interview_docs = await db.interviews.find({
+            "job_id": job_id,
+            "cand_id": link.get("cand_id"),
+        }).to_list(length=20)
+        completed_interview = next(
+            (item for item in interview_docs if item.get("intv_status") == "completed"),
+            None,
+        )
         # Average of the three AI scores when available; otherwise fall back
         # to a literal `score` field stashed on the link.
         scores = [
@@ -287,6 +295,8 @@ async def list_candidates_for_job(
             "skill_score":           link.get("skill_score"),
             "problem_solving_score": link.get("problem_solving_score"),
             "score": avg,
+            "intv_completed": completed_interview is not None,
+            "intv_id": str(completed_interview["_id"]) if completed_interview else None,
         })
     return out
 

@@ -10,6 +10,7 @@ import DashboardPage from './pages/DashboardPage.jsx'
 import AdminDashboardPage from './pages/AdminDashboardPage.jsx'
 import JobsPage from './pages/JobsPage'
 import JobDetailPage from './pages/JobDetailPage'
+import InterviewPage from './pages/InterviewPage'
 
 export default function App() {
   return (
@@ -57,6 +58,14 @@ export default function App() {
             element={
               <RequireAuth>
                 <JobDetailPage />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/interview/:id"
+            element={
+              <RequireAuth>
+                <InterviewPage />
               </RequireAuth>
             }
           />

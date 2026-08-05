@@ -14,7 +14,12 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from pydantic import BaseModel, EmailStr, ValidationError
-from pymongo.errors import DuplicateKeyError
+from pymongo.errors import (
+    ConfigurationError,
+    DuplicateKeyError,
+    PyMongoError,
+    ServerSelectionTimeoutError,
+)
 
 from database import get_db
 from dependencies import get_current_user
@@ -80,7 +85,7 @@ def _mint_token(user_doc: dict) -> str:
         subject=str(user_doc["_id"]),
         extra_claims={
             "username": user_doc["username"],
-            "role":     user_doc.get("role"),
+            "role": user_doc.get("role"),
         },
     )
 
@@ -121,19 +126,19 @@ class CheckCodeResponse(BaseModel):
 )
 async def signup_company(
     # Company fields
-    comp_name:        Annotated[str,         Form(min_length=1, max_length=120)],
-    comp_email:       Annotated[EmailStr,    Form()],
-    comp_industry:    Annotated[str,         Form(min_length=1, max_length=80)],
-    comp_contact:     Annotated[str,         Form(min_length=1, max_length=40)],
-    comp_logo:        Annotated[UploadFile,  File(description="Company logo (png/jpg/webp)")],
+    comp_name: Annotated[str, Form(min_length=1, max_length=120)],
+    comp_email: Annotated[EmailStr, Form()],
+    comp_industry: Annotated[str, Form(min_length=1, max_length=80)],
+    comp_contact: Annotated[str, Form(min_length=1, max_length=40)],
+    comp_logo: Annotated[UploadFile, File(description="Company logo (png/jpg/webp)")],
     # Admin fields
-    username:         Annotated[str,         Form(min_length=3, max_length=40)],
-    full_name:        Annotated[str,         Form(min_length=1, max_length=100)],
-    email:            Annotated[EmailStr,    Form()],
-    password:         Annotated[str,         Form(min_length=8, max_length=128)],
+    username: Annotated[str, Form(min_length=3, max_length=40)],
+    full_name: Annotated[str, Form(min_length=1, max_length=100)],
+    email: Annotated[EmailStr, Form()],
+    password: Annotated[str, Form(min_length=8, max_length=128)],
     # Optional company fields
-    comp_website:     Annotated[str | None,  Form()] = None,
-    comp_description: Annotated[str | None,  Form(max_length=2000)] = None,
+    comp_website: Annotated[str | None, Form()] = None,
+    comp_description: Annotated[str | None, Form(max_length=2000)] = None,
 ) -> SignupCompanyResponse:
     """Insert company → save logo → insert admin. Pydantic models are still
     used for validation (just constructed manually since multipart can't bind
@@ -155,24 +160,28 @@ async def signup_company(
 
     # 1. Insert the company doc (without logo path yet).
     company_doc = {
-        "comp_name":        comp_name.strip(),
-        "comp_email":       str(comp_email).lower(),
-        "comp_industry":    comp_industry.strip(),
-        "comp_contact":     comp_contact.strip(),
-        "comp_website":     comp_website.strip() if comp_website else None,
+        "comp_name": comp_name.strip(),
+        "comp_email": str(comp_email).lower(),
+        "comp_industry": comp_industry.strip(),
+        "comp_contact": comp_contact.strip(),
+        "comp_website": comp_website.strip() if comp_website else None,
         "comp_description": comp_description.strip() if comp_description else None,
-        "comp_logo":        None,
-        "created_at":       now,
+        "comp_logo": None,
+        "created_at": now,
     }
     try:
         comp_res = await db.companies.insert_one(company_doc)
     except DuplicateKeyError:
-        raise HTTPException(status_code=409, detail="A company with that email is already registered")
+        raise HTTPException(
+            status_code=409, detail="A company with that email is already registered"
+        )
     company_doc["_id"] = comp_res.inserted_id
 
     # 2. Save the logo, keyed by the freshly-minted company id.
     try:
-        logo_path = await save_upload(comp_logo, subdir="company_logos", key=str(comp_res.inserted_id))
+        logo_path = await save_upload(
+            comp_logo, subdir="company_logos", key=str(comp_res.inserted_id)
+        )
     except HTTPException:
         # Roll back the orphan company if the upload failed validation.
         await db.companies.delete_one({"_id": comp_res.inserted_id})
@@ -185,13 +194,13 @@ async def signup_company(
 
     # 3. Insert the admin user pointing at the new company.
     user_doc = {
-        "username":      admin_payload.username.strip(),
-        "full_name":     admin_payload.full_name.strip(),
-        "email":         admin_payload.email.lower(),
+        "username": admin_payload.username.strip(),
+        "full_name": admin_payload.full_name.strip(),
+        "email": admin_payload.email.lower(),
         "password_hash": hash_password(admin_payload.password),
-        "comp_id":    comp_res.inserted_id,
-        "role":          "admin",
-        "created_at":    now,
+        "comp_id": comp_res.inserted_id,
+        "role": "admin",
+        "created_at": now,
     }
     try:
         user_res = await db.users.insert_one(user_doc)
@@ -269,18 +278,20 @@ async def signup(payload: UserCreate) -> UserOut:
         return_document=True,
     )
     if not inv:
-        raise HTTPException(status_code=400, detail="Invalid or already-used invitation code")
+        raise HTTPException(
+            status_code=400, detail="Invalid or already-used invitation code"
+        )
 
     # Role is sourced from the invitation. The fallback handles legacy
     # invitations created before the role-on-invite refactor.
     doc = {
-        "username":      payload.username.strip(),
-        "full_name":     payload.full_name.strip(),
-        "email":         payload.email.lower(),
+        "username": payload.username.strip(),
+        "full_name": payload.full_name.strip(),
+        "email": payload.email.lower(),
         "password_hash": hash_password(payload.password),
-        "comp_id":       inv["comp_id"],
-        "role":          inv.get("role") or "interviewer",
-        "created_at":    datetime.now(timezone.utc),
+        "comp_id": inv["comp_id"],
+        "role": inv.get("role") or "interviewer",
+        "created_at": datetime.now(timezone.utc),
     }
     try:
         result = await db.users.insert_one(doc)
@@ -316,12 +327,25 @@ async def signup(payload: UserCreate) -> UserOut:
     summary="Exchange username/email + password for a JWT",
 )
 async def login(payload: LoginRequest) -> LoginResponse:
-    db = get_db()
+    try:
+        db = get_db()
+    except RuntimeError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Database unavailable",
+        ) from exc
+
     identifier = payload.identifier.strip()
 
-    user = await db.users.find_one(
-        {"$or": [{"email": identifier.lower()}, {"username": identifier}]}
-    )
+    try:
+        user = await db.users.find_one(
+            {"$or": [{"email": identifier.lower()}, {"username": identifier}]}
+        )
+    except (ConfigurationError, ServerSelectionTimeoutError, PyMongoError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Database unavailable",
+        ) from exc
 
     # Constant-time-ish: always verify even when the user doesn't exist.
     DUMMY_HASH = "$2b$12$abcdefghijklmnopqrstuuPj0ZILcQ4N3WVrxEYJhOQEAa7DpL7Tq"
