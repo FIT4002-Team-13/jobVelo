@@ -111,3 +111,62 @@ def test_CV_and_Cover_Letter_Linked_To_Candidate(authed_comp):
         assert (
             response.json()["cand_cover_letter_url"] == "https://example.com/cover.pdf"
         )
+
+
+def test_reject_incorrect_file_format(authed_comp):
+    fake_comp_id, client = authed_comp
+
+    with patch("routes.cand.get_db"):
+        response = client.post(
+            "/api/candidates",
+            json={
+                "cand_full_name": "Jane Smith",
+                "cand_email": "jane@example.com",
+                "cand_cv_url": "cv.exe",
+                "comp_id": "fake_comp_id",
+            },
+        )
+
+    assert response.status_code == 422
+
+
+def test_accept_correct_file_format(authed_comp):
+    fake_comp_id, client = authed_comp
+    fake_cand_id = ObjectId()
+    now = datetime.now(timezone.utc)
+
+    mock_db = MagicMock()
+
+    mock_db.candidates.find_one = AsyncMock(
+        side_effect=[
+            None,
+            {
+                "_id": fake_cand_id,
+                "cand_full_name": "Jane Smith",
+                "cand_email": "jane@example.com",
+                "cand_phone": None,
+                "cand_cv_url": "https://example.com/cv.pdf",
+                "cand_cover_letter_url": "https://example.com/cover.pdf",
+                "comp_id": fake_comp_id,
+                "cand_created_at": now,
+                "cand_updated_at": now,
+            },
+        ]
+    )
+
+    insert_result = MagicMock()
+    insert_result.inserted_id = fake_cand_id
+    mock_db.candidates.insert_one = AsyncMock(return_value=insert_result)
+
+    with patch("routes.cand.get_db", return_value=mock_db):
+        response = client.post(
+            "/api/candidates",
+            json={
+                "cand_full_name": "Jane Smith",
+                "cand_email": "jane@example.com",
+                "cand_cv_url": "cv.pdf",
+                "comp_id": "fake_comp_id",
+            },
+        )
+
+    assert response.status_code == 201
