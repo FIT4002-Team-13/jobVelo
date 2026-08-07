@@ -74,6 +74,10 @@ function formatTimer(seconds) {
   return `${m}:${s}`;
 }
 
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 function convertFloat32ToInt16(buffer) {
   const output = new DataView(new ArrayBuffer(buffer.length * 2));
   for (let i = 0; i < buffer.length; i += 1) {
@@ -119,7 +123,64 @@ function downsampleBuffer(buffer, inputSampleRate, outputSampleRate = 16000) {
 
 // ── Sub-components ────────────────────────────────────────────────────────────
 
-function TranscriptEntry({ entry }) {
+function HighlightedText({ text, highlights }) {
+  if (!text) return null;
+
+  const phrases = (highlights || [])
+    .map((item) => item.text)
+    .filter(Boolean)
+    .sort((a, b) => b.length - a.length);
+
+  if (!phrases.length) {
+    return <span>{text}</span>;
+  }
+
+  const pattern = new RegExp(`(${phrases.map(escapeRegExp).join("|")})`, "ig");
+  const parts = [];
+  let lastIndex = 0;
+  let match;
+
+  while ((match = pattern.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      parts.push(
+        <span key={`text-${lastIndex}-${match.index}`}>{text.slice(lastIndex, match.index)}</span>
+      );
+    }
+
+    const phrase = match[0];
+    const matchingHighlight = (highlights || []).find(
+      (item) => item.text?.toLowerCase() === phrase.toLowerCase()
+    );
+    const importance = matchingHighlight?.importance ?? 3;
+    const colorClass =
+      importance >= 4
+        ? "bg-coral-100 text-coral-800 border-coral-300"
+        : "bg-amber-100 text-amber-800 border-amber-300";
+
+    parts.push(
+      <span
+        key={`highlight-${match.index}-${phrase}`}
+        className={`rounded-md border px-1.5 py-0.5 font-semibold ${colorClass}`}
+      >
+        {phrase}
+      </span>
+    );
+    lastIndex = match.index + phrase.length;
+  }
+
+  if (lastIndex < text.length) {
+    parts.push(<span key={`tail-${lastIndex}`}>{text.slice(lastIndex)}</span>);
+  }
+
+  return <>{parts}</>;
+}
+
+function TranscriptEntry({ entry, highlights }) {
+  const relevantHighlights = (highlights || []).filter((item) => {
+    const phrase = item.text?.toLowerCase() || "";
+    return phrase && entry.text?.toLowerCase().includes(phrase);
+  });
+
   return (
     <div className={`${flex.row} gap-3 py-2 group`}>
       <div
@@ -132,7 +193,7 @@ function TranscriptEntry({ entry }) {
       <div className={`${flex.col} gap-0.5 flex-1 min-w-0`}>
         <span className="text-xs text-neutral-400">{entry.timestamp}</span>
         <span className="text-sm text-neutral-700 leading-snug">
-          {entry.text}
+          <HighlightedText text={entry.text} highlights={relevantHighlights} />
         </span>
       </div>
     </div>
@@ -258,6 +319,7 @@ export default function InterviewPage() {
   const [scores] = useState(MOCK_SCORES);
   const [questions] = useState(MOCK_QUESTIONS);
   const [timer, setTimer] = useState(0);
+  const [highlights, setHighlights] = useState([]);
 
   const transcriptRef = useRef([]);
   const timerRef = useRef(0);
@@ -276,6 +338,9 @@ export default function InterviewPage() {
   const isPausedRef = useRef(false);
   const videoRef = useRef(null);
   const transcriptContainerRef = useRef(null);
+  const highlightInFlightRef = useRef(false);
+  const lastHighlightRunRef = useRef(0);
+  const lastHighlightSignatureRef = useRef("");
 
   useEffect(() => {
     const element = transcriptContainerRef.current;
@@ -574,6 +639,48 @@ export default function InterviewPage() {
     timerRef.current = timer;
   }, [timer]);
 
+  async function runHighlightAnalysis(force = false) {
+    const snapshot = transcriptRef.current;
+    if (!snapshot?.length) {
+      setHighlights([]);
+      return;
+    }
+
+    const signature = snapshot
+      .slice(-20)
+      .map((entry) => `${entry.speaker}:${entry.text}`)
+      .join("||");
+    const now = Date.now();
+
+    if (!force && highlightInFlightRef.current) return;
+    if (!force && now - lastHighlightRunRef.current < 30000) {
+      if (signature === lastHighlightSignatureRef.current) return;
+    }
+
+    lastHighlightSignatureRef.current = signature;
+    lastHighlightRunRef.current = now;
+    highlightInFlightRef.current = true;
+
+    try {
+      const response = await fetch(`/api/interviews/${id}/highlights`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ transcript: snapshot.slice(-20) }),
+      });
+
+      if (!response.ok) {
+        return;
+      }
+
+      const data = await response.json();
+      setHighlights(Array.isArray(data.highlights) ? data.highlights : []);
+    } catch (error) {
+      console.warn("Highlight analysis failed", error);
+    } finally {
+      highlightInFlightRef.current = false;
+    }
+  }
+
   useEffect(() => {
     const interval = setInterval(() => {
       if (!isCompleted && transcriptRef.current.length) {
@@ -585,6 +692,7 @@ export default function InterviewPage() {
             intv_duration_seconds: timerRef.current,
           }),
         });
+        void runHighlightAnalysis(false);
       }
     }, 30000);
     return () => clearInterval(interval);
@@ -597,6 +705,12 @@ export default function InterviewPage() {
     }, 0);
     entryCounterRef.current = maxId + 1;
   }
+
+  useEffect(() => {
+    if (!id) return;
+
+    void runHighlightAnalysis(true);
+  }, [id]);
 
   useEffect(() => {
     let hasLocal = false;
@@ -658,10 +772,18 @@ export default function InterviewPage() {
       });
   }, [id]);
 
+  useEffect(() => {
+    if (isCompleted) {
+      void runHighlightAnalysis(true);
+    }
+  }, [isCompleted]);
+
   async function completeInterview() {
     if (isCompleted) {
       return;
     }
+
+    await runHighlightAnalysis(true);
 
     await fetch(`/api/interviews/${id}`, {
       method: "PATCH",
@@ -778,7 +900,7 @@ export default function InterviewPage() {
                 </p>
               ) : (
                 transcript.map((entry) => (
-                  <TranscriptEntry key={entry.id} entry={entry} />
+                  <TranscriptEntry key={entry.id} entry={entry} highlights={highlights} />
                 ))
               )}
             </div>

@@ -1,14 +1,22 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from typing import Any
 
 from bson import ObjectId
 from fastapi import APIRouter, HTTPException, status
+from pydantic import BaseModel
 
 from database import get_db
 from models.interview import InterviewCreate, InterviewOut, InterviewUpdate
+from services.openai_service import extract_highlights
 
 router = APIRouter(prefix="/api/interviews", tags=["interviews"])
+
+
+class HighlightRequest(BaseModel):
+    transcript: list[dict[str, Any]]
+
 
 def interview_helper(interview: dict) -> InterviewOut:
     """Convert a raw Mongo interview document into the API response model."""
@@ -110,6 +118,24 @@ async def get_interview(intv_id: str) -> InterviewOut:
         )
 
     return interview_helper(interview)
+
+@router.post(
+    "/{intv_id}/highlights",
+    summary="Generate highlighted phrases for a live transcript.",
+)
+async def generate_highlights(intv_id: str, payload: HighlightRequest) -> dict[str, Any]:
+    db = get_db()
+
+    if not ObjectId.is_valid(intv_id):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid interview id.")
+
+    interview = await db.interviews.find_one({"_id": ObjectId(intv_id)})
+    if not interview:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Interview not found.")
+
+    highlights = await extract_highlights(payload.transcript, limit=5)
+    return {"highlights": highlights}
+
 
 @router.patch(
     "/{intv_id}",
