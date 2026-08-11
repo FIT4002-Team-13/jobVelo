@@ -1,15 +1,73 @@
 from __future__ import annotations
 
+import json
 from datetime import datetime, timezone
 
 from bson import ObjectId
 from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel
 
 from database import get_db
 from dependencies import require_role
 from models.interview import InterviewCreate, InterviewOut, InterviewUpdate
+from services.openai_service import generate_interview_plan
 
 router = APIRouter(prefix="/api/interviews", tags=["interviews"])
+
+
+class PlanRequest(BaseModel):
+    job_id: str
+    cand_id: str
+
+
+@router.post("/generate-plan", summary="Generate an AI interview plan for a candidate.")
+async def generate_plan(payload: PlanRequest) -> list[dict]:
+    db = get_db()
+
+    job = (
+        await db.jobs.find_one({"_id": ObjectId(payload.job_id)})
+        if ObjectId.is_valid(payload.job_id)
+        else None
+    )
+    cand = (
+        await db.candidates.find_one({"_id": ObjectId(payload.cand_id)})
+        if ObjectId.is_valid(payload.cand_id)
+        else None
+    )
+    job_cand = (
+        await db.job_candidates.find_one(
+            {"cand_id": payload.cand_id, "job_id": payload.job_id}
+        )
+        if ObjectId.is_valid(payload.job_id) and ObjectId.is_valid(payload.cand_id)
+        else None
+    )
+
+    job_title = job.get("title", "the role") if job else "the role"
+    job_description = job.get("description") if job else None
+    candidate_name = (
+        cand.get("cand_full_name", "the candidate") if cand else "the candidate"
+    )
+
+    cv_analysis: dict | None = None
+    if job_cand:
+        raw = job_cand.get("cv_analysis")
+        if isinstance(raw, str):
+            try:
+                cv_analysis = json.loads(raw)
+            except Exception:
+                pass
+        elif isinstance(raw, dict):
+            cv_analysis = raw
+
+    try:
+        sections = await generate_interview_plan(
+            job_title, job_description, candidate_name, cv_analysis
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"AI generation failed: {exc}")
+
+    return sections
+
 
 def interview_helper(interview: dict) -> InterviewOut:
     """Convert a raw Mongo interview document into the API response model."""
@@ -28,6 +86,7 @@ def interview_helper(interview: dict) -> InterviewOut:
         intv_created_at=interview["intv_created_at"],
         intv_updated_at=interview["intv_updated_at"],
     )
+
 
 @router.post(
     "",
@@ -75,6 +134,7 @@ async def create_interview(
 
     return interview_helper(created_interview)
 
+
 @router.get(
     "",
     response_model=list[InterviewOut],
@@ -94,6 +154,7 @@ async def list_interviews(
 
     interviews = await db.interviews.find(query).to_list(length=100)
     return [interview_helper(doc) for doc in interviews]
+
 
 @router.get(
     "/{intv_id}",
@@ -117,6 +178,7 @@ async def get_interview(intv_id: str) -> InterviewOut:
         )
 
     return interview_helper(interview)
+
 
 @router.patch(
     "/{intv_id}",

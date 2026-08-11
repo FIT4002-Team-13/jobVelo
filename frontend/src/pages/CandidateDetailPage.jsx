@@ -8,6 +8,140 @@ import { card, flex, page } from '../styles/layout'
 import { useAuth } from '../lib/AuthContext.jsx'
 import { api, authedFetch } from '../lib/api.js'
 
+const SECTION_COLORS = [
+  { bg: 'bg-primary-50',  border: 'border-primary-200',  dot: 'bg-primary-400',  time: 'text-primary-500' },
+  { bg: 'bg-sky-50',      border: 'border-sky-200',      dot: 'bg-sky-400',      time: 'text-sky-500'     },
+  { bg: 'bg-mint-50',     border: 'border-mint-200',     dot: 'bg-mint-400',     time: 'text-mint-600'    },
+  { bg: 'bg-coral-50',    border: 'border-coral-200',    dot: 'bg-coral-400',    time: 'text-coral-500'   },
+]
+
+function InterviewPlanCard({ jobId, candId }) {
+  const [state, setState] = useState('idle') // 'idle' | 'loading' | 'done' | 'error'
+  const [sections, setSections] = useState([])
+  const [errorMsg, setErrorMsg] = useState('')
+
+  async function generate() {
+    setState('loading')
+    setErrorMsg('')
+    try {
+      const res = await authedFetch('/api/interviews/generate-plan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ job_id: jobId, cand_id: candId }),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => null)
+        throw new Error(data?.detail || `Request failed (${res.status})`)
+      }
+      const data = await res.json()
+      setSections(Array.isArray(data) ? data : [])
+      setState('done')
+    } catch (err) {
+      setErrorMsg(err.message || 'Something went wrong.')
+      setState('error')
+    }
+  }
+
+  const totalMinutes = sections.reduce((sum, s) => sum + (s.suggested_minutes || 0), 0)
+
+  return (
+    <section className={`${card.base} ${flex.col} gap-4 mb-6`}>
+      <div className={flex.rowBetween}>
+        <div>
+          <h2 className="text-lg font-bold text-neutral-800">Interview Plan</h2>
+          <p className="text-xs text-neutral-400 mt-0.5">
+            AI-suggested sections based on this role and candidate
+          </p>
+        </div>
+
+        {state === 'idle' || state === 'error' ? (
+          <button
+            type="button"
+            onClick={generate}
+            className="inline-flex items-center gap-2 rounded-xl bg-primary-500 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-primary-600"
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/>
+            </svg>
+            Generate Plan
+          </button>
+        ) : state === 'done' ? (
+          <div className={`${flex.row} items-center gap-3`}>
+            <span className="text-xs text-neutral-400">{totalMinutes} min total</span>
+            <button
+              type="button"
+              onClick={generate}
+              className="rounded-xl border border-neutral-200 bg-white px-3 py-1.5 text-xs font-semibold text-neutral-500 transition-colors hover:bg-neutral-50"
+            >
+              Regenerate
+            </button>
+          </div>
+        ) : null}
+      </div>
+
+      {state === 'idle' && (
+        <div className="flex items-center justify-center rounded-2xl bg-neutral-50 px-6 py-10">
+          <div className={`${flex.col} items-center gap-2 text-center`}>
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-neutral-300">
+              <rect x="3" y="3" width="18" height="18" rx="3"/><path d="M3 9h18M9 21V9"/>
+            </svg>
+            <p className="text-sm font-semibold text-neutral-400">
+              No plan generated yet
+            </p>
+            <p className="text-xs text-neutral-400 max-w-xs">
+              Click &ldquo;Generate Plan&rdquo; and the AI will suggest structured interview sections based on the role and candidate.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {state === 'loading' && (
+        <div className="flex items-center justify-center rounded-2xl bg-neutral-50 px-6 py-10">
+          <div className={`${flex.col} items-center gap-3`}>
+            <svg className="animate-spin text-primary-500" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
+            </svg>
+            <p className="text-sm text-neutral-400">Generating interview plan…</p>
+          </div>
+        </div>
+      )}
+
+      {state === 'error' && (
+        <div className="flex items-center justify-center rounded-2xl bg-coral-50 px-6 py-6">
+          <p className="text-sm text-coral-600">{errorMsg}</p>
+        </div>
+      )}
+
+      {state === 'done' && sections.length > 0 && (
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+          {sections.map((section, i) => {
+            const color = SECTION_COLORS[i % SECTION_COLORS.length]
+            return (
+              <div
+                key={i}
+                className={`${flex.col} gap-2 rounded-2xl border p-4 ${color.bg} ${color.border}`}
+              >
+                <div className={`${flex.row} items-center gap-2`}>
+                  <span className={`h-2 w-2 shrink-0 rounded-full ${color.dot}`} />
+                  <span className="text-sm font-bold text-neutral-800 leading-tight">
+                    {section.name}
+                  </span>
+                </div>
+                <p className="text-xs text-neutral-500 leading-relaxed flex-1">
+                  {section.description}
+                </p>
+                <span className={`text-xs font-semibold ${color.time}`}>
+                  {section.suggested_minutes} min
+                </span>
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </section>
+  )
+}
+
 function formatDate(iso) {
   if (!iso) return '--'
   const [y, m, d] = iso.split('-')
@@ -684,12 +818,12 @@ export default function CandidateDetailPage() {
 
           if (intvUserRes.ok) {
             const interviewUsers = await intvUserRes.json()
-            const interviewerUserId = Array.isArray(interviewUsers)
+            const resolvedInterviewerUserId = Array.isArray(interviewUsers)
               ? interviewUsers[0]?.user_id
               : null
 
-            if (interviewerUserId) {
-              setInterviewerUserId(interviewerUserId)
+            if (resolvedInterviewerUserId) {
+              setInterviewerUserId(resolvedInterviewerUserId)
               const usersRes = await authedFetch(`/api/users`)
 
               if (usersRes.ok) {
@@ -836,6 +970,8 @@ export default function CandidateDetailPage() {
             />
           </div>
         </div>
+
+        <InterviewPlanCard jobId={jobId} candId={candId} />
 
         <FeedbackPanel
           interview={interview}
