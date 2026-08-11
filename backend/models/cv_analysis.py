@@ -13,7 +13,7 @@ re-upload required, just retrieve and serve.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Literal, Optional
+from typing import Literal
 
 from pydantic import BaseModel
 
@@ -59,8 +59,8 @@ class CvAnalysisOut(BaseModel):
     jobcand_id:          str
     status:              CvAnalysisStatus = "completed"
     # Human-readable failure reason, only set when status == "failed".
-    error:               Optional[str] = None
-    candidate_name:      Optional[str] = None
+    error:               str | None = None
+    candidate_name:      str | None = None
     position_title:      str
     position_fit:        CvAnalysisPositionFit
     key_strengths:       list[CvAnalysisBullet] = []
@@ -70,7 +70,7 @@ class CvAnalysisOut(BaseModel):
     interview_questions: list[CvAnalysisQuestion] = []
     # Storage paths so the frontend can preview the PDFs via /api/files.
     cv_path:             str
-    cover_letter_path:   Optional[str] = None
+    cover_letter_path:   str | None = None
     created_at:          datetime
     # True when the response came from the cache (existing record) instead
     # of from a fresh LLM call. Lets the frontend show a subtle "cached"

@@ -14,6 +14,7 @@ from routes import (
     applications,
     auth,
     cand,
+    cv_analysis,
     dashboard,
     files,
     interview,
@@ -23,7 +24,6 @@ from routes import (
     realtime,
     user_interview,
     users,
-    cv_analysis,
 )
 
 

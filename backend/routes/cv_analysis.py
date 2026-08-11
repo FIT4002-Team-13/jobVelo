@@ -260,7 +260,7 @@ async def analyse(
 
     # 3. Look up the job + candidate from the link so the LLM gets a real
     #    position title + job description + has a name to anchor against.
-    link, job, candidate = await _lookup_jobcand_context(jobcand_id)
+    _link, job, candidate = await _lookup_jobcand_context(jobcand_id)
     position_title  = job.get("title") or "Untitled role"
     job_description = job.get("description") or None
     candidate_name  = candidate.get("cand_full_name") or candidate.get("name")
