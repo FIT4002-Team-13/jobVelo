@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, CalendarDays, Briefcase, Users, FileSearch } from 'lucide-react';
+import { LayoutDashboard, CalendarDays, Briefcase, Users } from 'lucide-react';
 import logoFull from '../../assets/logo-final.png';
 import { useAuth } from '../../lib/AuthContext.jsx';
 
@@ -35,9 +35,6 @@ export default function Sidebar({ user: userProp }) {
     { label: 'Schedules',   path: '/schedules',    icon: <CalendarDays    size={16} />, group: 'MAIN'  },
     { label: 'Jobs',        path: '/jobs',         icon: <Briefcase       size={16} />, group: 'GROUP' },
     { label: 'Candidates',  path: '/candidates',   icon: <Users           size={16} />, group: 'GROUP' },
-    // Temporary nav entry while the CV analyser is wired up. Once it gets
-    // launched from a candidate row, this top-level entry can come out.
-    { label: 'CV Analyser', path: '/cv-analysis',  icon: <FileSearch      size={16} />, group: 'GROUP' },
   ];
 
   const mainItems  = navItems.filter(i => i.group === 'MAIN');

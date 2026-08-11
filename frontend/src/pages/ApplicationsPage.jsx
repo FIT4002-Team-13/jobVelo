@@ -342,7 +342,42 @@ export default function ApplicationsPage() {
                       </td>
 
                       <td className="px-6 py-4" onClick={(e) => e.stopPropagation()}>
-                        {row.cv_url ? (
+                        {/* Once an analysis exists the cell links to the CV
+                            analysis report; the raw-PDF link only remains for
+                            legacy rows that have a file but no analysis. */}
+                        {row.cv_analysis_status === 'completed' ? (
+                          <button
+                            type="button"
+                            onClick={() => navigate(`/cv-analysis/${row.application_id}`)}
+                            className="text-primary-500 font-semibold hover:underline"
+                          >
+                            View
+                          </button>
+                        ) : row.cv_analysis_status === 'processing' ? (
+                          <span
+                            className="inline-flex items-center gap-1.5 text-neutral-400"
+                            title="The CV is being analysed."
+                          >
+                            <svg
+                              className="h-3.5 w-3.5 animate-spin"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="3"
+                              strokeLinecap="round"
+                            >
+                              <path d="M21 12a9 9 0 1 1-6.2-8.56" />
+                            </svg>
+                            Analysing…
+                          </span>
+                        ) : row.cv_analysis_status === 'failed' ? (
+                          <span
+                            className="text-coral-500"
+                            title="Analysis failed. Re-upload the CV via Edit to retry."
+                          >
+                            Failed
+                          </span>
+                        ) : row.cv_url ? (
                           <a
                             href={row.cv_url}
                             target="_blank"

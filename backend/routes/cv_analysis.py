@@ -1,12 +1,23 @@
 """CV / cover-letter analysis route.
 
 The endpoint is keyed by `jobcand_id` (the job-candidate link). One analysis
-exists per link. When an analysis already exists for that link, every
-endpoint serves the cached document instead of re-running Gemini - cheap
-to read, free to render, and idempotent for the user.
+exists per link.
+
+Processing is asynchronous: POST validates + stores the files, inserts the
+analysis doc with status="processing", and returns immediately. A FastAPI
+background task then runs Gemini and flips the doc to "completed" (or
+"failed" with an error message). The frontend polls GET /by-jobcand until
+the status leaves "processing" - this is what drives the loading state on
+the candidate page's "View" button.
+
+POST semantics per existing doc state:
+  - "processing"                    -> return the doc as-is (no double-run)
+  - any state, no CV file attached  -> return the doc as-is (cached read)
+  - "completed"/"failed" + new CV   -> replace: old doc + files are deleted
+                                       and a fresh analysis is started
 
 Endpoints:
-  POST   /api/cv-analysis                       - create or return cached
+  POST   /api/cv-analysis                       - start (or return existing)
   GET    /api/cv-analysis/by-jobcand/{id}      - read existing, 404 if none
   DELETE /api/cv-analysis/{analysis_id}        - delete (lets user re-upload)
 """
@@ -14,11 +25,21 @@ Endpoints:
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Annotated
 
 from bson import ObjectId
-from fastapi import APIRouter, File, Form, HTTPException, Response, UploadFile, status
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    File,
+    Form,
+    HTTPException,
+    Response,
+    UploadFile,
+    status,
+)
+from pymongo.errors import DuplicateKeyError
 
 from database import get_db
 from models.cv_analysis import (
@@ -31,6 +52,10 @@ from services.file_storage import delete_upload, save_upload
 from services.gemini_service import analyse_cv
 
 router = APIRouter(prefix="/api/cv-analysis", tags=["cv-analysis"])
+
+# A doc stuck in "processing" longer than this is reported as failed - the
+# server likely restarted mid-run and the background task died with it.
+_PROCESSING_TIMEOUT = timedelta(minutes=10)
 
 
 # ---------- helpers ------------------------------------------------------
@@ -46,6 +71,24 @@ def _validate_pdf(upload: UploadFile, label: str) -> None:
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"{label} must be a PDF (got {upload.content_type or 'unknown'}).",
         )
+
+
+def _effective_status(doc: dict) -> tuple[str, str | None]:
+    """Resolve (status, error) for a doc, downgrading stale "processing"
+    docs to "failed" so a crashed background task can't strand the UI in
+    an eternal spinner. Docs from before the async rework have no status
+    field at all - they were written synchronously, so they're complete.
+    """
+    doc_status = doc.get("status") or "completed"
+    error = doc.get("error")
+    if doc_status == "processing":
+        created = doc.get("created_at")
+        if created is not None:
+            if created.tzinfo is None:
+                created = created.replace(tzinfo=timezone.utc)
+            if datetime.now(timezone.utc) - created > _PROCESSING_TIMEOUT:
+                return "failed", "Analysis timed out. Re-upload the CV to retry."
+    return doc_status, error
 
 
 def _serialise(doc: dict, *, cached: bool = False) -> CvAnalysisOut:
@@ -64,9 +107,13 @@ def _serialise(doc: dict, *, cached: bool = False) -> CvAnalysisOut:
         except Exception:
             continue
 
+    doc_status, error = _effective_status(doc)
+
     return CvAnalysisOut(
         analysis_id=str(doc["_id"]),
         jobcand_id=doc["jobcand_id"],
+        status=doc_status,
+        error=error,
         candidate_name=doc.get("candidate_name"),
         position_title=doc.get("position_title") or "",
         position_fit=CvAnalysisPositionFit(**(doc.get("position_fit") or {})),
@@ -111,36 +158,100 @@ async def _lookup_jobcand_context(jobcand_id: str) -> tuple[dict, dict, dict]:
     return link, job, candidate
 
 
-# ---------- POST: create or return cached ------------------------------
+# ---------- background worker ------------------------------------------
+
+
+async def _run_analysis(
+    analysis_oid: ObjectId,
+    *,
+    cv_bytes: bytes,
+    cv_mime_type: str,
+    cover_letter_bytes: bytes | None,
+    cover_letter_mime_type: str | None,
+    position_title: str,
+    job_description: str | None,
+) -> None:
+    """Runs after the POST response is sent. Calls Gemini and writes the
+    result (or the failure) back onto the "processing" doc. Never raises -
+    an unhandled exception here would just vanish into the task runner, so
+    every failure is captured onto the doc where the frontend can see it.
+    """
+    db = get_db()
+    try:
+        result = await analyse_cv(
+            cv_bytes=cv_bytes,
+            cv_mime_type=cv_mime_type,
+            cover_letter_bytes=cover_letter_bytes,
+            cover_letter_mime_type=cover_letter_mime_type,
+            position_title=position_title,
+            job_description=job_description,
+        )
+    except Exception as e:  # RuntimeError from the service, or anything else
+        await db.cv_analyses.update_one(
+            {"_id": analysis_oid, "status": "processing"},
+            {"$set": {"status": "failed", "error": str(e) or "Analysis failed."}},
+        )
+        return
+
+    await db.cv_analyses.update_one(
+        # Guard on status so a doc the user deleted-and-recreated mid-run
+        # can't be clobbered by this (now stale) task's result.
+        {"_id": analysis_oid, "status": "processing"},
+        {
+            "$set": {
+                "position_fit":        result.get("position_fit") or {},
+                "key_strengths":       result.get("key_strengths") or [],
+                "improvements":        result.get("improvements") or [],
+                "inconsistencies":     result.get("inconsistencies") or [],
+                "interview_questions": result.get("interview_questions") or [],
+                "status":              "completed",
+                "error":               None,
+            }
+        },
+    )
+
+
+# ---------- POST: start an analysis (or return the existing one) --------
 
 
 @router.post(
     "",
     response_model=CvAnalysisOut,
-    summary="Analyse a CV for a job-candidate link. Returns cached record if one exists.",
+    summary="Start a CV analysis for a job-candidate link. Returns immediately with status=processing.",
 )
 async def analyse(
+    background_tasks: BackgroundTasks,
     jobcand_id:  Annotated[str,        Form(min_length=1)],
     cv:          Annotated[UploadFile | None, File(description="Candidate CV PDF")] = None,
     cover_letter: Annotated[UploadFile | None, File()] = None,
 ) -> CvAnalysisOut:
-    """Cache-first: if an analysis already exists for this jobcand_id, return
-    it without touching Gemini. Otherwise the caller MUST supply a CV PDF,
-    we run the LLM, save the result, and return.
+    """See the module docstring for the per-state semantics. The short
+    version: no file → read; new file → (re)start; in-flight → no-op.
     """
     db = get_db()
 
-    # 1. Cache check. Cheap query, runs before anything destructive.
-    cached_doc = await db.cv_analyses.find_one({"jobcand_id": jobcand_id})
-    if cached_doc:
-        return _serialise(cached_doc, cached=True)
+    has_new_cv = cv is not None and bool(cv.filename)
 
-    # 2. No cache hit. CV is required to generate a new analysis.
-    if cv is None or not cv.filename:
+    # 1. Existing-doc check. Cheap query, runs before anything destructive.
+    existing = await db.cv_analyses.find_one({"jobcand_id": jobcand_id})
+    if existing:
+        doc_status, _ = _effective_status(existing)
+        # An in-flight run is never interrupted, and a fileless POST is a read.
+        if doc_status == "processing" or not has_new_cv:
+            return _serialise(existing, cached=True)
+        # New CV over a completed/failed analysis → replace it wholesale.
+        await db.cv_analyses.delete_one({"_id": existing["_id"]})
+        if existing.get("cv_path"):
+            delete_upload(existing["cv_path"])
+        if existing.get("cover_letter_path"):
+            delete_upload(existing["cover_letter_path"])
+    elif not has_new_cv:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="No existing analysis for this job-candidate. Upload a CV PDF to generate one.",
         )
+
+    # 2. Validate the uploads before anything is written.
     _validate_pdf(cv, "CV")
     if cover_letter is not None and cover_letter.filename:
         _validate_pdf(cover_letter, "Cover letter")
@@ -166,42 +277,62 @@ async def analyse(
         await cover_letter.seek(0)
         cl_path = await save_upload(cover_letter, subdir="cv_analyses", key=f"{request_id}-cl")
 
-    # 5. Call Gemini.
-    try:
-        result = await analyse_cv(
-            cv_bytes=cv_bytes,
-            cv_mime_type=cv.content_type or "application/pdf",
-            cover_letter_bytes=cl_bytes,
-            cover_letter_mime_type=(cover_letter.content_type if cover_letter else None),
-            position_title=position_title,
-            job_description=job_description,
-        )
-    except RuntimeError as e:
-        # Clean up uploaded files on failure so we don't leave orphans.
-        delete_upload(cv_path)
-        if cl_path:
-            delete_upload(cl_path)
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(e)) from e
-
-    # 6. Persist. Prefer the candidate doc's name over the LLM's read - the
-    #    DB is more authoritative than the LLM's guess at the same field.
+    # 5. Insert the doc as "processing". The analysis fields are filled in
+    #    by the background task; until then they serialise as empty.
     now = datetime.now(timezone.utc)
     doc: dict = {
         "jobcand_id":        jobcand_id,
         "comp_id":           str(candidate.get("comp_id") or job.get("comp_id") or ""),
-        "candidate_name":    candidate_name or result.get("candidate_name"),
+        "candidate_name":    candidate_name,
         "position_title":    position_title,
-        "position_fit":        result.get("position_fit") or {},
-        "key_strengths":       result.get("key_strengths") or [],
-        "improvements":        result.get("improvements") or [],
-        "inconsistencies":     result.get("inconsistencies") or [],
-        "interview_questions": result.get("interview_questions") or [],
+        "position_fit":        {},
+        "key_strengths":       [],
+        "improvements":        [],
+        "inconsistencies":     [],
+        "interview_questions": [],
         "cv_path":             cv_path,
         "cover_letter_path":   cl_path,
+        "status":            "processing",
+        "error":             None,
         "created_at":        now,
     }
-    inserted = await db.cv_analyses.insert_one(doc)
+    try:
+        inserted = await db.cv_analyses.insert_one(doc)
+    except DuplicateKeyError:
+        # A concurrent POST won the unique-index race. Serve their doc and
+        # drop our now-orphaned files.
+        delete_upload(cv_path)
+        if cl_path:
+            delete_upload(cl_path)
+        winner = await db.cv_analyses.find_one({"jobcand_id": jobcand_id})
+        if winner:
+            return _serialise(winner, cached=True)
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Concurrent analysis request. Retry.")
     doc["_id"] = inserted.inserted_id
+
+    # 6. Point the candidate profile's document links at the freshly stored
+    #    files so the raw-PDF links elsewhere (e.g. the applications table)
+    #    light up without a separate upload flow.
+    cand_updates: dict = {
+        "cand_cv_url": f"/api/files/{cv_path}",
+        "cand_updated_at": now,
+    }
+    if cl_path:
+        cand_updates["cand_cover_letter_url"] = f"/api/files/{cl_path}"
+    await db.candidates.update_one({"_id": candidate["_id"]}, {"$set": cand_updates})
+
+    # 7. Hand the heavy Gemini call to a background task and return now -
+    #    the frontend polls GET /by-jobcand for completion.
+    background_tasks.add_task(
+        _run_analysis,
+        inserted.inserted_id,
+        cv_bytes=cv_bytes,
+        cv_mime_type=cv.content_type or "application/pdf",
+        cover_letter_bytes=cl_bytes,
+        cover_letter_mime_type=(cover_letter.content_type if cover_letter else None),
+        position_title=position_title,
+        job_description=job_description,
+    )
     return _serialise(doc, cached=False)
 
 

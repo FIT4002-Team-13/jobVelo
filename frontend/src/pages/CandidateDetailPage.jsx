@@ -6,7 +6,7 @@ import StartInterviewModal from '../components/job-candidate/StartInterviewModal
 import EditCandidateForm from '../components/candidate/EditCandidateForm'
 import { card, flex, page } from '../styles/layout'
 import { useAuth } from '../lib/AuthContext.jsx'
-import { authedFetch } from '../lib/api.js'
+import { api, authedFetch } from '../lib/api.js'
 
 function formatDate(iso) {
   if (!iso) return '--'
@@ -332,7 +332,84 @@ function FeedbackPanel({
   )
 }
 
-function CandidateInfoCard({ candidate, job, interview, onStartInterview, interviewer, onEdit }) {
+// CV "View" button, driven by the analysis lifecycle for this application:
+//   - analysis completed  → solid primary button, opens the analysis report
+//   - analysis processing → disabled button with a spinner ("Analysing…")
+//   - analysis failed     → disabled coral button, error in the tooltip
+//   - no analysis yet     → legacy behaviour: link to cand_cv_url if one
+//                           exists, otherwise the greyed-out disabled state
+function CvViewButton({ cvAnalysis, cvUrl, onViewAnalysis }) {
+  const base =
+    'inline-flex min-w-[98px] items-center justify-center gap-1.5 rounded-xl px-4 py-0.5 text-sm font-semibold transition-colors'
+
+  if (cvAnalysis?.status === 'processing') {
+    return (
+      <button
+        type="button"
+        disabled
+        title="The CV is being analysed - this button unlocks when it's done."
+        className={`${base} cursor-wait bg-primary-100 text-primary-500`}
+      >
+        <svg
+          className="h-3.5 w-3.5 animate-spin"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="3"
+          strokeLinecap="round"
+        >
+          <path d="M21 12a9 9 0 1 1-6.2-8.56" />
+        </svg>
+        Analysing…
+      </button>
+    )
+  }
+
+  if (cvAnalysis?.status === 'failed') {
+    return (
+      <button
+        type="button"
+        disabled
+        title={cvAnalysis.error || 'Analysis failed. Re-upload the CV via Edit to retry.'}
+        className={`${base} cursor-not-allowed bg-coral-100 text-coral-700`}
+      >
+        Failed
+      </button>
+    )
+  }
+
+  if (cvAnalysis?.status === 'completed') {
+    return (
+      <button
+        type="button"
+        onClick={onViewAnalysis}
+        className={`${base} bg-primary-500 text-white hover:bg-primary-600`}
+      >
+        View
+      </button>
+    )
+  }
+
+  return (
+    <a
+      href={cvUrl || '#'}
+      target="_blank"
+      rel="noreferrer"
+      className={`${base} ${
+        cvUrl
+          ? 'bg-primary-500 text-white hover:bg-primary-600'
+          : 'cursor-not-allowed bg-neutral-300 text-neutral-500'
+      }`}
+      onClick={(e) => {
+        if (!cvUrl) e.preventDefault()
+      }}
+    >
+      View
+    </a>
+  )
+}
+
+function CandidateInfoCard({ candidate, job, interview, onStartInterview, interviewer, onEdit, cvAnalysis, onViewCvAnalysis }) {
   const status = (interview?.intv_status ?? 'not_scheduled').replace(/_/g, ' ').toUpperCase()
   const canStartInterview = status === 'SCHEDULED'
 
@@ -457,21 +534,11 @@ function CandidateInfoCard({ candidate, job, interview, onStartInterview, interv
           <p className="mb-2 text-xs font-bold uppercase tracking-wide text-neutral-800">
             CV / RESUME
           </p>
-          <a
-            href={candidate?.cand_cv_url || '#'}
-            target="_blank"
-            rel="noreferrer"
-            className={`inline-flex min-w-[98px] justify-center rounded-xl px-4 py-0.5 text-sm font-semibold transition-colors ${
-              candidate?.cand_cv_url
-                ? 'bg-primary-500 text-white hover:bg-primary-600'
-                : 'cursor-not-allowed bg-neutral-300 text-neutral-500'
-            }`}
-            onClick={(e) => {
-              if (!candidate?.cand_cv_url) e.preventDefault()
-            }}
-          >
-            View
-          </a>
+          <CvViewButton
+            cvAnalysis={cvAnalysis}
+            cvUrl={candidate?.cand_cv_url}
+            onViewAnalysis={onViewCvAnalysis}
+          />
         </div>
 
         <div>
@@ -519,6 +586,41 @@ export default function CandidateDetailPage() {
   const [startTarget, setStartTarget] = useState(null)
   const [showEditModal, setShowEditModal] = useState(false)
   const [refreshKey, setRefreshKey] = useState(0)
+  const [cvAnalysis, setCvAnalysis] = useState(null)
+
+  // Load the CV analysis for this application and poll while it's still
+  // processing, so the "View" button flips from spinner to available the
+  // moment the background analysis lands. A 404 just means no CV has been
+  // uploaded yet.
+  useEffect(() => {
+    const jobcandId = jobCand?.jobcand_id
+    if (!jobcandId) {
+      setCvAnalysis(null)
+      return undefined
+    }
+
+    let cancelled = false
+    let timer = null
+
+    async function fetchAnalysis() {
+      try {
+        const data = await api.getCvAnalysisByJobcand(jobcandId)
+        if (cancelled) return
+        setCvAnalysis(data)
+        if (data?.status === 'processing') {
+          timer = setTimeout(fetchAnalysis, 4000)
+        }
+      } catch {
+        if (!cancelled) setCvAnalysis(null)
+      }
+    }
+
+    fetchAnalysis()
+    return () => {
+      cancelled = true
+      if (timer) clearTimeout(timer)
+    }
+  }, [jobCand?.jobcand_id, refreshKey])
 
   useEffect(() => {
     async function load() {
@@ -669,6 +771,13 @@ export default function CandidateDetailPage() {
                 })
               }
               onEdit={() => setShowEditModal(true)}
+              cvAnalysis={cvAnalysis}
+              onViewCvAnalysis={() => {
+                if (!jobCand?.jobcand_id) return
+                navigate(`/cv-analysis/${jobCand.jobcand_id}`, {
+                  state: { analysis: cvAnalysis },
+                })
+              }}
             />
           </div>
           <div className="col-span-4">

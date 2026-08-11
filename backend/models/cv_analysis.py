@@ -45,11 +45,21 @@ class CvAnalysisPositionFit(BaseModel):
     soft_skills:         float = 0.0
 
 
+# Lifecycle of an analysis document. The POST endpoint inserts the doc as
+# "processing" and returns immediately; a background task runs Gemini and
+# flips it to "completed" (or "failed" with an `error`). The frontend polls
+# GET /by-jobcand until it leaves "processing".
+CvAnalysisStatus = Literal["processing", "completed", "failed"]
+
+
 class CvAnalysisOut(BaseModel):
     """Public response model used by every CV-analysis endpoint."""
 
     analysis_id:         str
     jobcand_id:          str
+    status:              CvAnalysisStatus = "completed"
+    # Human-readable failure reason, only set when status == "failed".
+    error:               Optional[str] = None
     candidate_name:      Optional[str] = None
     position_title:      str
     position_fit:        CvAnalysisPositionFit

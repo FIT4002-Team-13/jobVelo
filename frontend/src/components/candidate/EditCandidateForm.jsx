@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { modal, form } from '../../styles/layout'
 import { isEmail, isPhone, isFullName, isFutureDateTime } from '../../lib/validators.js'
 import { useAuth } from '../../lib/AuthContext.jsx'
-import { authedFetch } from '../../lib/api.js'
+import { api, authedFetch } from '../../lib/api.js'
 import InterviewerCombobox from './InterviewerCombobox.jsx'
 
 function getFileName(value = '') {
@@ -168,15 +168,10 @@ export default function EditCandidateForm({
     setSubmitting(true)
 
     try {
-      // Replace with real upload logic later.
-      const cv_url = cvFile ? null : existingCvName ? initialData?.cv_url : null
-      const cover_letter_url = coverLetterFile
-        ? null
-        : existingCoverLetterName
-        ? initialData?.cover_letter_url
-        : null
-
-      // 1. Update candidate profile
+      // 1. Update candidate profile. Document URLs are deliberately NOT
+      //    sent here - a new upload sets them server-side via the
+      //    CV-analysis endpoint (step 3), and sending null used to wipe
+      //    the existing CV link on every save.
       const candRes = await authedFetch(`/api/candidates/${formState.cand_id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -184,8 +179,6 @@ export default function EditCandidateForm({
           cand_full_name: formState.name.trim(),
           cand_email: formState.email.trim().toLowerCase(),
           cand_phone: formState.phone.trim() || null,
-          cand_cv_url: cv_url,
-          cand_cover_letter_url: cover_letter_url,
         }),
       })
 
@@ -221,6 +214,23 @@ export default function EditCandidateForm({
       }
 
       const saved = await appRes.json()
+
+      // 3. A newly attached CV kicks off (or replaces) the analysis for
+      //    this application. The backend returns as soon as the file is
+      //    stored (status=processing) and finishes in the background - the
+      //    candidate page's "View" button polls until it's ready.
+      if (cvFile && formState.application_id) {
+        try {
+          const fd = new FormData()
+          fd.append('jobcand_id', formState.application_id)
+          fd.append('cv', cvFile)
+          if (coverLetterFile) fd.append('cover_letter', coverLetterFile)
+          await api.analyseCv(fd)
+        } catch (err) {
+          console.warn('CV upload/analysis kick-off failed:', err)
+        }
+      }
+
       onSaved(saved)
     } catch (err) {
       setError(err.message || 'Something went wrong.')

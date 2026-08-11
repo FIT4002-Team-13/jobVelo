@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { Navigate, useLocation, useNavigate } from 'react-router-dom'
+import { useEffect, useState } from 'react'
+import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import Sidebar from '../components/common/Sidebar'
 import { api, ApiError } from '../lib/api.js'
 import { button, card, page } from '../styles/layout'
@@ -140,18 +140,121 @@ function PdfPreview({ src, label }) {
 
 // ── Page ─────────────────────────────────────────────────────────────────
 
+// Full-page interstitial used for the loading / processing / error branches
+// so they share the sidebar + centring instead of five bespoke layouts.
+function StatusShell({ children }) {
+  return (
+    <div className={page.shell}>
+      <Sidebar />
+      <main className={`${page.main} flex items-center justify-center`}>
+        <div className="flex flex-col items-center gap-3 text-center">{children}</div>
+      </main>
+    </div>
+  )
+}
+
 export default function CvAnalysisPage() {
   const navigate = useNavigate()
   const location = useLocation()
-  const analysis = location.state?.analysis
+  const { jobcandId } = useParams()
+
+  // Seed from navigation state when the candidate page hands us the record
+  // (instant render, no flash), then refresh from the API so deep links and
+  // page refreshes work identically.
+  const [analysis, setAnalysis] = useState(() => {
+    const seeded = location.state?.analysis
+    return seeded?.jobcand_id === jobcandId ? seeded : null
+  })
+  const [loadError, setLoadError] = useState(null)
 
   const [deleting, setDeleting] = useState(false)
   const [deleteError, setDeleteError] = useState(null)
 
-  // No analysis in nav state means the user landed here cold (refresh,
-  // direct URL). Bounce them to the upload page where they can run one.
+  useEffect(() => {
+    let cancelled = false
+    let timer = null
+
+    async function fetchAnalysis() {
+      try {
+        const data = await api.getCvAnalysisByJobcand(jobcandId)
+        if (cancelled) return
+        setAnalysis(data)
+        setLoadError(null)
+        // Landed here while the background analysis is still running -
+        // keep polling so the report appears the moment it completes.
+        if (data?.status === 'processing') {
+          timer = setTimeout(fetchAnalysis, 4000)
+        }
+      } catch (err) {
+        if (cancelled) return
+        setLoadError(
+          err instanceof ApiError && err.status === 404
+            ? 'No CV analysis exists for this application yet. Upload a CV from the candidate page.'
+            : err.message || 'Failed to load the analysis.'
+        )
+      }
+    }
+
+    fetchAnalysis()
+    return () => {
+      cancelled = true
+      if (timer) clearTimeout(timer)
+    }
+  }, [jobcandId])
+
+  if (loadError) {
+    return (
+      <StatusShell>
+        <p className="text-sm text-coral-500">{loadError}</p>
+        <button type="button" onClick={() => navigate(-1)} className={button.primary}>
+          Back
+        </button>
+      </StatusShell>
+    )
+  }
+
   if (!analysis) {
-    return <Navigate to="/cv-analysis" replace />
+    return (
+      <StatusShell>
+        <p className="text-sm text-neutral-400">Loading…</p>
+      </StatusShell>
+    )
+  }
+
+  if (analysis.status === 'processing') {
+    return (
+      <StatusShell>
+        <svg
+          className="h-8 w-8 animate-spin text-primary-500"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="3"
+          strokeLinecap="round"
+        >
+          <path d="M21 12a9 9 0 1 1-6.2-8.56" />
+        </svg>
+        <p className="text-base font-semibold text-neutral-700">Analysing the CV…</p>
+        <p className="text-sm text-neutral-400">
+          This usually takes under a minute. The page updates automatically.
+        </p>
+      </StatusShell>
+    )
+  }
+
+  if (analysis.status === 'failed') {
+    return (
+      <StatusShell>
+        <p className="text-base font-semibold text-coral-500">CV analysis failed.</p>
+        {analysis.error && <p className="max-w-md text-sm text-neutral-500">{analysis.error}</p>}
+        <p className="text-sm text-neutral-400">
+          Re-upload the CV from the candidate page (Edit) to retry.
+        </p>
+        <button type="button" onClick={() => navigate(-1)} className={button.primary}>
+          Back
+        </button>
+      </StatusShell>
+    )
   }
 
   const {
@@ -166,10 +269,11 @@ export default function CvAnalysisPage() {
     cv_path,
   } = analysis
 
-  // Delete drops the cached record so the user can upload a different CV
-  // for the same job-candidate. We confirm via window.confirm to keep this
-  // inline (the destructive action is narrow and rare; no need for a full
-  // modal here). On success, bounce back to the upload page.
+  // Delete drops the record so the user can upload a different CV for the
+  // same job-candidate (via the candidate page's Edit form). We confirm via
+  // window.confirm to keep this inline (the destructive action is narrow
+  // and rare; no need for a full modal here). On success, go back to
+  // wherever the user came from - usually the candidate page.
   async function handleDelete() {
     if (!analysis_id) {
       setDeleteError('This analysis cannot be deleted (no id).')
@@ -177,7 +281,7 @@ export default function CvAnalysisPage() {
     }
     const ok = window.confirm(
       'Delete this analysis?\n\nThe job-candidate link is kept - you can upload a different CV ' +
-      'right after.'
+      'from the candidate page (Edit) right after.'
     )
     if (!ok) return
 
@@ -185,7 +289,7 @@ export default function CvAnalysisPage() {
     setDeleting(true)
     try {
       await api.deleteCvAnalysis(analysis_id)
-      navigate('/cv-analysis', { replace: true })
+      navigate(-1)
     } catch (err) {
       setDeleteError(err instanceof ApiError ? err.message : 'Failed to delete analysis.')
       setDeleting(false)
@@ -225,7 +329,7 @@ export default function CvAnalysisPage() {
             </button>
             <button
               type="button"
-              onClick={() => navigate('/cv-analysis')}
+              onClick={() => navigate(-1)}
               disabled={deleting}
               className={`${button.primary} disabled:opacity-60`}
             >
