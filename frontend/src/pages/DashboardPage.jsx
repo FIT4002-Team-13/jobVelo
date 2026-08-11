@@ -380,13 +380,13 @@ export default function DashboardPage() {
             </div>
 
             <div className="flex flex-col gap-2.5">
-              {sortedCandidates.length === 0 ? (
+              {pagedCandidates.length === 0 ? (
                 <EmptyState
                   message="No candidates yet"
                   hint="Candidates appear here once someone is added to a job."
                 />
               ) : (
-                sortedCandidates.map((c) => (
+                pagedCandidates.map((c) => (
                   // Whole row is a Link to the candidate-detail page now -
                   // matches how the /candidates table behaves. The Link uses
                   // the underlying cand_id + job_id captured during the
