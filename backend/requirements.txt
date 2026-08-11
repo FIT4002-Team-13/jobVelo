@@ -1,3 +1,5 @@
+setuptools==69.0.0
+wheel==0.42.0
 fastapi==0.115.0
 uvicorn[standard]==0.30.6
 motor==3.6.0
@@ -6,7 +8,8 @@ pydantic==2.9.2
 pydantic-settings==2.5.2
 python-dotenv==1.0.1
 email-validator==2.2.0
-bcrypt==4.2.0
+# bcrypt==4.2.0
+bcrypt==4.3.0
 PyJWT==2.9.0
 
 # Realtime STT - used by services/deepgram_service.py
@@ -14,7 +17,8 @@ deepgram-sdk==3.7.7
 
 # LLM providers - kept as separate services so callers pick explicitly
 openai==1.54.0
-google-genai==0.3.0
+# google-genai==0.3.0
+google-genai==1.0.0
 
 # Multipart parsing for file uploads (CV analysis, etc.)
 python-multipart==0.0.12
