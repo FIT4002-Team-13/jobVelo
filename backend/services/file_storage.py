@@ -21,7 +21,7 @@ from config import settings
 logger = logging.getLogger(__name__)
 
 # Subdirs callers pass in. Anything else is rejected to prevent surprise paths.
-_KNOWN_SUBDIRS = {"company_logos", "cv_analyses"}
+_KNOWN_SUBDIRS = {"company_logos", "candidate_docs", "cv_analyses"}
 
 # Conservative extension allow-list per subdir. Adding a new subdir requires
 # an entry here AND in _KNOWN_SUBDIRS - the redundancy makes it harder to
@@ -29,6 +29,7 @@ _KNOWN_SUBDIRS = {"company_logos", "cv_analyses"}
 _ALLOWED_EXTS = {
     "company_logos": {".png", ".jpg", ".jpeg", ".webp"},
     "cv_analyses":   {".pdf"},
+    "candidate_docs": {".pdf"},
 }
 
 # Per-subdir ceiling. Logos stay capped at 5 MB; CV PDFs can go up to 8 MB
@@ -37,8 +38,11 @@ _ALLOWED_EXTS = {
 _MAX_BYTES_PER_SUBDIR = {
     "company_logos": 5 * 1024 * 1024,
     "cv_analyses":   8 * 1024 * 1024,
+    "candidate_docs": 20 * 1024 * 1024, # 20 MB
 }
 _DEFAULT_MAX_BYTES = 5 * 1024 * 1024
+
+_MAX_BYTES = 5 * 1024 * 1024  # 5 MB ceiling for logos.
 
 
 def _root() -> Path:

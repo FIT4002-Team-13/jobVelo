@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import Sidebar from '../components/common/Sidebar'
-import { api } from '../lib/api.js'
+import { api, authedFetch } from '../lib/api.js'
 import { SortMenu, FilterMenu, makeSorter } from '../components/job-candidate/TableControls'
 import { page } from '../styles/layout'
 
@@ -11,13 +11,16 @@ import { page } from '../styles/layout'
 //     `cand_status` field (SCHEDULED / EVALUATED). Kept in sync with the
 //     filter on JobDetailPage so the UX is identical across pages.
 const JOB_STATUS_OPTIONS = [
+  { value: '',            label: 'All'         },
   { value: 'Pending',     label: 'Pending'     },
   { value: 'In Progress', label: 'In Progress' },
   { value: 'Completed',   label: 'Completed'   },
 ]
 const CANDIDATE_FILTER_OPTIONS = [
-  { value: 'SCHEDULED', label: 'Scheduled' },
-  { value: 'EVALUATED', label: 'Evaluated' },
+  { value: '',              label: 'All'           },
+  { value: 'NOT SCHEDULED', label: 'Not Scheduled' },
+  { value: 'SCHEDULED',     label: 'Scheduled'     },
+  { value: 'EVALUATED',     label: 'Evaluated'     },
 ]
 
 // Solid-fill status pills - kept in sync with JobsPage + JobDetailPage.
@@ -32,8 +35,11 @@ const STATUS_STYLES = {
 // status looks identical wherever it shows. Soft tint here (vs solid for
 // jobs) because candidates appear in a denser list and solid would shout.
 const CANDIDATE_STATUS_STYLES = {
-  SCHEDULED: 'bg-neutral-100 text-neutral-500',
-  EVALUATED: 'bg-sky-100 text-sky-600',
+  'NOT SCHEDULED': 'bg-neutral-100 text-neutral-500',
+  SCHEDULED:       'bg-primary-100 text-primary-600',
+  EVALUATED:       'bg-mint-100 text-mint-700',
+  HIRED:           'bg-mint-500 text-white',
+  REJECTED:        'bg-coral-100 text-coral-700',
 }
 
 // ── Style tokens for summary cards ──────────────────────────────────────────
@@ -138,10 +144,10 @@ export default function DashboardPage() {
   // Search + sort + filter state, one set per panel.
   const [jobSearch,        setJobSearch]        = useState('')
   const [jobSortKey,       setJobSortKey]       = useState('latest')
-  const [jobStatusFilters, setJobStatusFilters] = useState([])
+  const [jobFilter,        setJobFilter]        = useState('')
   const [candSearch,       setCandSearch]       = useState('')
   const [candSortKey,      setCandSortKey]      = useState('latest')
-  const [candFilters,      setCandFilters]      = useState([])
+  const [candFilter,       setCandFilter]       = useState('')
 
   // Pagination state, one page index per panel. Reset to 0 when a search
   // or filter change shrinks the list out from under the current page
@@ -155,19 +161,24 @@ export default function DashboardPage() {
   const jobNeedle = jobSearch.trim().toLowerCase()
   const visibleJobs = jobs
     .filter(j => !jobNeedle || (j.title ?? '').toLowerCase().includes(jobNeedle))
-    .filter(j => jobStatusFilters.length === 0 || jobStatusFilters.includes(j.status))
+    .filter(j => !jobFilter || j.status === jobFilter)
   const sortedJobs = jobSorter ? [...visibleJobs].sort(jobSorter) : visibleJobs
 
   const candSorter = makeSorter(candSortKey, { nameField: 'cand_full_name', dateField: 'cand_created_at' })
   const candNeedle = candSearch.trim().toLowerCase()
   const visibleCandidates = candidates.filter((c) => {
+    // Dashboard is a glance-view of the active pipeline. A candidate with no
+    // application (cand_status is null) is just a stored profile - not in
+    // the pipeline yet - and showing them here would burn dashboard slots
+    // on rows the recruiter can't act on. Browse / clean-up of profile-only
+    // candidates belongs on a dedicated /candidates page later.
+    if (!c.cand_status) return false
     if (candNeedle) {
       const haystack = `${c.cand_full_name ?? ''} ${c.cand_email ?? ''}`.toLowerCase()
       if (!haystack.includes(candNeedle)) return false
     }
-    // candFilters is empty when no filter is active. With singleSelect on
-    // FilterMenu it'll always have 0 or 1 entries.
-    if (candFilters.length > 0 && !candFilters.includes(c.cand_status)) return false
+    // candFilter is '' for "All"; otherwise the selected status.
+    if (candFilter && c.cand_status !== candFilter) return false
     return true
   })
   const sortedCandidates = candSorter ? [...visibleCandidates].sort(candSorter) : visibleCandidates
@@ -186,20 +197,43 @@ export default function DashboardPage() {
   useEffect(() => {
     async function load() {
       try {
-        // api.me() hits /api/auth/me with the stored JWT.
-        // /api/candidates (cand.py) returns CandidateOut shape with cand_*
-        // prefixed fields - the dashboard renders the new shape directly now,
-        // empty list shows an empty-state card.
-        const [meData, sumRes, jobsRes, candsRes] = await Promise.all([
-          api.me(),
-          fetch('/api/dashboard/summary'),
-          fetch('/api/jobs'),
-          fetch('/api/candidates'),
+        // Step 1: who am I? Need userid before /api/applications can scope
+        // to "my candidates" - matches the /candidates page filter.
+        const meData = await api.me()
+
+        // Step 2: parallel fetch the rest. Candidates panel now reads from
+        // /api/applications?user_id=<me> instead of /api/candidates so it
+        // shows the SAME rows as the /candidates page (one per application
+        // where the current user is the interviewer, scoped to the
+        // company server-side).
+        const [sumRes, jobsRes, appsRes] = await Promise.all([
+          authedFetch('/api/dashboard/summary'),
+          authedFetch('/api/jobs'),
+          authedFetch(`/api/applications?user_id=${encodeURIComponent(meData.userid)}`),
         ])
         setMe(meData)
         setSummary(await sumRes.json())
         setJobs(await jobsRes.json())
-        setCandidates(await candsRes.json())
+
+        // Map the application rows into the shape the panel renders
+        // (cand_full_name / cand_email / cand_status / cand_created_at).
+        // Keep `_cand_id` and `_job_id` around so a click can navigate
+        // straight to the candidate-detail page.
+        const apps = await appsRes.json()
+        const rows = Array.isArray(apps)
+          ? apps.map((a) => ({
+              // Application id is unique even when the same candidate has
+              // multiple applications - use it as the React key.
+              cand_id:         a.application_id,
+              cand_full_name:  a.candidate_name,
+              cand_email:      a.email,
+              cand_status:     a.status,
+              cand_created_at: a.interview_datetime,
+              _cand_id:        a.cand_id,
+              _job_id:         a.job_id,
+            }))
+          : []
+        setCandidates(rows)
       } catch (err) {
         console.error('Dashboard fetch failed:', err)
         setError('Failed to load dashboard data.')
@@ -269,7 +303,12 @@ export default function DashboardPage() {
                   onChange={setJobSearch}
                 />
                 <SortMenu value={jobSortKey} onChange={setJobSortKey} />
-                <FilterMenu values={jobStatusFilters} onChange={setJobStatusFilters} options={JOB_STATUS_OPTIONS} />
+                <FilterMenu
+                  values={[jobFilter]}
+                  onChange={(newValues) => setJobFilter(newValues[0] ?? '')}
+                  options={JOB_STATUS_OPTIONS}
+                  singleSelect
+                />
               </div>
             </div>
 
@@ -331,7 +370,12 @@ export default function DashboardPage() {
                 <SortMenu value={candSortKey} onChange={setCandSortKey} />
                 {/* Candidate filter is single-select so it stays consistent
                     with the JobDetailPage one (which has 2 options today). */}
-                <FilterMenu values={candFilters} onChange={setCandFilters} options={CANDIDATE_FILTER_OPTIONS} singleSelect />
+                <FilterMenu
+                  values={[candFilter]}
+                  onChange={(newValues) => setCandFilter(newValues[0] ?? '')}
+                  options={CANDIDATE_FILTER_OPTIONS}
+                  singleSelect
+                />
               </div>
             </div>
 
@@ -342,19 +386,21 @@ export default function DashboardPage() {
                   hint="Candidates appear here once someone is added to a job."
                 />
               ) : (
-                pagedCandidates.map((c) => (
-                  <div
+                sortedCandidates.map((c) => (
+                  // Whole row is a Link to the candidate-detail page now -
+                  // matches how the /candidates table behaves. The Link uses
+                  // the underlying cand_id + job_id captured during the
+                  // application-mapping (not the application_id we use as the
+                  // row key).
+                  <Link
                     key={c.cand_id}
-                    className="flex items-center justify-between bg-neutral-0 border border-neutral-200 rounded-xl px-4 py-3 hover:shadow-sm transition-shadow"
+                    to={c._cand_id && c._job_id ? `/candidates/${c._cand_id}/${c._job_id}` : '#'}
+                    className="flex items-center justify-between bg-neutral-0 border border-neutral-200 rounded-xl px-4 py-3 hover:shadow-sm hover:border-primary-200 transition-all no-underline"
                   >
                     <div>
                       <p className="text-sm font-semibold text-neutral-800">{c.cand_full_name}</p>
                       <p className="text-xs text-neutral-400 mt-0.5">{c.cand_email}</p>
                     </div>
-                    {/* Status pill replaces the old "View" button - the dashboard
-                        is a glance-view, drill-down lives on the job detail page.
-                        Falls back to a neutral "No application" pill when the
-                        candidate exists as a profile but isn't on any job. */}
                     <span
                       className={`text-xs font-bold px-3 py-1 rounded-pill ${
                         CANDIDATE_STATUS_STYLES[c.cand_status]
@@ -363,7 +409,7 @@ export default function DashboardPage() {
                     >
                       {c.cand_status ?? 'No application'}
                     </span>
-                  </div>
+                  </Link>
                 ))
               )}
             </div>

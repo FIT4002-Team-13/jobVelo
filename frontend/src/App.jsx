@@ -12,6 +12,9 @@ import JobsPage from './pages/JobsPage'
 import JobDetailPage from './pages/JobDetailPage'
 import CvUploadPage from './pages/CvUploadPage'
 import CvAnalysisPage from './pages/CvAnalysisPage'
+import InterviewPage from './pages/InterviewPage'
+import CandidateDetailPage from './pages/CandidateDetailPage.jsx'
+import ApplicationsPage from './pages/ApplicationsPage.jsx'
 
 export default function App() {
   return (
@@ -81,6 +84,16 @@ export default function App() {
               </RequireAuth>
             }
           />
+          <Route
+            path="/interview/:id"
+            element={
+              <RequireAuth>
+                <InterviewPage />
+              </RequireAuth>
+            }
+          />
+          <Route path="/candidates/:candId/:jobId" element={<CandidateDetailPage />} />
+          <Route path="/candidates" element={<ApplicationsPage />} />
         </Routes>
       </BrowserRouter>
     </AuthProvider>

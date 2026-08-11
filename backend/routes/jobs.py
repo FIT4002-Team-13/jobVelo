@@ -1,4 +1,4 @@
-"""Job-post routes.
+r"""Job-post routes.
 
   company -1---N-> jobs  -N---N-> candidates   (bridged by job_candidates)
                        \__________ user (the recruiter/admin) creating it
@@ -23,6 +23,7 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 from pydantic import BaseModel, EmailStr, Field
 
 from database import get_db
+from dependencies import get_current_comp_id
 from models.job import JobCreate, JobOut, JobUpdate
 
 router = APIRouter(prefix="/api/jobs", tags=["jobs"])
@@ -75,52 +76,150 @@ def _validate_oid(job_id: str) -> ObjectId:
 # ---------- routes -----------------------------------------------------------
 
 
-async def _job_stats(db, job_ids: list[str]) -> dict[str, dict]:
-    """Per-job stats derived live from the job_candidates link table:
-        { job_id_str: { count: N, interviewers: [unique names] } }
+# async def _job_stats(db, job_ids: list[str]) -> dict[str, dict]:
+#     """Per-job stats derived live from the job_candidates link table:
+#         { job_id_str: { count: N, interviewers: [unique names] } }
 
-    Both fields are computed on read so the JobCard never drifts away
-    from reality - e.g. when a candidate row is deleted (or the whole
-    collection nuked), the count + avatar stack catch up immediately
-    on the next request. No stored counter to keep in sync, no need
-    for decrements on cascade-delete.
+#     Both fields are computed on read so the JobCard never drifts away
+#     from reality - e.g. when a candidate row is deleted (or the whole
+#     collection nuked), the count + avatar stack catch up immediately
+#     on the next request. No stored counter to keep in sync, no need
+#     for decrements on cascade-delete.
+#     """
+#     if not job_ids:
+#         return {}
+#     pipeline = [
+#         {"$match": {"job_id": {"$in": job_ids}}},
+#         {"$group": {
+#             "_id": "$job_id",
+#             "count": {"$sum": 1},
+#             "names": {"$addToSet": "$interviewer"},
+#         }},
+#     ]
+#     out: dict[str, dict] = {}
+#     async for row in db.job_candidates.aggregate(pipeline):
+#         out[row["_id"]] = {
+#             "count": row["count"],
+#             "interviewers": [n for n in row["names"] if n],   # drop None/""
+#         }
+#     return out
+
+async def _job_stats(db, job_ids: list[str]) -> dict[str, dict]:
+    """Per-job stats derived live from job_candidates + interviews +
+    interview_users. Count comes from job_candidates, interviewer names
+    come from users linked through interview_users.
     """
     if not job_ids:
         return {}
+
+    out: dict[str, dict] = {
+        job_id: {"count": 0, "interviewers": []}
+        for job_id in job_ids
+    }
+
+    # Candidate count is still purely the number of link rows.
     pipeline = [
         {"$match": {"job_id": {"$in": job_ids}}},
-        {"$group": {
-            "_id": "$job_id",
-            "count": {"$sum": 1},
-            "names": {"$addToSet": "$interviewer"},
-        }},
+        {"$group": {"_id": "$job_id", "count": {"$sum": 1}}},
     ]
-    out: dict[str, dict] = {}
     async for row in db.job_candidates.aggregate(pipeline):
-        out[row["_id"]] = {
-            "count": row["count"],
-            "interviewers": [n for n in row["names"] if n],   # drop None/""
-        }
+        out[row["_id"]]["count"] = row["count"]
+
+    # Pull all interviews for these jobs.
+    interviews = await db.interviews.find(
+        {"job_id": {"$in": job_ids}}
+    ).to_list(length=5000)
+
+    if not interviews:
+        return out
+
+    # Drop orphan interviews — ones whose (cand_id, job_id) no longer has a
+    # matching job_candidates row. Without this filter, an interview that was
+    # never cleaned up after candidate removal would still surface its
+    # interviewer avatar on the job card.
+    link_pairs = set()
+    async for link in db.job_candidates.find(
+        {"job_id": {"$in": job_ids}},
+        {"cand_id": 1, "job_id": 1},
+    ):
+        link_pairs.add((link.get("cand_id"), link.get("job_id")))
+
+    interviews = [
+        i for i in interviews
+        if (i.get("cand_id"), i.get("job_id")) in link_pairs
+    ]
+
+    if not interviews:
+        return out
+
+    interview_ids = [str(i["_id"]) for i in interviews]
+    job_by_interview_id = {str(i["_id"]): i.get("job_id") for i in interviews}
+
+    # Pull all interviewer links for those interviews.
+    interview_user_links = await db.interview_users.find(
+        {"intv_id": {"$in": interview_ids}}
+    ).to_list(length=5000)
+
+    user_ids = [
+        link.get("user_id")
+        for link in interview_user_links
+        if ObjectId.is_valid(link.get("user_id", ""))
+    ]
+
+    if not user_ids:
+        return out
+
+    users = await db.users.find(
+        {"_id": {"$in": [ObjectId(uid) for uid in user_ids]}},
+        {"password_hash": 0},
+    ).to_list(length=5000)
+
+    users_by_id = {str(u["_id"]): u for u in users}
+
+    names_by_job: dict[str, set[str]] = {job_id: set() for job_id in job_ids}
+
+    for link in interview_user_links:
+        intv_id = link.get("intv_id")
+        user_id = link.get("user_id")
+        job_id = job_by_interview_id.get(intv_id)
+        user = users_by_id.get(user_id)
+
+        if not job_id or not user:
+            continue
+
+        display_name = (
+            user.get("full_name")
+            or user.get("username")
+            or user.get("email")
+        )
+        if display_name:
+            names_by_job.setdefault(job_id, set()).add(display_name)
+
+    for job_id in job_ids:
+        out[job_id]["interviewers"] = sorted(names_by_job.get(job_id, set()))
+
     return out
 
 
 @router.get("", response_model=list[JobOut])
 async def list_jobs(
-    comp_id: str | None = None,
     db: AsyncIOMotorDatabase = Depends(get_db),
+    comp_id: ObjectId = Depends(get_current_comp_id),
 ) -> list[JobOut]:
-    """List jobs, optionally filtered to a company. Newest-update first.
+    """List jobs in the caller's company. Newest-update first.
+
+    Tenant isolation: comp_id is sourced from the JWT - the client cannot
+    pass a different comp_id to view another company's jobs.
 
     Each returned job's `interviewers` array is computed live from the
     job_candidates link table - the field on the job doc itself is just
-    a placeholder (`[]` from create_job). This means avatar stacks on
-    the JobCard update without needing a separate write path.
-
-    Once routes are auth-gated, replace the optional query param with a
-    forced filter from `user["comp_id"]`.
+    a placeholder (`[]` from create_job).
     """
-    query = {"comp_id": _comp_oid(comp_id)} if comp_id else {}
-    jobs = await db.jobs.find(query).sort("job_last_update_datetime", -1).to_list(length=200)
+    jobs = await (
+        db.jobs.find({"comp_id": comp_id})
+        .sort("job_last_update_datetime", -1)
+        .to_list(length=200)
+    )
 
     stats = await _job_stats(db, [str(j["_id"]) for j in jobs])
     return [
@@ -133,25 +232,45 @@ async def list_jobs(
     ]
 
 
+#@router.get("/{job_id}", response_model=JobOut)
+# async def get_job(
+#     job_id: str,
+#     db: AsyncIOMotorDatabase = Depends(get_db),
+# ) -> JobOut:
+#     oid = _validate_oid(job_id)
+#     job = await db.jobs.find_one({"_id": oid})
+#     if job is None:
+#         raise HTTPException(status_code=404, detail="Job not found")
+
+#     # Count + interviewers both computed on read so a deleted candidate
+#     # row (or a dropped collection) doesn't leave the counter stale.
+#     count = await db.job_candidates.count_documents({"job_id": job_id})
+#     raw = await db.job_candidates.distinct("interviewer", {"job_id": job_id})
+#     interviewers = [n for n in raw if n]
+#     return _serialize({
+#         **job,
+#         "interviewers": interviewers,
+#         "candidates_filled": count,
+#     })
 @router.get("/{job_id}", response_model=JobOut)
 async def get_job(
     job_id: str,
     db: AsyncIOMotorDatabase = Depends(get_db),
+    comp_id: ObjectId = Depends(get_current_comp_id),
 ) -> JobOut:
     oid = _validate_oid(job_id)
-    job = await db.jobs.find_one({"_id": oid})
+    # Filter by comp_id so jobs in another company return 404 (not 403) -
+    # we don't reveal the existence of records the caller can't see.
+    job = await db.jobs.find_one({"_id": oid, "comp_id": comp_id})
     if job is None:
         raise HTTPException(status_code=404, detail="Job not found")
 
-    # Count + interviewers both computed on read so a deleted candidate
-    # row (or a dropped collection) doesn't leave the counter stale.
-    count = await db.job_candidates.count_documents({"job_id": job_id})
-    raw = await db.job_candidates.distinct("interviewer", {"job_id": job_id})
-    interviewers = [n for n in raw if n]
+    stats = await _job_stats(db, [job_id])
+
     return _serialize({
         **job,
-        "interviewers": interviewers,
-        "candidates_filled": count,
+        "interviewers": stats.get(job_id, {}).get("interviewers", []),
+        "candidates_filled": stats.get(job_id, {}).get("count", 0),
     })
 
 
@@ -159,10 +278,14 @@ async def get_job(
 async def create_job(
     payload: JobCreate,
     db: AsyncIOMotorDatabase = Depends(get_db),
+    comp_id: ObjectId = Depends(get_current_comp_id),
 ) -> JobOut:
+    """Create a job in the caller's company. Any comp_id in the body is
+    IGNORED - we substitute the JWT one so a user can't create jobs in a
+    company they don't belong to."""
     now = datetime.now(timezone.utc)
     body = payload.model_dump()
-    body["comp_id"] = _comp_oid(body["comp_id"])  # store ObjectId, not string
+    body["comp_id"] = comp_id  # JWT-derived; ignore whatever the client sent
     # `candidates_filled` and `interviewers` are NOT stored on the doc -
     # they're computed live from job_candidates on every read so they can't
     # drift. _serialize fills them with safe defaults (0 / []) when missing.
@@ -182,6 +305,7 @@ async def update_job(
     job_id: str,
     payload: JobUpdate,
     db: AsyncIOMotorDatabase = Depends(get_db),
+    comp_id: ObjectId = Depends(get_current_comp_id),
 ) -> JobOut:
     oid = _validate_oid(job_id)
 
@@ -190,8 +314,10 @@ async def update_job(
         raise HTTPException(status_code=400, detail="No fields to update")
     updates["job_last_update_datetime"] = datetime.now(timezone.utc)
 
+    # Two-part filter: only updates if the job ALSO belongs to the caller's
+    # company. Cross-tenant edits fall into the 404 branch.
     result = await db.jobs.find_one_and_update(
-        {"_id": oid},
+        {"_id": oid, "comp_id": comp_id},
         {"$set": updates},
         return_document=True,
     )
@@ -210,13 +336,15 @@ async def update_job(
 async def delete_job(
     job_id: str,
     db: AsyncIOMotorDatabase = Depends(get_db),
+    comp_id: ObjectId = Depends(get_current_comp_id),
 ):
     """Delete the job AND all its job_candidates links so we don't leave
     dangling rows pointing at a deleted job. The candidate docs themselves
     are NOT deleted - candidates are shared across many jobs."""
     oid = _validate_oid(job_id)
 
-    result = await db.jobs.delete_one({"_id": oid})
+    # Only delete if the job belongs to the caller's company.
+    result = await db.jobs.delete_one({"_id": oid, "comp_id": comp_id})
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Job not found")
 
@@ -240,12 +368,16 @@ async def delete_job(
 async def list_candidates_for_job(
     job_id: str,
     db: AsyncIOMotorDatabase = Depends(get_db),
+    comp_id: ObjectId = Depends(get_current_comp_id),
 ):
     """Joined view: every candidate linked to this job, flattened with
     interview-style fields (name / status / score / scheduled_at /
-    interviewer) so the table can render directly."""
+    interviewer) so the table can render directly.
+
+    Tenant guard: 404s if the job belongs to a different company.
+    """
     oid = _validate_oid(job_id)
-    if not await db.jobs.find_one({"_id": oid}, {"_id": 1}):
+    if not await db.jobs.find_one({"_id": oid, "comp_id": comp_id}, {"_id": 1}):
         raise HTTPException(status_code=404, detail="Job not found")
 
     links = await db.job_candidates.find({"job_id": job_id}).to_list(length=500)
@@ -262,11 +394,63 @@ async def list_candidates_for_job(
     cand_docs = await db.candidates.find({"_id": {"$in": cand_oids}}).to_list(length=500)
     cands_by_id = {str(c["_id"]): c for c in cand_docs}
 
+    # Bulk-fetch interviews for this job, keyed by cand_id.
+    interviews = await db.interviews.find({"job_id": job_id}).to_list(length=500)
+    interview_by_cand = {i.get("cand_id"): i for i in interviews}
+
+    # Bulk-fetch interview_user links for those interviews.
+    interview_ids = [str(i["_id"]) for i in interviews]
+    intv_user_links = []
+    if interview_ids:
+        intv_user_links = await db.interview_users.find(
+            {"intv_id": {"$in": interview_ids}}
+        ).to_list(length=500)
+    user_id_by_intv = {lnk["intv_id"]: lnk["user_id"] for lnk in intv_user_links if lnk.get("intv_id")}
+
+    # Bulk-fetch users for those interviewers.
+    user_ids = list({uid for uid in user_id_by_intv.values() if ObjectId.is_valid(uid)})
+    users_by_id: dict = {}
+    if user_ids:
+        user_docs = await db.users.find(
+            {"_id": {"$in": [ObjectId(uid) for uid in user_ids]}},
+            {"password_hash": 0},
+        ).to_list(length=500)
+        users_by_id = {str(u["_id"]): u for u in user_docs}
+
     out = []
     for link in links:
         c = cands_by_id.get(link.get("cand_id"), {})
+        interview_docs = await db.interviews.find({
+            "job_id": job_id,
+            "cand_id": link.get("cand_id"),
+        }).to_list(length=20)
+        completed_interview = next(
+            (item for item in interview_docs if item.get("intv_status") == "completed"),
+            None,
+        )
         # Average of the three AI scores when available; otherwise fall back
         # to a literal `score` field stashed on the link.
+        cand_id = link.get("cand_id")
+        c = cands_by_id.get(cand_id, {})
+
+        # Resolve interviewer name from the interview chain only. The legacy
+        # `job_candidates.interviewer` field is intentionally ignored — old
+        # rows can hold a stale name string from before the interview_users
+        # migration, which would surface a phantom interviewer on jobs that
+        # have none assigned.
+        interview = interview_by_cand.get(cand_id)
+        intv_id = str(interview["_id"]) if interview else None
+        user_id = user_id_by_intv.get(intv_id) if intv_id else None
+        user = users_by_id.get(user_id) if user_id else None
+        interviewer_name = (
+            user.get("full_name") or user.get("username") or user.get("email")
+        ) if user else None
+
+        # scheduled_at from interview; fall back to stored field.
+        scheduled_at = (
+            interview.get("intv_date_time") if interview else link.get("scheduled_at")
+        )
+
         scores = [
             link.get("communication_score"),
             link.get("skill_score"),
@@ -274,23 +458,23 @@ async def list_candidates_for_job(
         ]
         scores = [s for s in scores if s is not None]
         avg = sum(scores) / len(scores) if scores else link.get("score")
+
         out.append({
             "id": str(link["_id"]),
-            "cand_id": str(c["_id"]) if c.get("_id") else link.get("cand_id"),
+            "cand_id": str(c["_id"]) if c.get("_id") else cand_id,
             "job_id": job_id,
             "name": c.get("cand_full_name") or link.get("name", ""),
             "email": c.get("cand_email"),
             "phone": c.get("cand_phone"),
-            "status": link.get("status"),
-            "scheduled_at": link.get("scheduled_at"),
-            "interviewer": link.get("interviewer"),
-            # Individual rubric scores - rendered as separate columns in the
-            # RANKINGS view of the JobDetailPage. The aggregate `score` below
-            # is still useful for sorting + the InterviewStatusPanel.
+            "status": (interview.get("intv_status") or "not_scheduled").replace("_", " ").upper() if interview else "NOT SCHEDULED",
+            "scheduled_at": scheduled_at,
+            "interviewer": interviewer_name,
             "communication_score":   link.get("communication_score"),
             "skill_score":           link.get("skill_score"),
             "problem_solving_score": link.get("problem_solving_score"),
             "score": avg,
+            "intv_completed": completed_interview is not None,
+            "intv_id": str(completed_interview["_id"]) if completed_interview else None,
         })
     return out
 
@@ -304,24 +488,71 @@ async def remove_candidate_from_job(
     job_id: str,
     jobcand_id: str,
     db: AsyncIOMotorDatabase = Depends(get_db),
+    comp_id: ObjectId = Depends(get_current_comp_id),
 ):
     """Remove a single candidate-job link.
 
-    Only the link is removed - the candidate document itself stays around
-    because the same candidate may be on multiple jobs (or could be reused
-    later). Mirrors how delete_job() cascades only its OWN links and never
-    touches candidate rows.
+    The candidate document itself stays around because the same candidate
+    may be on multiple jobs (or could be reused later). But we DO cascade
+    into interviews + interview_users for this (cand_id, job_id) pair —
+    otherwise an orphan interview + interviewer link would leave a phantom
+    avatar on the job card after the candidate is gone.
     """
     if not ObjectId.is_valid(jobcand_id):
         raise HTTPException(status_code=400, detail="Invalid jobcand_id")
 
-    # Scope by job_id too so an attacker can't delete a random link by id.
-    result = await db.job_candidates.delete_one(
+    # Tenant guard: confirm the job belongs to this company before touching
+    # anything beneath it.
+    oid = _validate_oid(job_id)
+    if not await db.jobs.find_one({"_id": oid, "comp_id": comp_id}, {"_id": 1}):
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    # Read the link first so we know which candidate to cascade for.
+    link = await db.job_candidates.find_one(
         {"_id": ObjectId(jobcand_id), "job_id": job_id}
     )
-    if result.deleted_count == 0:
+    if not link:
         raise HTTPException(status_code=404, detail="Candidate link not found on this job")
 
+    cand_id = link.get("cand_id")
+
+    # Scope by job_id too so an attacker can't delete a random link by id.
+    await db.job_candidates.delete_one(
+        {"_id": ObjectId(jobcand_id), "job_id": job_id}
+    )
+
+    # Cascade: find and remove the interview(s) for this candidate/job, plus
+    # any interview_users links pointing at them.
+    if cand_id:
+        interviews = await db.interviews.find(
+            {"cand_id": cand_id, "job_id": job_id}
+        ).to_list(length=100)
+
+        if interviews:
+            intv_id_strs = [str(i["_id"]) for i in interviews]
+            await db.interview_users.delete_many({"intv_id": {"$in": intv_id_strs}})
+            await db.interviews.delete_many(
+                {"_id": {"$in": [i["_id"] for i in interviews]}}
+            )
+
+
+# class AddCandidateToJob(BaseModel):
+#     """Body for POST /api/jobs/{job_id}/candidates.
+
+#     Mirrors the real Candidate model's required fields (name + email) so the
+#     `candidates` collection ends up with proper data, plus optional contact
+#     + document URLs and the interview-style fields the modal collects.
+#     """
+
+#     name: str = Field(..., min_length=1, max_length=100)
+#     email: EmailStr
+#     phone: str | None = Field(default=None, max_length=30)
+#     cv_url: str | None = None
+#     cover_letter_url: str | None = None
+#     # Interview-side fields - stashed on the job_candidates link until a
+#     # dedicated interview entity exists.
+#     interviewer: str | None = Field(default=None, max_length=100)
+#     scheduled_at: str | None = None
 
 class AddCandidateToJob(BaseModel):
     """Body for POST /api/jobs/{job_id}/candidates.
@@ -336,9 +567,7 @@ class AddCandidateToJob(BaseModel):
     phone: str | None = Field(default=None, max_length=30)
     cv_url: str | None = None
     cover_letter_url: str | None = None
-    # Interview-side fields - stashed on the job_candidates link until a
-    # dedicated interview entity exists.
-    interviewer: str | None = Field(default=None, max_length=100)
+    interviewer_user_id: str | None = None
     scheduled_at: str | None = None
 
 
@@ -347,6 +576,7 @@ async def add_candidate_to_job(
     job_id: str,
     payload: AddCandidateToJob,
     db: AsyncIOMotorDatabase = Depends(get_db),
+    comp_id: ObjectId = Depends(get_current_comp_id),
 ):
     """Create-or-reuse a candidate AND link them to this job in one call.
 
@@ -356,11 +586,13 @@ async def add_candidate_to_job(
     cand.py so the data ends up in the same shape regardless of which
     entry-point was used.
 
+    Tenant guard: the job must belong to the caller's company.
+
     Returns the joined shape the JobDetailPage table expects:
       { candidate: {flat shape with name/email/etc.}, job: <updated job> }
     """
     oid = _validate_oid(job_id)
-    job = await db.jobs.find_one({"_id": oid})
+    job = await db.jobs.find_one({"_id": oid, "comp_id": comp_id})
     if job is None:
         raise HTTPException(status_code=404, detail="Job not found")
 
@@ -420,22 +652,17 @@ async def add_candidate_to_job(
                 "cover_letter_url": payload.cover_letter_url,
                 "interviewer": existing_link.get("interviewer"),
                 "scheduled_at": existing_link.get("scheduled_at"),
-                "status": existing_link.get("status") or "SCHEDULED",
+                "status": "SCHEDULED",
                 "score": existing_link.get("score"),
             },
             "job": _serialize(job).model_dump(),
         }
 
-    # 4. Create the link row + bump the job's candidates_filled counter.
+    # 4. Create the link row (status lives on Interview per UML, not here).
     link_result = await db.job_candidates.insert_one({
         "cand_id": cand_id,
         "job_id": job_id,
-        # Display fields stashed on the link until a proper interview entity:
-        "interviewer": payload.interviewer,
-        "scheduled_at": payload.scheduled_at,
-        "status": "SCHEDULED",
         "score": None,
-        # AI-pipeline fields stay null until the analysis writes them:
         "cv_analysis": None,
         "communication_score": None,
         "skill_score": None,
@@ -444,20 +671,46 @@ async def add_candidate_to_job(
         "updated_at": now,
     })
 
-    # No $inc on candidates_filled - it's derived from job_candidates on read.
-    # We just touch job_last_update_datetime so listings re-order correctly.
+    # 5. Create interview document whenever an interviewer is assigned.
+    scheduled_dt = None
+    if payload.scheduled_at:
+        try:
+            scheduled_dt = datetime.fromisoformat(payload.scheduled_at)
+        except ValueError:
+            pass
+
+    if payload.interviewer_user_id:
+        intv_status = "scheduled" if scheduled_dt else "not_scheduled"
+        interview_result = await db.interviews.insert_one({
+            "cand_id": cand_id,
+            "job_id": job_id,
+            "intv_date_time": scheduled_dt,
+            "intv_location": None,
+            "intv_transcript": None,
+            "intv_status": intv_status,
+            "intv_candidate_report": None,
+            "intv_interviewer_report": None,
+            "intv_created_at": now,
+            "intv_updated_at": now,
+        })
+
+        # 6. Link interviewer via interview_users.
+        await db.interview_users.insert_one({
+            "user_id": payload.interviewer_user_id,
+            "intv_id": str(interview_result.inserted_id),
+            "intvuser_created_at": now,
+            "intvuser_updated_at": now,
+        })
+
+    # Touch job timestamp so listings re-order correctly.
     updated_job = await db.jobs.find_one_and_update(
         {"_id": oid},
         {"$set": {"job_last_update_datetime": now}},
         return_document=True,
     )
 
-    # Recompute the live stats for the returned job so the JobDetailPage
-    # gets accurate candidates_filled + interviewers immediately, without
-    # waiting for a full refetch.
     count = await db.job_candidates.count_documents({"job_id": job_id})
-    raw = await db.job_candidates.distinct("interviewer", {"job_id": job_id})
-    interviewers = [n for n in raw if n]
+    stats = await _job_stats(db, [job_id])
 
     return {
         "candidate": {
@@ -469,7 +722,7 @@ async def add_candidate_to_job(
             "phone": payload.phone,
             "cv_url": payload.cv_url,
             "cover_letter_url": payload.cover_letter_url,
-            "interviewer": payload.interviewer,
+            "interviewer": None,
             "scheduled_at": payload.scheduled_at,
             "status": "SCHEDULED",
             "score": None,
@@ -477,6 +730,6 @@ async def add_candidate_to_job(
         "job": _serialize({
             **updated_job,
             "candidates_filled": count,
-            "interviewers": interviewers,
+            "interviewers": stats.get(job_id, {}).get("interviewers", []),
         }).model_dump(),
     }

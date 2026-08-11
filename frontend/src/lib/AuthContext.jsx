@@ -34,10 +34,17 @@ export function AuthProvider({ children }) {
   }, [])
 
   const login = useCallback(async (identifier, password) => {
-    const res = await api.login({ identifier, password })
-    writeAuth({ token: res.access_token, user: res.user })
-    setUser(res.user)
-    return res.user
+    try {
+      const res = await api.login({ identifier, password })
+      writeAuth({ token: res.access_token, user: res.user })
+      setUser(res.user)
+      return res.user
+    } catch (err) {
+      if (err instanceof ApiError) {
+        throw err
+      }
+      throw err
+    }
   }, [])
 
   // Used by flows that already have a token (e.g. /signup-company auto-logs

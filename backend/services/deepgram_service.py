@@ -12,7 +12,7 @@ touching the route.
 from __future__ import annotations
 
 import logging
-from typing import Awaitable, Callable
+from collections.abc import Awaitable, Callable
 
 from deepgram import (
     DeepgramClient,

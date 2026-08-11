@@ -1,10 +1,9 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Literal, Optional
+from typing import Literal
 
 from pydantic import BaseModel, Field
-
 
 # Naming note: we use `cand_id` to match the candidate model + cand.py route.
 # Don't reintroduce `candidate_id` without updating every other file at once.
@@ -24,10 +23,10 @@ class JobCandidateCreate(BaseModel):
 
     cand_id: str = Field(..., min_length=1)
     job_id: str = Field(..., min_length=1)
-    cv_analysis: Optional[str] = None
-    communication_score: Optional[float] = None
-    skill_score: Optional[float] = None
-    problem_solving_score: Optional[float] = None
+    cv_analysis: str | None = None
+    communication_score: float | None = None
+    skill_score: float | None = None
+    problem_solving_score: float | None = None
 
 
 class JobCandidateScoreUpdate(BaseModel):
@@ -41,10 +40,10 @@ class JobCandidateScoreUpdate(BaseModel):
     Score ranges are clamped to 0-10 to match the typical interview rubric.
     """
 
-    cv_analysis: Optional[str] = None
-    communication_score: Optional[float] = Field(default=None, ge=0, le=10)
-    skill_score: Optional[float] = Field(default=None, ge=0, le=10)
-    problem_solving_score: Optional[float] = Field(default=None, ge=0, le=10)
+    cv_analysis: str | None = None
+    communication_score: float | None = Field(default=None, ge=0, le=10)
+    skill_score: float | None = Field(default=None, ge=0, le=10)
+    problem_solving_score: float | None = Field(default=None, ge=0, le=10)
 
 
 class JobCandidateOut(BaseModel):
@@ -58,11 +57,13 @@ class JobCandidateOut(BaseModel):
     jobcand_id: str
     cand_id: str
     job_id: str
-    status: Optional[JobCandidateStatus] = None
-    cv_analysis: Optional[str] = None
-    communication_score: Optional[float] = None
-    skill_score: Optional[float] = None
-    problem_solving_score: Optional[float] = None
+    status: JobCandidateStatus | None = None
+    cv_analysis: str | None = None
+    communication_score: float | None = None
+    skill_score: float | None = None
+    problem_solving_score: float | None = None
+    final_score: float | None = None
+    rank: int | None = None
     created_at: datetime
     updated_at: datetime
 

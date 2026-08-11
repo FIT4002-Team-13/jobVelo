@@ -4,15 +4,39 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from config import settings
-from database import close_mongo_connection, connect_to_mongo, ensure_indexes, seed_mock_data
-from routes import auth, cand, cv_analysis, dashboard, files, invitations, job_cand, jobs, users
+from database import (
+    close_mongo_connection,
+    connect_to_mongo,
+    ensure_indexes,
+    seed_mock_data,
+)
+from routes import (
+    applications,
+    auth,
+    cand,
+    dashboard,
+    files,
+    interview,
+    invitations,
+    job_cand,
+    jobs,
+    realtime,
+    user_interview,
+    users,
+    cv_analysis,
+)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    await connect_to_mongo()
-    await ensure_indexes()
-    await seed_mock_data()
+    try:
+        await connect_to_mongo()
+        await ensure_indexes()
+        await seed_mock_data()
+    except Exception:
+        app.state.mongo_available = False
+    else:
+        app.state.mongo_available = True
     yield
     await close_mongo_connection()
 
@@ -23,6 +47,7 @@ app = FastAPI(
     description="Real-Time Interview Intelligence System",
     lifespan=lifespan,
 )
+app.state.mongo_available = False
 
 app.add_middleware(
     CORSMiddleware,
@@ -33,9 +58,9 @@ app.add_middleware(
 )
 
 
-# Order is mostly cosmetic - it controls the grouping order in /docs.
-# Each router only registers once; duplicates were causing FastAPI to print
-# 'route already exists' warnings.
+# Add routers here as features land:
+# from routes import auth, interview, cv
+# app.include_router(auth.router)
 app.include_router(auth.router)
 app.include_router(invitations.router)
 app.include_router(files.router)
@@ -43,9 +68,13 @@ app.include_router(dashboard.router)
 app.include_router(jobs.router)
 app.include_router(cand.router)
 app.include_router(job_cand.router)
+app.include_router(realtime.router)
 app.include_router(users.router)
 app.include_router(cv_analysis.router)
 
+app.include_router(interview.router)
+app.include_router(user_interview.router)
+app.include_router(applications.router)
 
 @app.get("/api/health")
 async def health() -> dict[str, str]:
