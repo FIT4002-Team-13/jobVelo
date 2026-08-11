@@ -72,6 +72,13 @@ export default {
         bg: '#FFFFFF',
         ink: '#0F172A',
         muted: '#64748B',
+        tint: {
+          blue:  '#EBF1FE',
+          sky:   '#E6F4FF',
+          mint:  '#E5FAF0',
+          coral: '#FFE6E7',
+          peach: '#FFF4EC',
+        },
       },
       fontFamily: {
         sans: ['"Plus Jakarta Sans"', 'Inter', 'system-ui', '-apple-system', 'Segoe UI', 'Roboto', 'sans-serif'],

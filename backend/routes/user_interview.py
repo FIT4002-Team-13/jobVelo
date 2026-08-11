@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import datetime
 
 from bson import ObjectId
 from fastapi import APIRouter, HTTPException, status
@@ -48,7 +48,7 @@ async def create_interview_user(payload: InterviewUserCreate) -> InterviewUserOu
             detail="User is already linked to this interview.",
         )
 
-    now = datetime.now(UTC)
+    now = datetime.now(datetime.utc)
 
     interview_user_doc = {
         "user_id": payload.user_id,
