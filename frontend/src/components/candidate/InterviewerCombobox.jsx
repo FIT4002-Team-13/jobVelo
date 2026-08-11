@@ -39,7 +39,7 @@ export default function InterviewerCombobox({ value, onChange, options }) {
         }}
         onFocus={() => setOpen(true)}
         placeholder={options.length === 0 ? 'No interviewers in your company yet' : 'Type to search interviewers…'}
-        className={`${form.input} h-12`}
+        className={form.input}
       />
 
       {open && (

@@ -198,16 +198,9 @@ export default function ApplicationsPage() {
       <Sidebar />
 
       <main className={page.main}>
-        {loading && (
-          <p className="text-sm text-neutral-400">Loading…</p>
-        )}
-
-        {!loading && error && (
-          <p className="text-sm text-coral-500">{error}</p>
-        )}
-
-        {!loading && !error && (
-          <>
+        {/* Header + controls render unconditionally - same skeleton as
+            JobsPage, where loading/error/empty states appear as a small
+            status line BELOW the controls instead of blanking the page. */}
         <div className="mb-6 flex items-start justify-between">
           <div>
             <h1 className="text-4xl font-extrabold tracking-tight text-neutral-800">
@@ -265,6 +258,13 @@ export default function ApplicationsPage() {
           />
         </div>
 
+        {loading && <p className="text-sm text-neutral-400">Loading…</p>}
+        {!loading && error && <p className="text-sm text-coral-500">{error}</p>}
+
+        {!loading && !error && (
+          filteredRows.length === 0
+            ? <p className="text-sm text-neutral-400">No applications found.</p>
+            : (
         <div className={`${card.base} overflow-hidden !p-0`}>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -296,17 +296,7 @@ export default function ApplicationsPage() {
               </thead>
 
               <tbody>
-                {filteredRows.length === 0 ? (
-                  <tr>
-                    <td
-                      colSpan={8}
-                      className="px-6 py-10 text-center text-sm text-neutral-400"
-                    >
-                      No applications found.
-                    </td>
-                  </tr>
-                ) : (
-                  filteredRows.map((row) => (
+                {filteredRows.map((row) => (
                     // Whole row navigates to the candidate page now. Action
                     // cells below (CV / CL links, Edit button) all carry
                     // stopPropagation so they keep their own click without
@@ -439,13 +429,12 @@ export default function ApplicationsPage() {
                         </button>
                       </td>
                     </tr>
-                  ))
-                )}
+                ))}
               </tbody>
             </table>
           </div>
         </div>
-          </>
+            )
         )}
       </main>
 
