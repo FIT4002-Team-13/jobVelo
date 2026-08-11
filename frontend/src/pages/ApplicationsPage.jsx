@@ -4,7 +4,7 @@ import Sidebar from '../components/common/Sidebar'
 import AddCandidateForm from '../components/candidate/AddCandidateForm'
 import EditCandidateForm from '../components/candidate/EditCandidateForm'
 import { SortMenu, FilterMenu } from '../components/job-candidate/TableControls'
-import { page, card, button } from '../styles/layout'
+import { page, card, button, badge } from '../styles/layout'
 import { useAuth } from '../lib/AuthContext.jsx'
 import { authedFetch } from '../lib/api.js'
 
@@ -269,29 +269,29 @@ export default function ApplicationsPage() {
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="bg-neutral-50">
-                  <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wide text-neutral-500">
+                <tr className="bg-neutral-50 border-b border-neutral-100">
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-neutral-500">
                     Candidate
                   </th>
-                  <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wide text-neutral-500">
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-neutral-500">
                     Job Applied
                   </th>
-                  <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wide text-neutral-500">
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-neutral-500">
                     Status
                   </th>
-                  <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wide text-neutral-500">
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-neutral-500">
                     CV
                   </th>
-                  <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wide text-neutral-500">
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-neutral-500">
                     CL
                   </th>
-                  <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wide text-neutral-500">
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-neutral-500">
                     Score
                   </th>
-                  <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wide text-neutral-500">
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-neutral-500">
                     Date
                   </th>
-                  <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wide text-neutral-500"></th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-neutral-500"></th>
                 </tr>
               </thead>
 
@@ -306,32 +306,30 @@ export default function ApplicationsPage() {
                       onClick={() => openCandidate(row)}
                       className="border-t border-neutral-100 last:border-b-0 hover:bg-neutral-50 cursor-pointer transition-colors"
                     >
-                      <td className="px-6 py-4">
+                      <td className="px-4 py-3">
                         <div className="flex items-center gap-3">
                           <div
-                            className={`flex h-10 w-10 items-center justify-center rounded-pill text-sm font-bold text-white ${avatarColor(row.candidate_name)}`}
+                            className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-pill text-xs font-bold text-white ${avatarColor(row.candidate_name)}`}
                           >
                             {getInitials(row.candidate_name)}
                           </div>
-                          <span className="text-[16px] font-medium text-neutral-800">
+                          <span className="font-medium text-neutral-800">
                             {row.candidate_name}
                           </span>
                         </div>
                       </td>
 
-                      <td className="px-6 py-4 text-[16px] text-neutral-800">
+                      <td className="px-4 py-3 text-neutral-700">
                         {row.job_title}
                       </td>
 
-                      <td className="px-6 py-4">
-                        <span
-                          className={`rounded-pill px-4 py-1 text-xs font-semibold ${statusClass(row.status)}`}
-                        >
+                      <td className="px-4 py-3">
+                        <span className={`${badge.sm} ${statusClass(row.status)}`}>
                           {row.status}
                         </span>
                       </td>
 
-                      <td className="px-6 py-4" onClick={(e) => e.stopPropagation()}>
+                      <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                         {/* Once an analysis exists the cell links to the CV
                             analysis report; the raw-PDF link only remains for
                             legacy rows that have a file but no analysis. */}
@@ -381,7 +379,7 @@ export default function ApplicationsPage() {
                         )}
                       </td>
 
-                      <td className="px-6 py-4" onClick={(e) => e.stopPropagation()}>
+                      <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                         {row.cover_letter_url ? (
                           <a
                             href={row.cover_letter_url}
@@ -396,15 +394,15 @@ export default function ApplicationsPage() {
                         )}
                       </td>
 
-                      <td className="px-6 py-4 text-[16px] text-neutral-800">
+                      <td className="px-4 py-3 font-semibold text-neutral-700">
                         {formatScore(row.score)}
                       </td>
 
-                      <td className="px-6 py-4 text-[16px] text-neutral-800">
+                      <td className="px-4 py-3 text-neutral-500 whitespace-nowrap">
                         {formatShortDate(row.interview_datetime)}
                       </td>
 
-                      <td className="px-6 py-4" onClick={(e) => e.stopPropagation()}>
+                      <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                         <button
                           type="button"
                           onClick={(e) => {
