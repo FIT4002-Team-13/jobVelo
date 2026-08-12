@@ -216,19 +216,26 @@ export default function EditCandidateForm({
       const saved = await appRes.json()
 
       // 3. A newly attached CV kicks off (or replaces) the analysis for
-      //    this application. The backend returns as soon as the file is
-      //    stored (status=processing) and finishes in the background - the
+      //    this application - the cover letter rides along when present.
+      //    The backend returns as soon as the file is stored
+      //    (status=processing) and finishes in the background - the
       //    candidate page's "View" button polls until it's ready.
-      if (cvFile && formState.application_id) {
-        try {
+      //    A cover letter added WITHOUT a new CV doesn't involve the
+      //    analyser, so it goes through the standalone document upload.
+      try {
+        if (cvFile && formState.application_id) {
           const fd = new FormData()
           fd.append('jobcand_id', formState.application_id)
           fd.append('cv', cvFile)
           if (coverLetterFile) fd.append('cover_letter', coverLetterFile)
           await api.analyseCv(fd)
-        } catch (err) {
-          console.warn('CV upload/analysis kick-off failed:', err)
+        } else if (coverLetterFile && formState.cand_id) {
+          const fd = new FormData()
+          fd.append('cover_letter', coverLetterFile)
+          await api.uploadCandidateCoverLetter(formState.cand_id, fd)
         }
+      } catch (err) {
+        console.warn('Document upload failed:', err)
       }
 
       onSaved(saved)

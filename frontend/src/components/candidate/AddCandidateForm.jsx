@@ -176,22 +176,29 @@ export default function AddCandidateForm({ jobs = [], onClose, onSaved }) {
 
       const saved = await res.json()
 
-      // Candidate added with a CV → hand it to the analyser right away. The
-      // POST returns as soon as the upload is stored (status=processing);
-      // the candidate page polls for completion. A failure here is
-      // non-fatal - the candidate exists, and the CV can be re-uploaded
-      // from the Edit form.
+      // Candidate added with a CV → hand it to the analyser right away
+      // (the cover letter rides along). The POST returns as soon as the
+      // upload is stored (status=processing); the candidate page polls for
+      // completion. A cover letter WITHOUT a CV can't be analysed, so it
+      // goes through the standalone document upload instead. Failures here
+      // are non-fatal - the candidate exists, and the files can be
+      // re-uploaded from the Edit form.
       const jobcandId = saved.job_candidate?.jobcand_id
-      if (cvFile && jobcandId) {
-        try {
+      const candId = saved.candidate?.cand_id
+      try {
+        if (cvFile && jobcandId) {
           const fd = new FormData()
           fd.append('jobcand_id', jobcandId)
           fd.append('cv', cvFile)
           if (coverLetterFile) fd.append('cover_letter', coverLetterFile)
           await api.analyseCv(fd)
-        } catch (err) {
-          console.warn('CV upload/analysis kick-off failed:', err)
+        } else if (coverLetterFile && candId) {
+          const fd = new FormData()
+          fd.append('cover_letter', coverLetterFile)
+          await api.uploadCandidateCoverLetter(candId, fd)
         }
+      } catch (err) {
+        console.warn('Document upload failed:', err)
       }
 
       onSaved(saved.candidate ?? saved)

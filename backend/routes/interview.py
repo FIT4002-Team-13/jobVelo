@@ -17,7 +17,7 @@ def interview_helper(interview: dict) -> InterviewOut:
         intv_id=str(interview["_id"]),
         cand_id=str(interview["cand_id"]),
         job_id=str(interview["job_id"]),
-        intv_date_time=interview["intv_date_time"],
+        intv_date_time=interview.get("intv_date_time"),
         intv_location=interview.get("intv_location"),
         intv_transcript=interview.get("intv_transcript"),
         intv_status=interview["intv_status"],

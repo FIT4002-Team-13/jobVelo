@@ -120,6 +120,17 @@ export const api = {
   deleteCvAnalysis: (analysisId) =>
     request(`/cv-analysis/${encodeURIComponent(analysisId)}`, { method: 'DELETE', auth: true }),
 
+  // ---------- candidate documents ---------------------------------------
+  // Standalone cover-letter upload (multipart: { cover_letter }). Used when
+  // a cover letter is added WITHOUT a new CV - a CV upload goes through
+  // analyseCv, which stores the cover letter as part of the analysis.
+  uploadCandidateCoverLetter: (candId, formData) =>
+    request(`/candidates/${encodeURIComponent(candId)}/cover-letter`, {
+      method: 'POST',
+      body: formData,
+      auth: true,
+    }),
+
   // ---------- users ------------------------------------------------------
   // List teammates, optionally filtered by comp_id / role. Used by the
   // AddCandidate modal's interviewer combobox:

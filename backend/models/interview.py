@@ -68,7 +68,10 @@ class InterviewOut(BaseModel):
     intv_id: str
     cand_id: str
     job_id: str
-    intv_date_time: datetime
+    # None for interviews that exist but haven't been scheduled yet - an
+    # interviewer can be assigned before a date is picked (intv_status
+    # "not_scheduled"), and both cand.py and applications.py store None.
+    intv_date_time: datetime | None = None
     intv_location: str | None = None
     intv_transcript: list[TranscriptEntry] | None = None
     intv_status: InterviewStatus
