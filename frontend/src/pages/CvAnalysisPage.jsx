@@ -78,33 +78,33 @@ const QUESTION_CATEGORY_STYLES = {
 function QuestionCard({ items, emptyText }) {
   return (
     <div className={`${card.sm}`}>
-      <h3 className="text-lg font-bold text-neutral-800 mb-3">Suggested Interview Questions</h3>
+      <h3 className="text-lg font-bold text-neutral-800 mb-5 px-5 pt-5">Suggested Interview Questions</h3>
       {items.length === 0 ? (
         <p className="text-sm text-neutral-400 italic">{emptyText}</p>
       ) : (
-        <ul className="flex flex-col gap-4">
-          {items.map((q, i) => (
-            <li key={i} className="text-sm">
-              <div className="flex items-start gap-2">
-                <span
-                  className={`text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-pill shrink-0 mt-0.5 ${
-                    QUESTION_CATEGORY_STYLES[q.category] ?? 'bg-neutral-100 text-neutral-500'
-                  }`}
-                >
-                  {q.category}
-                </span>
-                <p className="font-semibold text-neutral-700 leading-relaxed">
-                  {q.question}
-                </p>
-              </div>
-              {q.rationale && (
-                <p className="text-neutral-500 leading-relaxed pl-3 mt-1 italic">
-                  {q.rationale}
-                </p>
-              )}
-            </li>
-          ))}
-        </ul>
+        <ul className="flex flex-col gap-6 px-5">
+        {items.map((q, i) => (
+          <li key={i} className="text-sm">
+            <div className="flex items-start gap-3">
+              <span
+                className={`text-[10px] font-bold uppercase tracking-wide px-3 py-1 rounded-pill shrink-0 mt-1 ${
+                  QUESTION_CATEGORY_STYLES[q.category] ?? 'bg-neutral-100 text-neutral-500'
+                }`}
+              >
+                {q.category}
+              </span>
+              <p className="font-semibold text-neutral-700 leading-[1.7]">
+                {q.question}
+              </p>
+            </div>
+            {q.rationale && (
+              <p className="text-neutral-500 leading-[1.9] pl-4 mt-3 italic">
+                {q.rationale}
+              </p>
+            )}
+          </li>
+        ))}
+      </ul>
       )}
     </div>
   )
@@ -119,7 +119,7 @@ function QuestionCard({ items, emptyText }) {
 function PdfPreview({ src, label }) {
   if (!src) {
     return (
-      <div className={`${card.base} flex items-center justify-center h-[600px] text-base text-neutral-400`}>
+      <div className={`${card.base} flex items-center justify-center aspect-[1/1.5] text-base text-neutral-400`}>
         No document attached.
       </div>
     )
@@ -129,11 +129,14 @@ function PdfPreview({ src, label }) {
       <div className="px-4 py-2 border-b border-neutral-100 text-sm font-medium text-neutral-500">
         {label}
       </div>
-      <iframe
-        title={label}
-        src={`/api/files/${src}#toolbar=1`}
-        className="w-full h-[600px] bg-neutral-50"
-      />
+
+      <div className="w-full aspect-[1/1.5] bg-neutral-50">
+        <iframe
+          title={label}
+          src={`/api/files/${src}#toolbar=1&view=FitH`}
+          className="w-full h-full bg-neutral-50"
+        />
+      </div>
     </div>
   )
 }
@@ -345,9 +348,14 @@ export default function CvAnalysisPage() {
         )}
 
         {/* Two-column body: PDF preview (2/3) + analysis cards (1/3) */}
-        <div className="grid grid-cols-3 gap-5">
-          <div className="col-span-2">
+        <div className="grid grid-cols-3 gap-5 items-start">
+          <div className="col-span-2 flex flex-col gap-5">
             <PdfPreview src={cv_path} label="CV / Resume" />
+
+            <QuestionCard
+              items={interview_questions}
+              emptyText="No interview questions suggested."
+            />
           </div>
 
           <div className="flex flex-col gap-4">
@@ -382,11 +390,6 @@ export default function CvAnalysisPage() {
               title="Inconsistencies"
               items={inconsistencies}
               emptyText="No inconsistencies found."
-            />
-
-            <QuestionCard
-              items={interview_questions}
-              emptyText="No interview questions suggested."
             />
           </div>
         </div>
