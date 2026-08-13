@@ -3,9 +3,10 @@
 Gemini's multimodal models accept PDF/image bytes directly, so the route
 hands raw file bytes here without any pre-extraction step.
 
-This module uses Gemini 2.5 Pro (configured in `settings.gemini_cv_model`)
-with thinking enabled. We optimise for analysis depth - especially on
-inconsistency detection across two documents - over token budget.
+The model comes from `settings.gemini_cv_model` (deployments set the
+`gemini-pro-latest` alias; the config default is `gemini-flash-latest`).
+We optimise for analysis depth - especially on inconsistency detection
+across two documents - over token budget.
 
 The response shape is described in English inside the prompt and we ask
 for `response_mime_type="application/json"`; we deliberately do NOT pass
@@ -57,7 +58,7 @@ return a single JSON object with this shape:
     "soft_skills":         number
   },
   "key_strengths": [                         // 2-5 items
-    { "title": string, "detail": string }    // title <= 6 words; detail 1-2 sentences
+    { "title": string, "detail": string }    // title <= 5 words, concrete fact; detail 1-2 short sentences
   ],
   "improvements": [                          // 2-5 items, growth areas or gaps
     { "title": string, "detail": string }
@@ -69,24 +70,42 @@ return a single JSON object with this shape:
     {
       "category": "technical" | "behavioral" | "experience",
       "question": string,                    // one clean sentence, no placeholders
-      "rationale": string                    // one sentence: what this probes; cite CV/JD
+      "rationale": string                    // <= 15 words: what the answer reveals
     }
   ]
 }
 
+Writing style - the reader is a busy recruiter skimming between calls:
+- Plain, conversational English. Short, common words. Active voice.
+  Never use words like: insufficient, absence, utilize, demonstrates,
+  gauge, probes, reflects, pertaining.
+- Refer to the candidate as "they"/"them" - never guess gender from
+  the name.
+- Every `title` states the concrete fact in 5 words or fewer, not an
+  abstract category.
+  Good: "No mentoring experience", "2-year employment gap",
+        "React skills below senior level".
+  Bad:  "Absence of Critical Senior Skills",
+        "Insufficient Modern Framework Expertise".
+- Every `detail` is 1-2 short sentences (25 words max) naming the
+  specific evidence. No filler openers like "The candidate's resume
+  shows that..." - get straight to the point.
+- Every `rationale` is 15 words max and starts with what the answer
+  reveals, e.g. "Reveals whether their React knowledge goes beyond
+  tutorials." Never start with "This question...".
+
 Rules:
 - Output ONLY valid JSON. No prose, no markdown fences.
 - `candidate_name`: best guess from the CV, or null if not found.
-- Each `detail`: 1-2 sentences citing evidence from the documents -
-  not generic advice.
+- Each `detail`: cite evidence from the documents - not generic advice.
 - `inconsistencies`: ONLY include real CV/cover-letter contradictions or
   unexplained gaps - DO NOT pad with stylistic notes.
 - `interview_questions`: 4-6 items covering at least two categories.
-  Every question must be grounded - either in the CV (probe a specific
-  past role / project / claim) or in the JD (probe a required skill the
-  CV leaves ambiguous). No generic "tell me about yourself" filler.
-  `rationale` is for the interviewer, not the candidate - a one-sentence
-  note on what the answer would reveal.
+  Every question must be grounded - either in the CV (ask about a
+  specific past role / project / claim) or in the JD (ask about a
+  required skill the CV leaves ambiguous). No generic "tell me about
+  yourself" filler. `rationale` is a note for the interviewer, not the
+  candidate.
 - When a Job Description is supplied, treat it as the SINGLE SOURCE OF
   TRUTH for fit scoring:
     * `relevant_experience` - alignment between past work and the JD's
@@ -100,8 +119,8 @@ Rules:
     * `improvements` - JD requirements the candidate is missing or weak on.
     * `inconsistencies` - claims that contradict each other OR claims
       that don't square with the JD's reality.
-    * `interview_questions` - weight toward probing the JD's must-haves
-      that the CV leaves thin or unproven.
+    * `interview_questions` - weight toward the JD's must-haves that the
+      CV leaves thin or unproven.
 - When NO Job Description is supplied, fall back to scoring against the
   position_title alone with industry-standard expectations; be
   conservative with high scores.
@@ -150,8 +169,8 @@ async def analyse_cv(
     )
     parts.append(types.Part.from_text(text=header + _PROMPT))
 
-    # No thinking_config or output limits - Gemini 2.5 Pro is free to use
-    # as many thinking tokens as it wants for richer reasoning, especially
+    # No thinking_config or output limits - the model is free to use as
+    # many thinking tokens as it wants for richer reasoning, especially
     # on inconsistency detection across two documents.
     #
     # We deliberately don't set response_schema: in google-genai 0.3.0 it

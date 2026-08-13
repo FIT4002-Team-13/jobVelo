@@ -40,20 +40,114 @@ function ScoreBar({ label, value, barClass }) {
   )
 }
 
-// ── Bullet card (Strengths / Improvements / Inconsistencies) ─────────────
+// ── Fit verdict chip ─────────────────────────────────────────────────────
+// Average of the three fit scores mapped to a coloured label, so the
+// recruiter gets the takeaway before reading a single bullet.
 
-function BulletCard({ title, items, emptyText }) {
+function FitVerdict({ positionFit }) {
+  const values = FIT_METRICS
+    .map((m) => positionFit?.[m.key])
+    .filter((v) => typeof v === 'number')
+  if (values.length === 0) return null
+
+  const avg = values.reduce((a, b) => a + b, 0) / values.length
+  const [label, chipClass] =
+    avg >= 7.5 ? ['Strong fit',   'bg-mint-50 text-mint-700']
+    : avg >= 4.5 ? ['Moderate fit', 'bg-sky-50 text-sky-700']
+    :              ['Weak fit',     'bg-coral-50 text-coral-700']
+
   return (
-    <div className={`${card.sm}`}>
-      <h3 className="text-lg font-bold text-neutral-800 mb-3">{title}</h3>
+    <span
+      className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-pill px-3 py-1 text-xs font-bold ${chipClass}`}
+    >
+      <span className="h-1.5 w-1.5 rounded-pill bg-current" aria-hidden />
+      {label}
+      <span className="font-semibold opacity-70 tabular-nums">{avg.toFixed(1)}/10</span>
+    </span>
+  )
+}
+
+// ── Insight tabs (Strengths / Improvements / Inconsistencies) ────────────
+// One card, one list visible at a time. The three lists together held a
+// dozen-plus bullets and dominated the rail; tabs keep the counts visible
+// while showing a single list. Pill styling mirrors the Reports panel on
+// the candidate detail page so tabs read the same everywhere.
+
+// Per-tab accent colour: mint = what's working, sky = what to grow,
+// coral = red flags. The dot carries the colour so list text stays calm.
+const INSIGHT_TABS = [
+  {
+    key: 'strengths',
+    label: 'Strengths',
+    emptyText: 'No strengths identified.',
+    dot: 'bg-mint-500',
+    badge: 'bg-mint-100 text-mint-700',
+  },
+  {
+    key: 'improvements',
+    label: 'Improvements',
+    emptyText: 'No improvement areas identified.',
+    dot: 'bg-sky-500',
+    badge: 'bg-sky-100 text-sky-700',
+  },
+  {
+    key: 'inconsistencies',
+    label: 'Inconsistencies',
+    emptyText: 'No inconsistencies found.',
+    dot: 'bg-coral-500',
+    badge: 'bg-coral-100 text-coral-700',
+  },
+]
+
+function InsightTabs({ strengths = [], improvements = [], inconsistencies = [] }) {
+  const [active, setActive] = useState('strengths')
+  const itemsByKey = { strengths, improvements, inconsistencies }
+  const activeTab = INSIGHT_TABS.find((t) => t.key === active)
+  const items = itemsByKey[active]
+
+  return (
+    <div className={card.sm}>
+      {/* Underline tabs - compact enough for the narrow rail, with the
+          count badge always visible so hidden tabs still announce how
+          much they hold. */}
+      <div className="mb-4 flex flex-wrap gap-x-3 gap-y-1 border-b border-neutral-100">
+        {INSIGHT_TABS.map((t) => {
+          const isActive = active === t.key
+          return (
+            <button
+              key={t.key}
+              type="button"
+              onClick={() => setActive(t.key)}
+              className={`-mb-px flex items-center gap-1.5 border-b-2 pb-2 pt-1 text-xs font-semibold transition-colors ${
+                isActive
+                  ? 'border-primary-500 text-neutral-800'
+                  : 'border-transparent text-neutral-400 hover:text-neutral-600'
+              }`}
+            >
+              {t.label}
+              <span
+                className={`rounded-pill px-1.5 py-px text-[10px] font-bold tabular-nums ${
+                  isActive ? t.badge : 'bg-neutral-100 text-neutral-400'
+                }`}
+              >
+                {itemsByKey[t.key].length}
+              </span>
+            </button>
+          )
+        })}
+      </div>
+
       {items.length === 0 ? (
-        <p className="text-sm text-neutral-400 italic">{emptyText}</p>
+        <p className="py-5 text-center text-sm italic text-neutral-400">{activeTab?.emptyText}</p>
       ) : (
-        <ul className="flex flex-col gap-3">
+        <ul className="flex flex-col gap-4">
           {items.map((b, i) => (
             <li key={i} className="text-sm">
-              <p className="font-semibold text-neutral-700">• {b.title}</p>
-              <p className="text-neutral-500 leading-relaxed pl-3 mt-0.5">{b.detail}</p>
+              <div className="flex items-center gap-2">
+                <span className={`h-1.5 w-1.5 shrink-0 rounded-pill ${activeTab?.dot}`} aria-hidden />
+                <p className="font-semibold text-neutral-800">{b.title}</p>
+              </div>
+              <p className="mt-1 pl-3.5 leading-relaxed text-neutral-500">{b.detail}</p>
             </li>
           ))}
         </ul>
@@ -76,35 +170,66 @@ const QUESTION_CATEGORY_STYLES = {
 }
 
 function QuestionCard({ items, emptyText }) {
+  // Rationales sit one click away so the list stays scannable: chip +
+  // question by default, and the interviewer's "why" note expands per
+  // question when wanted.
+  const [expanded, setExpanded] = useState(() => new Set())
+
+  function toggleRationale(i) {
+    setExpanded((prev) => {
+      const next = new Set(prev)
+      if (next.has(i)) next.delete(i)
+      else next.add(i)
+      return next
+    })
+  }
+
   return (
-    <div className={`${card.sm}`}>
-      <h3 className="text-lg font-bold text-neutral-800 mb-5 px-5 pt-5">Suggested Interview Questions</h3>
+    <div className={card.sm}>
+      <h3 className="mb-4 text-lg font-bold text-neutral-800">Suggested Interview Questions</h3>
       {items.length === 0 ? (
-        <p className="text-sm text-neutral-400 italic">{emptyText}</p>
+        <p className="py-5 text-center text-sm italic text-neutral-400">{emptyText}</p>
       ) : (
-        <ul className="flex flex-col gap-6 px-5">
-        {items.map((q, i) => (
-          <li key={i} className="text-sm">
-            <div className="flex items-start gap-3">
-              <span
-                className={`text-[10px] font-bold uppercase tracking-wide px-3 py-1 rounded-pill shrink-0 mt-1 ${
-                  QUESTION_CATEGORY_STYLES[q.category] ?? 'bg-neutral-100 text-neutral-500'
-                }`}
-              >
-                {q.category}
-              </span>
-              <p className="font-semibold text-neutral-700 leading-[1.7]">
+        // Single column of tiles - the card lives in the narrow right rail
+        // alongside the insight tabs, so one tile per row keeps the text
+        // readable.
+        <ul className="grid gap-3">
+          {items.map((q, i) => (
+            <li
+              key={i}
+              className="flex flex-col gap-2 rounded-xl border border-neutral-100 bg-neutral-50 p-4 text-sm"
+            >
+              <div className="flex items-center justify-between gap-2">
+                <span
+                  className={`rounded-pill px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide ${
+                    QUESTION_CATEGORY_STYLES[q.category] ?? 'bg-neutral-100 text-neutral-500'
+                  }`}
+                >
+                  {q.category}
+                </span>
+                {q.rationale && (
+                  <button
+                    type="button"
+                    onClick={() => toggleRationale(i)}
+                    className="shrink-0 rounded-pill border border-neutral-200 bg-neutral-0 px-2.5 py-0.5 text-[11px] font-semibold text-neutral-500 transition-colors hover:border-primary-200 hover:text-primary-600"
+                  >
+                    {expanded.has(i) ? 'Hide note ▾' : 'Why ask this ▸'}
+                  </button>
+                )}
+              </div>
+
+              <p className="font-semibold leading-relaxed text-neutral-800">
                 {q.question}
               </p>
-            </div>
-            {q.rationale && (
-              <p className="text-neutral-500 leading-[1.9] pl-4 mt-3 italic">
-                {q.rationale}
-              </p>
-            )}
-          </li>
-        ))}
-      </ul>
+
+              {q.rationale && expanded.has(i) && (
+                <p className="rounded-lg bg-primary-50 px-3 py-2 text-xs leading-relaxed text-primary-700">
+                  {q.rationale}
+                </p>
+              )}
+            </li>
+          ))}
+        </ul>
       )}
     </div>
   )
@@ -349,19 +474,17 @@ export default function CvAnalysisPage() {
 
         {/* Two-column body: PDF preview (2/3) + analysis cards (1/3) */}
         <div className="grid grid-cols-3 gap-5 items-start">
-          <div className="col-span-2 flex flex-col gap-5">
+          <div className="col-span-2">
             <PdfPreview src={cv_path} label="CV / Resume" />
-
-            <QuestionCard
-              items={interview_questions}
-              emptyText="No interview questions suggested."
-            />
           </div>
 
           <div className="flex flex-col gap-4">
-            {/* Position Fit Summary */}
+            {/* Position Fit Summary - verdict chip first, bars as detail */}
             <div className={card.sm}>
-              <h3 className="text-lg font-bold text-neutral-800 mb-3">Position Fit Summary</h3>
+              <div className="mb-3 flex items-center justify-between gap-2">
+                <h3 className="text-lg font-bold text-neutral-800">Position Fit Summary</h3>
+                <FitVerdict positionFit={position_fit} />
+              </div>
               <div className="flex flex-col gap-3">
                 {FIT_METRICS.map((m) => (
                   <ScoreBar
@@ -374,22 +497,15 @@ export default function CvAnalysisPage() {
               </div>
             </div>
 
-            <BulletCard
-              title="Key Strengths"
-              items={key_strengths}
-              emptyText="No strengths identified."
+            <InsightTabs
+              strengths={key_strengths}
+              improvements={improvements}
+              inconsistencies={inconsistencies}
             />
 
-            <BulletCard
-              title="Improvements"
-              items={improvements}
-              emptyText="No improvement areas identified."
-            />
-
-            <BulletCard
-              title="Inconsistencies"
-              items={inconsistencies}
-              emptyText="No inconsistencies found."
+            <QuestionCard
+              items={interview_questions}
+              emptyText="No interview questions suggested."
             />
           </div>
         </div>
