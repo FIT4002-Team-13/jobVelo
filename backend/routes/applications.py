@@ -234,6 +234,20 @@ async def list_applications(
         for i in interviews
     }
 
+    # CV-analysis status per application, so the list's CV cell can link to
+    # the analysis report (completed) or show a progress/failure hint
+    # instead of the raw PDF. _effective_status also downgrades stale
+    # "processing" docs, matching the by-jobcand endpoint.
+    from routes.cv_analysis import _effective_status
+
+    link_ids = [str(jc["_id"]) for jc in matched_job_candidates]
+    analysis_status_map: dict[str, str] = {}
+    async for a in db.cv_analyses.find(
+        {"jobcand_id": {"$in": link_ids}},
+        {"jobcand_id": 1, "status": 1, "error": 1, "created_at": 1},
+    ):
+        analysis_status_map[a["jobcand_id"]], _ = _effective_status(a)
+
     rows: list[dict[str, Any]] = []
 
     for jc in matched_job_candidates:
@@ -259,6 +273,8 @@ async def list_applications(
                 "status": (interview.get("intv_status") or "not_scheduled").replace("_", " ").upper() if interview else "NOT SCHEDULED",
                 "cv_url": candidate.get("cand_cv_url"),
                 "cover_letter_url": candidate.get("cand_cover_letter_url"),
+                # None when no analysis exists for this application yet.
+                "cv_analysis_status": analysis_status_map.get(str(jc["_id"])),
                 "score": _safe_avg_score(jc),
                 "interview_datetime": interview.get("intv_date_time") if interview else None,
                 "interviewer": interviewer_name,

@@ -82,6 +82,11 @@ async def ensure_indexes() -> None:
     await db.job_candidates.create_index("job_id")
     await db.job_candidates.create_index("cand_id")
 
+    # CV analyses - one per job-candidate link. Unique on jobcand_id so the
+    # cache lookup in POST /api/cv-analysis is O(1) and we can't end up with
+    # two analyses pointing at the same link.
+    await db.cv_analyses.create_index("jobcand_id", unique=True)
+    await db.cv_analyses.create_index("comp_id")  # scope by company
     # Interviews - common lookups by candidate and job.
     await db.interviews.create_index("cand_id")
     await db.interviews.create_index("job_id")

@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+import uuid
 from datetime import datetime, timezone
 
 from bson import ObjectId
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 
 from database import get_db
 from dependencies import get_current_comp_id
@@ -13,6 +14,7 @@ from models.candidate import (
     CandidateOut,
     CandidateUpdate,
 )
+from services.file_storage import delete_upload, save_upload
 
 router = APIRouter(prefix="/api/candidates", tags=["candidates"])
 
@@ -460,3 +462,68 @@ async def update_candidate(
         )
 
     return candidate_helper(updated_candidate)
+
+
+@router.post("/{cand_id}/cover-letter", response_model=CandidateOut)
+async def upload_cover_letter(
+    cand_id: str,
+    cover_letter: UploadFile = File(..., description="Cover letter PDF"),
+    comp_id: ObjectId = Depends(get_current_comp_id),
+) -> CandidateOut:
+    """Attach (or replace) a candidate's cover letter as a standalone upload.
+
+    The CV path goes through /api/cv-analysis because a CV always triggers an
+    analysis; a cover letter on its own doesn't, so this endpoint just stores
+    the file and points `cand_cover_letter_url` at it. When a CV and cover
+    letter are uploaded together, the analysis route sets the URL instead.
+    """
+    db = get_db()
+
+    if not ObjectId.is_valid(cand_id):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid candidate id.",
+        )
+
+    candidate = await db.candidates.find_one(
+        {"_id": ObjectId(cand_id), "comp_id": comp_id}
+    )
+    if not candidate:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Candidate not found.",
+        )
+
+    if cover_letter.content_type != "application/pdf":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Cover letter must be a PDF (got {cover_letter.content_type or 'unknown'}).",
+        )
+
+    path = await save_upload(
+        cover_letter,
+        subdir="candidate_docs",
+        key=f"{cand_id}-cl-{uuid.uuid4().hex[:8]}",
+    )
+
+    # Best-effort cleanup of the previous standalone upload. Files under
+    # cv_analyses/ are owned by an analysis document (deleted with it), so
+    # only files this endpoint created (candidate_docs/) are removed here.
+    old_url = candidate.get("cand_cover_letter_url") or ""
+    old_prefix = "/api/files/candidate_docs/"
+    if old_url.startswith(old_prefix):
+        delete_upload(old_url.removeprefix("/api/files/"))
+
+    now = datetime.now(timezone.utc)
+    await db.candidates.update_one(
+        {"_id": candidate["_id"]},
+        {
+            "$set": {
+                "cand_cover_letter_url": f"/api/files/{path}",
+                "cand_updated_at": now,
+            }
+        },
+    )
+
+    updated = await db.candidates.find_one({"_id": candidate["_id"]})
+    return candidate_helper(updated)

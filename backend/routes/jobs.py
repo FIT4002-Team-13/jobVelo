@@ -384,8 +384,13 @@ async def list_candidates_for_job(
     if not links:
         return []
 
-    # Bulk-fetch candidates.
-    cand_oids = [ObjectId(link["cand_id"]) for link in links if ObjectId.is_valid(link.get("cand_id", ""))]
+    # Bulk fetch the candidates referenced by the links. Skip any invalid
+    # cand_ids defensively so one bad row can't fail the whole query.
+    cand_oids = [
+        ObjectId(link["cand_id"])
+        for link in links
+        if ObjectId.is_valid(link.get("cand_id", ""))
+    ]
     cand_docs = await db.candidates.find({"_id": {"$in": cand_oids}}).to_list(length=500)
     cands_by_id = {str(c["_id"]): c for c in cand_docs}
 
