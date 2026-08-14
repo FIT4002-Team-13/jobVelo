@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { flex, card, button, badge } from "../styles/layout";
 import { useAuth } from "../lib/AuthContext.jsx";
+import { authedFetch } from "../lib/api.js";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -672,13 +673,15 @@ export default function InterviewPage() {
   useEffect(() => {
     const interval = setInterval(() => {
       if (!isCompleted && transcriptRef.current.length) {
-        fetch(`/api/interviews/${id}`, {
+        authedFetch(`/api/interviews/${id}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             intv_transcript: transcriptRef.current,
             intv_duration_seconds: timerRef.current,
           }),
+        }).then((r) => {
+          if (!r.ok) console.error("Autosave failed:", r.status);
         });
       }
     }, 30000);
@@ -706,8 +709,11 @@ export default function InterviewPage() {
         localStorage.removeItem(`transcript-${id}`);
       }
     }
-    fetch(`/api/interviews/${id}`)
-      .then((r) => r.json())
+    authedFetch(`/api/interviews/${id}`)
+      .then((r) => {
+        if (!r.ok) throw new Error(`Failed to load interview: ${r.status}`);
+        return r.json();
+      })
       .then((data) => {
         const serverTranscript = Array.isArray(data.intv_transcript)
           ? data.intv_transcript
@@ -736,20 +742,24 @@ export default function InterviewPage() {
 
         if (data.job_id) {
           setJobId(data.job_id);
-          fetch(`/api/jobs/${data.job_id}`)
-            .then((r) => r.json())
+          authedFetch(`/api/jobs/${data.job_id}`)
+            .then((r) => (r.ok ? r.json() : Promise.reject(new Error(r.status))))
             .then((job) => { if (job.title) setCandidateRole(job.title); })
-            .catch(() => {});
+            .catch((err) => console.error("Failed to load job:", err));
         }
         if (data.cand_id) {
-          fetch(`/api/candidates/${data.cand_id}`)
-            .then((r) => r.json())
+          authedFetch(`/api/candidates/${data.cand_id}`)
+            .then((r) => (r.ok ? r.json() : Promise.reject(new Error(r.status))))
             .then((cand) => {
               if (cand.cand_full_name) setCandidateName(cand.cand_full_name);
               if (cand.cand_cv_url) setCvUrl(cand.cand_cv_url);
             })
-            .catch(() => {});
+            .catch((err) => console.error("Failed to load candidate:", err));
         }
+      })
+      .catch((err) => {
+        console.error("Failed to load interview:", err);
+        setStatus("Failed to load interview");
       });
   }, [id]);
 
@@ -758,7 +768,7 @@ export default function InterviewPage() {
       return;
     }
 
-    await fetch(`/api/interviews/${id}`, {
+    const res = await authedFetch(`/api/interviews/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -767,6 +777,11 @@ export default function InterviewPage() {
         intv_duration_seconds: timer,
       }),
     });
+    if (!res.ok) {
+      console.error("Failed to complete interview:", res.status);
+      setStatus("Failed to complete interview");
+      return;
+    }
     setIsCompleted(true);
     setStatus("Interview completed");
     localStorage.removeItem(`transcript-${id}`);
