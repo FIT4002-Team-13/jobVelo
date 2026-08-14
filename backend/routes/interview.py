@@ -3,9 +3,10 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from bson import ObjectId
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
 
 from database import get_db
+from dependencies import require_role
 from models.interview import InterviewCreate, InterviewOut, InterviewUpdate
 
 router = APIRouter(prefix="/api/interviews", tags=["interviews"])
@@ -34,11 +35,17 @@ def interview_helper(interview: dict) -> InterviewOut:
     status_code=status.HTTP_201_CREATED,
     summary="Create an interview session.",
 )
-async def create_interview(payload: InterviewCreate) -> InterviewOut:
+async def create_interview(
+    payload: InterviewCreate,
+    _user: dict = Depends(require_role("interviewer")),
+) -> InterviewOut:
     """Insert a new interview document.
 
     The interview is created first, and interviewer-user links are created
-    separately through /api/interview-users.
+    separately through /api/interview-users. Starting an interview is
+    interviewer-only - other roles (admin, recruiter, hiring_manager) can
+    still view interview data via the GET endpoints below, just not create
+    a new session.
     """
     db = get_db()
     now = datetime.now(timezone.utc)
