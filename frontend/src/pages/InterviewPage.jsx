@@ -119,9 +119,14 @@ function downsampleBuffer(buffer, inputSampleRate, outputSampleRate = 16000) {
 
 // ── Sub-components ────────────────────────────────────────────────────────────
 
-function TranscriptEntry({ entry }) {
+function TranscriptEntry({ entry, highlighted }) {
   return (
-    <div className={`${flex.row} gap-3 py-2 group`}>
+    <div
+      id={`transcript-entry-${entry.id}`}
+      className={`${flex.row} gap-3 py-2 group rounded-lg transition-colors ${
+        highlighted ? "bg-coral-50 ring-1 ring-coral-200" : ""
+      }`}
+    >
       <div
         className={`w-8 h-8 rounded-pill ${
           flex.rowCenter
@@ -237,6 +242,58 @@ function QuestionCard({ q }) {
   );
 }
 
+// A live nudge for a question the interviewer just asked, not a suggestion
+// for what to ask next (that's QuestionCard/Suggested Questions) — kept
+// visually distinct (coral, dismissible, stacked) so the two don't blur.
+function BiasWarningBanner({ warning, onDismiss, onJumpTo }) {
+  return (
+    <div className="flex items-start gap-3 bg-coral-50 border border-coral-200 rounded-xl px-4 py-3">
+      <svg
+        className="shrink-0 text-coral-500 mt-0.5"
+        width="16"
+        height="16"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+        <line x1="12" y1="9" x2="12" y2="13" />
+        <line x1="12" y1="17" x2="12.01" y2="17" />
+      </svg>
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-semibold text-coral-700">
+          Possibly biased question{warning.category ? ` — ${warning.category}` : ""}
+        </p>
+        <button
+          onClick={onJumpTo}
+          className="text-xs text-coral-600 italic mt-0.5 text-left hover:underline"
+          title="Jump to this line in the transcript"
+        >
+          &ldquo;{warning.quote}&rdquo;
+        </button>
+        {warning.reason && (
+          <p className="text-xs text-coral-700 mt-1">{warning.reason}</p>
+        )}
+        {warning.suggestion && (
+          <p className="text-xs text-neutral-600 mt-1">
+            <span className="font-medium">Try instead:</span> {warning.suggestion}
+          </p>
+        )}
+      </div>
+      <button
+        onClick={onDismiss}
+        aria-label="Dismiss"
+        className="shrink-0 text-coral-400 hover:text-coral-700 text-lg leading-none"
+      >
+        ×
+      </button>
+    </div>
+  );
+}
+
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function InterviewPage() {
@@ -258,6 +315,12 @@ export default function InterviewPage() {
   const [scores] = useState(MOCK_SCORES);
   const [questions] = useState(MOCK_QUESTIONS);
   const [timer, setTimer] = useState(0);
+  // Live bias nudges for questions the interviewer just asked. Capped at 3
+  // and independently dismissible - Deepgram can finalize two flaggable
+  // segments close together, so a single "latest only" slot would silently
+  // drop the first one before it's read.
+  const [biasWarnings, setBiasWarnings] = useState([]);
+  const [highlightedEntryId, setHighlightedEntryId] = useState(null);
 
   const transcriptRef = useRef([]);
   const timerRef = useRef(0);
@@ -317,6 +380,34 @@ export default function InterviewPage() {
     }
   }
 
+  function addBiasWarning(warning) {
+    setBiasWarnings((prev) =>
+      [...prev, { ...warning, id: `bias-${Date.now()}-${Math.random()}` }].slice(-3)
+    );
+  }
+
+  function dismissBiasWarning(warningId) {
+    setBiasWarnings((prev) => prev.filter((w) => w.id !== warningId));
+  }
+
+  // There's no shared id between backend transcript messages and frontend
+  // transcript entries - matching on the echoed quote text against the
+  // interviewer's own lines is the cheapest correct way to find "where did
+  // I just say that" without adding new backend state.
+  function jumpToTranscriptEntry(quote) {
+    const interviewerLabel = user?.full_name || "Interviewer";
+    const match = [...transcriptRef.current]
+      .reverse()
+      .find((entry) => entry.speaker === interviewerLabel && entry.text === quote);
+    if (!match) return;
+
+    document
+      .getElementById(`transcript-entry-${match.id}`)
+      ?.scrollIntoView({ behavior: "smooth", block: "center" });
+    setHighlightedEntryId(match.id);
+    setTimeout(() => setHighlightedEntryId((cur) => (cur === match.id ? null : cur)), 3000);
+  }
+
   function togglePause() {
     if (isPaused) {
       // Unpause: restore the start time so timer continues from where it was
@@ -334,10 +425,10 @@ export default function InterviewPage() {
     isPausedRef.current = isPaused;
   }, [isPaused]);
 
-  function createTranscriptionSocket(speaker, partialRef) {
+  function createTranscriptionSocket(speaker, partialRef, role) {
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     const socket = new WebSocket(
-      `${protocol}//${window.location.host}/api/realtime/transcribe`
+      `${protocol}//${window.location.host}/api/realtime/transcribe?role=${role}`
     );
     socket.binaryType = "arraybuffer";
 
@@ -347,6 +438,8 @@ export default function InterviewPage() {
         const data = JSON.parse(event.data);
         if (data.type === "transcript" && typeof data.text === "string") {
           appendTranscript(data.text, Boolean(data.is_final), speaker, partialRef);
+        } else if (data.type === "bias_warning" && typeof data.quote === "string") {
+          addBiasWarning(data);
         }
       } catch (err) {
         console.error("Failed to parse transcription event", err);
@@ -363,8 +456,10 @@ export default function InterviewPage() {
     const candidateLabel = candidateName || "Candidate";
 
     try {
-      // Mic socket — always created
-      wsRef.current = createTranscriptionSocket(interviewerLabel, partialEntryRef);
+      // Mic socket — always created. Tagged role="interviewer" so the
+      // backend knows this connection carries the interviewer's own speech
+      // and can run bias-checks on it (never on the candidate/display side).
+      wsRef.current = createTranscriptionSocket(interviewerLabel, partialEntryRef, "interviewer");
       setStatus("Requesting screen access...");
 
       const displayStream = await navigator.mediaDevices.getDisplayMedia({
@@ -405,7 +500,7 @@ export default function InterviewPage() {
       // Display audio processor → separate WebSocket (Candidate)
       // macOS getDisplayMedia returns video-only by default — skip if no audio tracks.
       if (displayStream.getAudioTracks().length > 0) {
-        wsDisplayRef.current = createTranscriptionSocket(candidateLabel, displayPartialEntryRef);
+        wsDisplayRef.current = createTranscriptionSocket(candidateLabel, displayPartialEntryRef, "candidate");
 
         const displaySource = audioContext.createMediaStreamSource(displayStream);
         const displayProcessor = audioContext.createScriptProcessor(4096, 1, 1);
@@ -767,6 +862,18 @@ export default function InterviewPage() {
               {transcriptVisible ? "Hide" : "Show"}
             </button>
           </div>
+          {biasWarnings.length > 0 && (
+            <div className={`${flex.col} gap-2 px-6 pt-4 shrink-0`}>
+              {biasWarnings.map((warning) => (
+                <BiasWarningBanner
+                  key={warning.id}
+                  warning={warning}
+                  onDismiss={() => dismissBiasWarning(warning.id)}
+                  onJumpTo={() => jumpToTranscriptEntry(warning.quote)}
+                />
+              ))}
+            </div>
+          )}
           {transcriptVisible && (
             <div
               className="flex-1 overflow-y-auto px-6 py-3 scrollbar-primary scroll-auto"
@@ -778,7 +885,11 @@ export default function InterviewPage() {
                 </p>
               ) : (
                 transcript.map((entry) => (
-                  <TranscriptEntry key={entry.id} entry={entry} />
+                  <TranscriptEntry
+                    key={entry.id}
+                    entry={entry}
+                    highlighted={entry.id === highlightedEntryId}
+                  />
                 ))
               )}
             </div>
