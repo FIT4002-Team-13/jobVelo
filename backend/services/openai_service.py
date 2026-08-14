@@ -2,6 +2,7 @@
 
 Used during a live interview to:
   • generate the next interview question from the running transcript
+  • flag a biased/inappropriate interviewer question, with a rephrasing
   • summarise the interview so far
   • score the candidate against a job role
 
@@ -66,6 +67,60 @@ async def generate_next_question(
         max_tokens=120,
     )
     return (res.choices[0].message.content or "").strip()
+
+
+async def check_bias(question: str) -> dict[str, Any]:
+    """Flag a single interviewer utterance if it risks being a biased or
+    legally-risky interview question (age, marital/family status, pregnancy,
+    religion, national origin, disability, race, sexual orientation, etc.).
+
+    Runs on every finalized interviewer utterance during a live interview, so
+    this must be fast (uses settings.openai_bias_model, the same fast/cheap
+    tier as realtime question generation) and must NEVER raise - a bias-check
+    outage (rate limit, bad JSON, missing API key) should never break live
+    transcription. Any failure fails open: returns "not flagged".
+    """
+    fallback = {"flagged": False, "category": None, "reason": None, "suggestion": None}
+    if not question.strip():
+        return fallback
+
+    try:
+        res = await _get_client().chat.completions.create(
+            model=settings.openai_bias_model,
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "You review interview questions for bias and legal risk. "
+                        "Flag a question ONLY if it touches a protected category - "
+                        "age, marital/family status, pregnancy, religion, national "
+                        "origin, disability, race, or sexual orientation - or is "
+                        "otherwise discriminatory or inappropriate for a job "
+                        "interview. Ordinary role-relevant questions (skills, "
+                        "experience, availability, work authorization when asked "
+                        "generically) are NOT flagged. Reply with valid JSON only: "
+                        '{"flagged": bool, "category": string|null, "reason": '
+                        'string|null, "suggestion": string|null}. "reason" is a '
+                        "short explanation of the risk. \"suggestion\" is a neutral, "
+                        "job-relevant rephrasing that gets at the same underlying "
+                        "intent, or null if there isn't a reasonable one."
+                    ),
+                },
+                {"role": "user", "content": question},
+            ],
+            response_format={"type": "json_object"},
+            temperature=0.0,
+            max_tokens=200,
+        )
+        data = json.loads(res.choices[0].message.content or "{}")
+        return {
+            "flagged": bool(data.get("flagged", False)),
+            "category": data.get("category"),
+            "reason": data.get("reason"),
+            "suggestion": data.get("suggestion"),
+        }
+    except Exception:
+        return fallback
 
 
 async def summarise(transcript: str) -> str:
