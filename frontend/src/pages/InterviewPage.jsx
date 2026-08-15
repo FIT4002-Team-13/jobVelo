@@ -245,7 +245,10 @@ export default function InterviewPage() {
   const navigate = useNavigate();
 
   const [transcriptVisible, setTranscriptVisible] = useState(true);
-  const [status, setStatus] = useState("Ready to start screen share");
+  // Status text used to render under the timer — the header no longer
+  // shows it, but we still call setStatus in various places (screen-share
+  // lifecycle, ws events, complete) so log/dev tooling can trace state.
+  const [, setStatus] = useState("Ready to start screen share");
   const [isScreenSharing, setIsScreenSharing] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
   const [isCompleted, setIsCompleted] = useState(false);

@@ -2,13 +2,16 @@ from bson import ObjectId
 from fastapi import APIRouter, Depends, HTTPException
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
-from models.interview_question import SuggestedQuestionsList
-from services.openai_service import generate_interview_questions
-
 from database import get_db
-
-from models.interview_question import ( SimilarQuestion, SimilarQuestionResult )
-from services.openai_service import generate_similar_question
+from models.interview_question import (
+    SimilarQuestion,
+    SimilarQuestionResult,
+    SuggestedQuestionsList,
+)
+from services.openai_service import (
+    generate_interview_questions,
+    generate_similar_question,
+)
 
 router = APIRouter(prefix="/api/interview-questions", tags=["interview_questions"])
 

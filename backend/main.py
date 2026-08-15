@@ -18,6 +18,7 @@ from routes import (
     dashboard,
     files,
     interview,
+    interview_question,
     invitations,
     job_cand,
     jobs,
@@ -25,7 +26,6 @@ from routes import (
     user_interview,
     users,
 )
-from routes import auth, cand, dashboard, files, invitations, job_cand, jobs, users, interview_question
 
 
 @asynccontextmanager

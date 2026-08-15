@@ -11,14 +11,12 @@ them out without coupling to internal state.
 
 from __future__ import annotations
 
-
 import json
 from typing import Any
 
 from openai import AsyncOpenAI
 
 from config import settings
-
 from models.interview_question import SimilarQuestionResult, SuggestedQuestionsList
 
 _client: AsyncOpenAI | None = None
