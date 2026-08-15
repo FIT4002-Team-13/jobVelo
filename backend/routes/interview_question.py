@@ -36,12 +36,10 @@ async def suggest_questions(job_id: str, db: AsyncIOMotorDatabase = Depends(get_
     description = job.get("description", "").strip()
 
     try:
-        question = await generate_interview_questions(
+        return await generate_interview_questions(
             job_title=job.get("title", ""),
             job_description=description,
         )
-
-        return SuggestedQuestionsList.model_validate(question)
 
     except RuntimeError as error:
         #missing OpenAI API key
@@ -52,9 +50,10 @@ async def suggest_questions(job_id: str, db: AsyncIOMotorDatabase = Depends(get_
 
     except Exception as error:
         # Invalid AI output or request failures
+        print("QUESTION GENERATION ERROR:", repr(error))
         raise HTTPException(
             status_code=502,
-            detail="Question generation failed",
+            detail=f"Question generation failed: {error}",
         ) from error
 
 @router.post("/{job_id}/similar", response_model=SimilarQuestionResult)
