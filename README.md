@@ -74,6 +74,8 @@ The app boots without the API keys — the relevant services raise a clear error
 ## Development after Setup
 ```bash
 cd backend
+. .venv/Scripts/activate     # Windows
+# source .venv/bin/activate  # macOS/Linux
 uvicorn main:app --reload
 ```
 ```bash

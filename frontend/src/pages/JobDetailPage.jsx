@@ -7,7 +7,7 @@ import DeleteCandidateModal from "../components/job-candidate/DeleteCandidateMod
 import { flex, card, badge, form, button, modal, page } from "../styles/layout";
 
 import { useAuth } from "../lib/AuthContext.jsx";
-import { api } from "../lib/api.js";
+import { api, authedFetch } from "../lib/api.js";
 import {
   isEmail,
   isHttpUrl,
@@ -195,7 +195,7 @@ function AddCandidateModal({ jobId, onClose, onAdded }) {
       scheduled_at: form_state.scheduled_at || null,
     };
     try {
-      const res = await fetch(`/api/jobs/${jobId}/candidates`, {
+      const res = await authedFetch(`/api/jobs/${jobId}/candidates`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
@@ -929,8 +929,8 @@ export default function JobDetailPage() {
     async function load() {
       try {
         const [jobRes, candsRes] = await Promise.all([
-          fetch(`/api/jobs/${id}`),
-          fetch(`/api/jobs/${id}/candidates`),
+          authedFetch(`/api/jobs/${id}`),
+          authedFetch(`/api/jobs/${id}/candidates`),
         ]);
         if (!jobRes.ok) throw new Error("Job not found.");
         setJob(await jobRes.json());
@@ -968,7 +968,7 @@ export default function JobDetailPage() {
   async function onConfirmStart() {
     // Resume an existing in-progress or scheduled interview rather than
     // creating a duplicate every time the button is clicked.
-    const existingRes = await fetch(
+    const existingRes = await authedFetch(
       `/api/interviews?cand_id=${startTarget.cand_id}&job_id=${id}`
     );
     if (existingRes.ok) {
@@ -982,7 +982,7 @@ export default function JobDetailPage() {
       }
     }
 
-    const res = await fetch("/api/interviews", {
+    const res = await authedFetch("/api/interviews", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({

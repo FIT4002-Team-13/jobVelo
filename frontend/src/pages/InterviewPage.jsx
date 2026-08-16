@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { flex, card, button, badge } from "../styles/layout";
 import { useAuth } from "../lib/AuthContext.jsx";
+import { authedFetch } from "../lib/api.js";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -662,7 +663,7 @@ export default function InterviewPage() {
     highlightInFlightRef.current = true;
 
     try {
-      const response = await fetch(`/api/interviews/${id}/highlights`, {
+      const response = await authedFetch(`/api/interviews/${id}/highlights`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ transcript: snapshot.slice(-20) }),
@@ -684,7 +685,7 @@ export default function InterviewPage() {
   useEffect(() => {
     const interval = setInterval(() => {
       if (!isCompleted && transcriptRef.current.length) {
-        fetch(`/api/interviews/${id}`, {
+        authedFetch(`/api/interviews/${id}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -725,7 +726,7 @@ export default function InterviewPage() {
         localStorage.removeItem(`transcript-${id}`);
       }
     }
-    fetch(`/api/interviews/${id}`)
+    authedFetch(`/api/interviews/${id}`)
       .then((r) => r.json())
       .then((data) => {
         const serverTranscript = Array.isArray(data.intv_transcript)
@@ -755,13 +756,13 @@ export default function InterviewPage() {
 
         if (data.job_id) {
           setJobId(data.job_id);
-          fetch(`/api/jobs/${data.job_id}`)
+          authedFetch(`/api/jobs/${data.job_id}`)
             .then((r) => r.json())
             .then((job) => { if (job.title) setCandidateRole(job.title); })
             .catch(() => {});
         }
         if (data.cand_id) {
-          fetch(`/api/candidates/${data.cand_id}`)
+          authedFetch(`/api/candidates/${data.cand_id}`)
             .then((r) => r.json())
             .then((cand) => {
               if (cand.cand_full_name) setCandidateName(cand.cand_full_name);
@@ -785,7 +786,7 @@ export default function InterviewPage() {
 
     await runHighlightAnalysis(true);
 
-    await fetch(`/api/interviews/${id}`, {
+    await authedFetch(`/api/interviews/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({

@@ -107,7 +107,7 @@ function JobCard({ job, onEdit, onDelete }) {
     let active = true
     async function load() {
       try {
-        const res = await fetch(`/api/interviews?job_id=${job.id}`)
+        const res = await authedFetch(`/api/interviews?job_id=${job.id}`)
         if (!res.ok) throw new Error('Failed to load interviews')
         const interviews = await res.json()
         if (!active) return

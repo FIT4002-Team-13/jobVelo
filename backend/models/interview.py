@@ -63,17 +63,23 @@ class InterviewUpdate(BaseModel):
 
 
 class InterviewOut(BaseModel):
-    """Public representation of an interview document."""
+    """Public representation of an interview document.
+
+    Some older records legitimately have a null `intv_date_time` or missing
+    timestamps while the interview is still being created / migrated. Those
+    values are tolerated here so the API can still render the candidate page
+    instead of crashing during pydantic validation.
+    """
 
     intv_id: str
     cand_id: str
     job_id: str
-    intv_date_time: datetime
+    intv_date_time: datetime | None = None
     intv_location: str | None = None
     intv_transcript: list[TranscriptEntry] | None = None
     intv_status: InterviewStatus
     intv_duration_seconds: int | None = None
     intv_candidate_report: str | None = None
     intv_interviewer_report: str | None = None
-    intv_created_at: datetime
-    intv_updated_at: datetime
+    intv_created_at: datetime | None = None
+    intv_updated_at: datetime | None = None
