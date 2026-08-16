@@ -13,6 +13,8 @@ from __future__ import annotations
 
 import json
 import re
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
 from openai import AsyncOpenAI
@@ -41,6 +43,39 @@ def _coerce_transcript_entries(transcript: list[dict[str, Any]] | str | None) ->
         speaker = item.get("speaker") or item.get("role") or "Transcript"
         normalized.append({"speaker": str(speaker), "text": str(text)})
     return normalized
+
+
+def _persist_highlight_debug(transcript: list[dict[str, Any]] | str | None, payload: list[dict[str, Any]], limit: int) -> None:
+    """Append the raw/highlight payload to a local JSON file for debugging.
+
+    This intentionally writes to the project root and appends every run so the
+    most recent AI decisions can be inspected during development. The file is
+    disposable and meant to be deleted once the feature is stable.
+    """
+    debug_path = Path(__file__).resolve().parent.parent / "highlighted_transcript_testing.json"
+
+    entry = {
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "limit": limit,
+        "transcript": transcript,
+        "highlights": payload,
+    }
+
+    try:
+        existing: list[dict[str, Any]] = []
+        if debug_path.exists():
+            raw = debug_path.read_text(encoding="utf-8").strip()
+            if raw:
+                parsed = json.loads(raw)
+                if isinstance(parsed, list):
+                    existing = parsed
+                elif isinstance(parsed, dict):
+                    existing = [parsed]
+        existing.append(entry)
+        debug_path.write_text(json.dumps(existing, indent=2, ensure_ascii=False), encoding="utf-8")
+    except Exception:
+        with debug_path.open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps(entry, ensure_ascii=False, default=str) + "\n")
 
 
 def _fallback_highlights(entries: list[dict[str, Any]], limit: int = 5) -> list[dict[str, Any]]:
@@ -208,7 +243,9 @@ async def extract_highlights(
         return []
 
     if not settings.openai_api_key:
-        return _fallback_highlights(entries, limit=limit)
+        fallback = _fallback_highlights(entries, limit=limit)
+        _persist_highlight_debug(transcript, fallback, limit)
+        return fallback
 
     recent_entries = entries[-20:]
     transcript_text = "\n".join(
@@ -256,8 +293,11 @@ async def extract_highlights(
                 importance_value = 3
             cleaned.append({"text": text, "importance": importance_value})
         if cleaned:
+            _persist_highlight_debug(transcript, cleaned, limit)
             return cleaned
     except Exception:
         pass
 
-    return _fallback_highlights(entries, limit=limit)
+    fallback = _fallback_highlights(entries, limit=limit)
+    _persist_highlight_debug(transcript, fallback, limit)
+    return fallback

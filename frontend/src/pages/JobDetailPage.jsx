@@ -751,9 +751,11 @@ function CandidatesTable({
                       <button
                         type="button"
                         disabled={!canStart || hasCompletedInterview}
-                        onClick={() =>
-                          canStart && !hasCompletedInterview && onStartInterview?.(c)
-                        }
+                        onClick={(event) => {
+                          event.preventDefault();
+                          event.stopPropagation();
+                          if (canStart && !hasCompletedInterview) onStartInterview?.(c);
+                        }}
                         className={`${
                           flex.row
                         } gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors whitespace-nowrap ${
@@ -805,7 +807,11 @@ function CandidatesTable({
                       </button>
                       <button
                         type="button"
-                        onClick={() => onDelete?.(c)}
+                        onClick={(event) => {
+                          event.preventDefault();
+                          event.stopPropagation();
+                          onDelete?.(c);
+                        }}
                         title="Remove this candidate from the job"
                         aria-label="Delete candidate"
                         className={`w-7 h-7 ${flex.rowCenter} rounded-lg text-coral-500 hover:bg-coral-50 hover:text-coral-700 transition-colors`}
@@ -966,6 +972,7 @@ export default function JobDetailPage() {
   }
 
   async function onConfirmStart() {
+    console.log("On Confirm Executing....")
     // Resume an existing in-progress or scheduled interview rather than
     // creating a duplicate every time the button is clicked.
     const existingRes = await authedFetch(
