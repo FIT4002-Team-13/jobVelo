@@ -35,6 +35,7 @@ describe('JobDetailPage', () => {
     localStorage.setItem('smartrecruit.auth', JSON.stringify({ token: 'token-123', user: { comp_id: 'company-123' } }))
     global.fetch = vi.fn((url, options = {}) => {
       if (url === '/api/jobs/123') {
+        options;
         return Promise.resolve({
           ok: true,
           json: async () => ({ id: '123', title: 'Senior Engineer', candidates_total: 3 }),

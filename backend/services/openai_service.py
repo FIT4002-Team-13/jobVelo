@@ -12,6 +12,7 @@ them out without coupling to internal state.
 from __future__ import annotations
 
 import json
+import logging
 import re
 from datetime import datetime, timezone
 from pathlib import Path
@@ -22,9 +23,12 @@ from openai import AsyncOpenAI
 from config import settings
 
 _client: AsyncOpenAI | None = None
+logger = logging.getLogger(__name__)
 
 
-def _coerce_transcript_entries(transcript: list[dict[str, Any]] | str | None) -> list[dict[str, Any]]:
+def _coerce_transcript_entries(
+    transcript: list[dict[str, Any]] | str | None,
+) -> list[dict[str, Any]]:
     """Normalise transcript payloads from the UI into a simple list of speaker/text entries."""
     if isinstance(transcript, str):
         entries = [line.strip() for line in transcript.splitlines() if line.strip()]
@@ -45,14 +49,20 @@ def _coerce_transcript_entries(transcript: list[dict[str, Any]] | str | None) ->
     return normalized
 
 
-def _persist_highlight_debug(transcript: list[dict[str, Any]] | str | None, payload: list[dict[str, Any]], limit: int) -> None:
+def _persist_highlight_debug(
+    transcript: list[dict[str, Any]] | str | None,
+    payload: list[dict[str, Any]],
+    limit: int,
+) -> None:
     """Append the raw/highlight payload to a local JSON file for debugging.
 
     This intentionally writes to the project root and appends every run so the
     most recent AI decisions can be inspected during development. The file is
     disposable and meant to be deleted once the feature is stable.
     """
-    debug_path = Path(__file__).resolve().parent.parent / "highlighted_transcript_testing.json"
+    debug_path = (
+        Path(__file__).resolve().parent.parent / "highlighted_transcript_testing.json"
+    )
 
     entry = {
         "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -72,7 +82,9 @@ def _persist_highlight_debug(transcript: list[dict[str, Any]] | str | None, payl
                 elif isinstance(parsed, dict):
                     existing = [parsed]
         existing.append(entry)
-        debug_path.write_text(json.dumps(existing, indent=2, ensure_ascii=False), encoding="utf-8")
+        debug_path.write_text(
+            json.dumps(existing, indent=2, ensure_ascii=False), encoding="utf-8"
+        )
     except Exception:
         with debug_path.open("a", encoding="utf-8") as fh:
             fh.write(json.dumps(entry, ensure_ascii=False, default=str) + "\n")
@@ -83,7 +95,9 @@ def _canonicalize_highlight_text(text: str) -> str:
     return re.sub(r"\s+", " ", re.sub(r"[^a-z0-9]+", " ", text.lower())).strip()
 
 
-def _dedupe_highlights(highlights: list[dict[str, Any]], limit: int = 5) -> list[dict[str, Any]]:
+def _dedupe_highlights(
+    highlights: list[dict[str, Any]], limit: int = 5
+) -> list[dict[str, Any]]:
     """Keep only the first occurrence of each repeated highlight phrase."""
     unique: list[dict[str, Any]] = []
     seen: set[str] = set()
@@ -113,7 +127,9 @@ def _dedupe_highlights(highlights: list[dict[str, Any]], limit: int = 5) -> list
     return unique
 
 
-def _fallback_highlights(entries: list[dict[str, Any]], limit: int = 5) -> list[dict[str, Any]]:
+def _fallback_highlights(
+    entries: list[dict[str, Any]], limit: int = 5
+) -> list[dict[str, Any]]:
     """Generate deterministic highlights when OpenAI is unavailable or errors."""
     if not entries:
         return []
@@ -148,11 +164,17 @@ def _fallback_highlights(entries: list[dict[str, Any]], limit: int = 5) -> list[
             if not clean:
                 continue
             lowered = clean.lower()
-            if any(term in lowered for term in primary_terms) or any(char.isdigit() for char in clean):
+            if any(term in lowered for term in primary_terms) or any(
+                char.isdigit() for char in clean
+            ):
                 candidates.append(clean)
 
     if not candidates:
-        candidates = [str(entry.get("text") or "").strip() for entry in entries[:limit] if entry.get("text")]
+        candidates = [
+            str(entry.get("text") or "").strip()
+            for entry in entries[:limit]
+            if entry.get("text")
+        ]
 
     highlights: list[dict[str, Any]] = []
     seen: set[str] = set()
@@ -252,7 +274,10 @@ async def score(transcript: str, job_title: str | None = None) -> dict[str, Any]
     res = await _get_client().chat.completions.create(
         model=settings.openai_analysis_model,
         messages=[
-            {"role": "system", "content": "You score interview candidates. Reply with valid JSON only."},
+            {
+                "role": "system",
+                "content": "You score interview candidates. Reply with valid JSON only.",
+            },
             {
                 "role": "user",
                 "content": (
@@ -304,11 +329,9 @@ async def extract_highlights(
                         "only the most important parts of a candidate's response in real time.\n\n"
                         "You extract key moments from a live interview transcript. "
                         "Return concise phrases the interviewer should notice, with a 1-5 importance score. "
-                        
                         "A highlight must be genuinely useful to an interviewer making a hiring "
                         "assessment. Prioritise information that provides concrete evidence about "
                         "the candidate's suitability for the role.\n\n"
-
                         "HIGH-VALUE HIGHLIGHTS include:\n"
                         "- Specific achievements, results, metrics, or outcomes\n"
                         "- Direct evidence of skills or experience required for the role\n"
@@ -318,7 +341,6 @@ async def extract_highlights(
                         "- Important constraints or practical information explicitly stated by "
                         "the candidate\n"
                         "- Strong positive evidence or significant concerns about the candidate's answer\n\n"
-
                         "DO NOT highlight:\n"
                         "- Generic or expected statements\n"
                         "- Filler or conversational language\n"
@@ -329,17 +351,14 @@ async def extract_highlights(
                         "- Normal conversational responses\n"
                         "- Statements that are only mildly interesting\n\n"
                         "- Single characters or words, minimum two word phrases"
-
                         "Be highly selective. It is better to return no highlights than to highlight "
                         "something that is not genuinely important. Most responses should produce "
                         "0-2 highlights. Only return more than 2 when the response contains several "
                         "clearly distinct and highly important points.\n\n"
-
                         "The highlighted text must be an exact substring from the transcript. "
                         "Do not rewrite, paraphrase, or invent text.\n\n"
-
                         "Return valid JSON only in the shape: "
-                        "{\"highlights\": [{\"text\": \"...\", \"importance\": ...}]}"
+                        '{"highlights": [{"text": "...", "importance": ...}]}'
                     ),
                 },
                 {
@@ -351,7 +370,7 @@ async def extract_highlights(
                         f"Role requirements:\n{job_requirements}\n\n"
                         f"Transcript:\n{transcript_text}"
                     ),
-                }
+                },
             ],
             response_format={"type": "json_object"},
             temperature=0.2,
@@ -364,7 +383,7 @@ async def extract_highlights(
             _persist_highlight_debug(transcript, cleaned, limit)
             return cleaned
     except Exception:
-        pass
+        logger.exception("Failed to generate interview highlights")
 
     fallback = _fallback_highlights(entries, limit=limit)
     _persist_highlight_debug(transcript, fallback, limit)
