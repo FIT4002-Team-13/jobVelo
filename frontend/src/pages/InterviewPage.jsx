@@ -246,9 +246,13 @@ function QuestionCard({ q }) {
 // A live nudge for a question the interviewer just asked, not a suggestion
 // for what to ask next (that's QuestionCard/Suggested Questions) — kept
 // visually distinct (coral, dismissible, stacked) so the two don't blur.
-function BiasWarningBanner({ warning, onDismiss, onJumpTo }) {
+function BiasWarningBanner({warning, onDismiss, onJumpTo, isLatest}) {
+  const [expanded, setExpanded] = useState(isLatest);
+
+  useEffect(() => {setExpanded(isLatest)}, [isLatest]);
+
   return (
-    <div className="flex items-start gap-3 bg-coral-50 border border-coral-200 rounded-xl px-4 py-3">
+    <div className="flex shrink-0 items-start gap-3 bg-coral-50 border border-coral-200 rounded-xl px-4 py-3">
       <svg
         className="shrink-0 text-coral-500 mt-0.5"
         width="16"
@@ -264,26 +268,65 @@ function BiasWarningBanner({ warning, onDismiss, onJumpTo }) {
         <line x1="12" y1="9" x2="12" y2="13" />
         <line x1="12" y1="17" x2="12.01" y2="17" />
       </svg>
+
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-semibold text-coral-700">
-          Possibly biased question{warning.category ? ` — ${warning.category}` : ""}
-        </p>
         <button
-          onClick={onJumpTo}
-          className="text-xs text-coral-600 italic mt-0.5 text-left hover:underline"
-          title="Jump to this line in the transcript"
+          onClick={() => setExpanded((open) => !open)}
+          aria-expanded={expanded}
+          aria-label={
+            expanded ? "Collapse bias warning" : "Expand bias warning"
+          }
+          className="flex w-full items-center justify-between gap-2 text-left"
         >
-          &ldquo;{warning.quote}&rdquo;
-        </button>
-        {warning.reason && (
-          <p className="text-xs text-coral-700 mt-1">{warning.reason}</p>
-        )}
-        {warning.suggestion && (
-          <p className="text-xs text-neutral-600 mt-1">
-            <span className="font-medium">Try instead:</span> {warning.suggestion}
+          <p className="text-sm font-semibold text-coral-700">
+            Possibly biased question
+            {warning.category ? ` — ${warning.category}` : ""}
           </p>
+
+          <svg
+            className={`shrink-0 text-coral-500 transition-transform ${
+              expanded ? "rotate-180" : ""
+            }`}
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <polyline points="6 9 12 15 18 9" />
+          </svg>
+        </button>
+
+        {expanded && (
+          <>
+            <button
+              onClick={onJumpTo}
+              className="text-xs text-coral-600 italic mt-0.5 text-left hover:underline"
+              title="Jump to this line in the transcript"
+            >
+              &ldquo;{warning.quote}&rdquo;
+            </button>
+
+            {warning.reason && (
+              <p className="text-xs text-coral-700 mt-1">
+                {warning.reason}
+              </p>
+            )}
+
+            {warning.suggestion && (
+              <p className="text-xs text-neutral-600 mt-1">
+                <span className="font-medium">Try instead:</span>{" "}
+                {warning.suggestion}
+              </p>
+            )}
+          </>
         )}
       </div>
+
+
       <button
         onClick={onDismiss}
         aria-label="Dismiss"
@@ -857,11 +900,9 @@ export default function InterviewPage() {
         className={`flex-1 ${flex.row} gap-6 p-6 overflow-hidden items-stretch`}
       >
         {/* Left — Live Transcription */}
-        <div
-          className={`${card.base} flex flex-col w-[48%] overflow-hidden p-0`}
-        >
+        <div className={`${card.base} relative isolate flex flex-col w-[48%] overflow-hidden p-0 pt-3`}>
           <div
-            className={`${flex.rowBetween} px-6 pt-5 pb-4 border-b border-neutral-100 shrink-0`}
+            className={`${flex.rowBetween} px-6 pt-1 pb-1 border-b border-neutral-100 shrink-0`}
           >
             <span className="text-base font-semibold text-neutral-800">
               Live Transcription
@@ -878,11 +919,12 @@ export default function InterviewPage() {
             </button>
           </div>
           {biasWarnings.length > 0 && (
-            <div className={`${flex.col} gap-2 px-6 pt-4 shrink-0`}>
-              {biasWarnings.map((warning) => (
+            <div className={`${flex.col} gap-2 absolute top-12 bottom-0 left-0 right-0 z-50 overflow-y-auto px-6 pt-4 pb-6 scrollbar-primary`}>
+              {biasWarnings.map((warning, index) => (
                 <BiasWarningBanner
                   key={warning.id}
                   warning={warning}
+                  isLatest={index === biasWarnings.length - 1}
                   onDismiss={() => dismissBiasWarning(warning.id)}
                   onJumpTo={() => jumpToTranscriptEntry(warning.quote)}
                 />
@@ -891,7 +933,7 @@ export default function InterviewPage() {
           )}
           {transcriptVisible && (
             <div
-              className="flex-1 overflow-y-auto px-6 py-3 scrollbar-primary scroll-auto"
+              className="flex-1 min-h-[200px] overflow-y-auto px-6 py-3 scrollbar-primary scroll-auto"
               ref={transcriptContainerRef}
             >
               {transcript.length === 0 ? (
@@ -910,7 +952,7 @@ export default function InterviewPage() {
             </div>
           )}
           {isScreenSharing && (
-            <div className="shrink-0 border-t border-neutral-100 pt-4 px-6 pb-4">
+            <div className="relative z-0 shrink-0 border-t border-neutral-100 pt-4 px-6 pb-4">
               <p className="text-xs text-neutral-500 mb-2 font-medium">
                 Screen Share
               </p>
@@ -918,7 +960,7 @@ export default function InterviewPage() {
                 ref={videoRef}
                 autoPlay
                 muted
-                className="w-full h-40 bg-neutral-900 rounded-lg object-cover"
+                className="relative z-0 w-full h-40 bg-neutral-900 rounded-lg object-cover"
               />
             </div>
           )}
