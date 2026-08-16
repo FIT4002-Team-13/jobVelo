@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { flex, form as f, button, modal } from '../../styles/layout'
 import { useAuth } from '../../lib/AuthContext.jsx'
 import { toPositiveInt, parseSalary } from '../../lib/validators.js'
-import { authedFetch } from '../lib/api'
+import { authedFetch } from '../../lib/api'
 
 // Field length caps - mirror the backend Pydantic limits.
 const TITLE_MAX = 120
