@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { modal, button } from '../../styles/layout'
-
+import { authedFetch } from '../lib/api'
 /**
  * Confirmation dialog for removing a candidate from a job.
  *
@@ -26,7 +26,7 @@ export default function DeleteCandidateModal({ candidate, jobId, onClose, onDele
     setDeleting(true)
     setError(null)
     try {
-      const res = await fetch(`/api/jobs/${jobId}/candidates/${candidate.id}`, {
+      const res = await authedFetch(`/api/jobs/${jobId}/candidates/${candidate.id}`, {
         method: 'DELETE',
       })
       // 204 No Content is the success case; anything else is an error we surface.
