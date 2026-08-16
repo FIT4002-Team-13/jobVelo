@@ -13,6 +13,21 @@ export class ApiError extends Error {
   }
 }
 
+// Drop-in replacement for window.fetch that injects the Bearer token from
+// authStore. Takes the URL EXACTLY as you'd pass to fetch (e.g.
+// "/api/jobs") and returns the raw Response, so call sites that do their
+// own res.ok / res.json() handling keep working unchanged - the only edit
+// needed is `fetch(` → `authedFetch(`.
+//
+// Every data endpoint is tenant-scoped server-side now (comp_id from the
+// JWT), so without this header those requests 401.
+export function authedFetch(url, init = {}) {
+  const token = getToken()
+  const headers = { ...(init.headers || {}) }
+  if (token) headers.Authorization = `Bearer ${token}`
+  return fetch(url, { ...init, headers })
+}
+
 // Auto-detects JSON vs FormData bodies:
 // - plain object → JSON encoded with Content-Type: application/json
 // - FormData     → sent raw (browser sets the multipart boundary header)
@@ -73,6 +88,48 @@ export const api = {
   // chooses one at signup. role: 'recruiter' | 'interviewer' | 'hiring_manager'.
   createInvitation: (role)    => request('/invitations',       { method: 'POST', body: { role }, auth: true }),
   deleteInvitation: (id)      => request(`/invitations/${id}`, { method: 'DELETE', auth: true }),
+
+  // ---------- jobs -------------------------------------------------------
+  // List jobs, optionally scoped to a company.
+  listJobs: (params = {}) => {
+    const qs = new URLSearchParams(
+      Object.entries(params).filter(([, v]) => v !== undefined && v !== null && v !== '')
+    ).toString()
+    return request(`/jobs${qs ? `?${qs}` : ''}`, { auth: true })
+  },
+
+  // ---------- job-candidate links ---------------------------------------
+  // Flat enumeration with job_title + cand_full_name pre-joined, used by
+  // the CV Analyser picker. Each row also carries `has_analysis`.
+  listJobCandidates: (params = {}) => {
+    const qs = new URLSearchParams(
+      Object.entries(params).filter(([, v]) => v !== undefined && v !== null && v !== '')
+    ).toString()
+    return request(`/job-candidates${qs ? `?${qs}` : ''}`, { auth: true })
+  },
+
+  // ---------- CV analysis ----------------------------------------------
+  // POST is multipart now: { jobcand_id, cv?, cover_letter? }. The CV is
+  // optional when a cached analysis already exists for the jobcand_id -
+  // the backend short-circuits and returns the cached record.
+  analyseCv: (formData) => request('/cv-analysis', { method: 'POST', body: formData, auth: true }),
+  // Pure read - returns the existing analysis or throws ApiError(404).
+  getCvAnalysisByJobcand: (jobcandId) =>
+    request(`/cv-analysis/by-jobcand/${encodeURIComponent(jobcandId)}`, { auth: true }),
+  // Removes the record + PDFs. Lets the user upload a different CV.
+  deleteCvAnalysis: (analysisId) =>
+    request(`/cv-analysis/${encodeURIComponent(analysisId)}`, { method: 'DELETE', auth: true }),
+
+  // ---------- candidate documents ---------------------------------------
+  // Standalone cover-letter upload (multipart: { cover_letter }). Used when
+  // a cover letter is added WITHOUT a new CV - a CV upload goes through
+  // analyseCv, which stores the cover letter as part of the analysis.
+  uploadCandidateCoverLetter: (candId, formData) =>
+    request(`/candidates/${encodeURIComponent(candId)}/cover-letter`, {
+      method: 'POST',
+      body: formData,
+      auth: true,
+    }),
 
   // ---------- users ------------------------------------------------------
   // List teammates, optionally filtered by comp_id / role. Used by the
