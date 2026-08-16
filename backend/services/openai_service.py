@@ -78,6 +78,41 @@ def _persist_highlight_debug(transcript: list[dict[str, Any]] | str | None, payl
             fh.write(json.dumps(entry, ensure_ascii=False, default=str) + "\n")
 
 
+def _canonicalize_highlight_text(text: str) -> str:
+    """Normalize a highlight so repeated wording with punctuation/casing differences is treated as the same phrase."""
+    return re.sub(r"\s+", " ", re.sub(r"[^a-z0-9]+", " ", text.lower())).strip()
+
+
+def _dedupe_highlights(highlights: list[dict[str, Any]], limit: int = 5) -> list[dict[str, Any]]:
+    """Keep only the first occurrence of each repeated highlight phrase."""
+    unique: list[dict[str, Any]] = []
+    seen: set[str] = set()
+
+    for item in highlights:
+        if not isinstance(item, dict):
+            continue
+        text = str(item.get("text") or "").strip()
+        if not text:
+            continue
+
+        key = _canonicalize_highlight_text(text)
+        if not key or key in seen:
+            continue
+
+        importance = item.get("importance", 3)
+        try:
+            importance_value = max(1, min(5, int(importance)))
+        except (TypeError, ValueError):
+            importance_value = 3
+
+        seen.add(key)
+        unique.append({"text": text, "importance": importance_value})
+        if len(unique) >= limit:
+            break
+
+    return unique
+
+
 def _fallback_highlights(entries: list[dict[str, Any]], limit: int = 5) -> list[dict[str, Any]]:
     """Generate deterministic highlights when OpenAI is unavailable or errors."""
     if not entries:
@@ -125,12 +160,14 @@ def _fallback_highlights(entries: list[dict[str, Any]], limit: int = 5) -> list[
         cleaned = re.sub(r"\s+", " ", raw).strip()
         if not cleaned:
             continue
-        lower = cleaned.lower()
-        if lower in seen:
+
+        canonical = _canonicalize_highlight_text(cleaned)
+        if not canonical or canonical in seen:
             continue
-        seen.add(lower)
+        seen.add(canonical)
 
         importance = 3
+        lower = cleaned.lower()
         if any(term in lower for term in primary_terms):
             importance = 4
         if any(char.isdigit() for char in cleaned):
@@ -143,7 +180,7 @@ def _fallback_highlights(entries: list[dict[str, Any]], limit: int = 5) -> list[
         if len(highlights) >= limit:
             break
 
-    return highlights
+    return _dedupe_highlights(highlights, limit=limit)
 
 
 def _get_client() -> AsyncOpenAI:
@@ -251,6 +288,10 @@ async def extract_highlights(
     transcript_text = "\n".join(
         f"{entry['speaker']}: {entry['text']}" for entry in recent_entries
     )
+    job_requirements = (
+        "Prioritise facts, outcomes, measurable results, and concrete examples that would matter for a hiring decision. "
+        "Prefer specific evidence over generic confidence or buzzwords."
+    )
 
     try:
         res = await _get_client().chat.completions.create(
@@ -259,19 +300,58 @@ async def extract_highlights(
                 {
                     "role": "system",
                     "content": (
+                        "You are an interview analysis assistant helping an interviewer identify "
+                        "only the most important parts of a candidate's response in real time.\n\n"
                         "You extract key moments from a live interview transcript. "
                         "Return concise phrases the interviewer should notice, with a 1-5 importance score. "
-                        "Respond with valid JSON only in the shape {\"highlights\": [{\"text\": ..., \"importance\": ...}]}."
+                        
+                        "A highlight must be genuinely useful to an interviewer making a hiring "
+                        "assessment. Prioritise information that provides concrete evidence about "
+                        "the candidate's suitability for the role.\n\n"
+
+                        "HIGH-VALUE HIGHLIGHTS include:\n"
+                        "- Specific achievements, results, metrics, or outcomes\n"
+                        "- Direct evidence of skills or experience required for the role\n"
+                        "- Relevant technical experience or knowledge\n"
+                        "- Examples demonstrating problem solving, leadership, communication, "
+                        "teamwork, or other important competencies\n"
+                        "- Important constraints or practical information explicitly stated by "
+                        "the candidate\n"
+                        "- Strong positive evidence or significant concerns about the candidate's answer\n\n"
+
+                        "DO NOT highlight:\n"
+                        "- Generic or expected statements\n"
+                        "- Filler or conversational language\n"
+                        "- Opinions without supporting evidence\n"
+                        "- Statements that merely repeat the interviewer's question\n"
+                        "- Minor implementation details that are not relevant to the role\n"
+                        "- Every technology, skill, or experience that is mentioned\n"
+                        "- Normal conversational responses\n"
+                        "- Statements that are only mildly interesting\n\n"
+                        "- Single characters or words, minimum two word phrases"
+
+                        "Be highly selective. It is better to return no highlights than to highlight "
+                        "something that is not genuinely important. Most responses should produce "
+                        "0-2 highlights. Only return more than 2 when the response contains several "
+                        "clearly distinct and highly important points.\n\n"
+
+                        "The highlighted text must be an exact substring from the transcript. "
+                        "Do not rewrite, paraphrase, or invent text.\n\n"
+
+                        "Return valid JSON only in the shape: "
+                        "{\"highlights\": [{\"text\": \"...\", \"importance\": ...}]}"
                     ),
                 },
                 {
                     "role": "user",
                     "content": (
-                        "Analyse the most important points from this interview transcript. "
-                        "Prefer short, specific phrases rather than full sentences.\n\n"
+                        "Identify only the most important points in the candidate's response.\n\n"
+                        "Use the role requirements below to determine relevance. "
+                        "Do not highlight a statement simply because it sounds positive or interesting.\n\n"
+                        f"Role requirements:\n{job_requirements}\n\n"
                         f"Transcript:\n{transcript_text}"
                     ),
-                },
+                }
             ],
             response_format={"type": "json_object"},
             temperature=0.2,
@@ -279,19 +359,7 @@ async def extract_highlights(
         )
         payload = json.loads(res.choices[0].message.content or "{}")
         highlights = payload.get("highlights") or []
-        cleaned: list[dict[str, Any]] = []
-        for item in highlights[:limit]:
-            if not isinstance(item, dict):
-                continue
-            text = str(item.get("text") or "").strip()
-            if not text:
-                continue
-            importance = item.get("importance", 3)
-            try:
-                importance_value = max(1, min(5, int(importance)))
-            except (TypeError, ValueError):
-                importance_value = 3
-            cleaned.append({"text": text, "importance": importance_value})
+        cleaned = _dedupe_highlights(highlights[:limit], limit=limit)
         if cleaned:
             _persist_highlight_debug(transcript, cleaned, limit)
             return cleaned
