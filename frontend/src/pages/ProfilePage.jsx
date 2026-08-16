@@ -279,8 +279,10 @@ export default function Profile() {
       }
     };
 
+    const API_URL = import.meta.env.VITE_API_URL || '/api';
+
     const logoUrl = company?.comp_logo
-      ? `/api/files/${company.comp_logo}`
+      ? `${API_URL}/files/${company.comp_logo}`
       : null;
 
     return (
