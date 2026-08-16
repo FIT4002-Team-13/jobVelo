@@ -169,7 +169,7 @@ function HighlightedText({ text, highlights }) {
   return <>{parts}</>;
 }
 
-function TranscriptEntry({ entry, highlights }) {
+function TranscriptEntry({ entry, highlights, showSpeaker = true }) {
   const relevantHighlights = (highlights || []).filter((item) => {
     const phrase = item.text?.toLowerCase() || "";
     return phrase && entry.text?.toLowerCase().includes(phrase);
@@ -177,13 +177,15 @@ function TranscriptEntry({ entry, highlights }) {
 
   return (
     <div className={`${flex.row} gap-3 py-2 group`}>
-      <div
-        className={`w-8 h-8 rounded-pill ${
-          flex.rowCenter
-        } text-white text-xs font-bold shrink-0 ${avatarColor(entry.speaker)}`}
-      >
-        {initials(entry.speaker)}
-      </div>
+      {showSpeaker && (
+        <div
+          className={`w-8 h-8 rounded-pill ${
+            flex.rowCenter
+          } text-white text-xs font-bold shrink-0 ${avatarColor(entry.speaker)}`}
+        >
+          {initials(entry.speaker)}
+        </div>
+      )}
       <div className={`${flex.col} gap-0.5 flex-1 min-w-0`}>
         <span className="text-xs text-neutral-400">{entry.timestamp}</span>
         <span className="text-sm text-neutral-700 leading-snug">
@@ -791,10 +793,12 @@ export default function InterviewPage() {
     navigate(`/jobs/${jobId}`);
   }
 
+  const showSourceSetup = !isCompleted && !interviewerSource;
+
   return (
     <div className="h-screen flex flex-col bg-neutral-50 font-sans overflow-hidden">
       {/* ── Header ─────────────────────────────────────────────────────────── */}
-      {!interviewerSource && (
+      {showSourceSetup && (
         <div className="bg-amber-100 border-b border-amber-200 px-6 py-3 shrink-0">
           <div className="flex items-center justify-between gap-4">
             <div>
@@ -851,7 +855,7 @@ export default function InterviewPage() {
 
           {/* Actions */}
           <div className={`${flex.row} gap-4`}>
-            {!interviewerSource && (
+            {showSourceSetup && (
               <button
                 className={`${button.outline} opacity-80`}
                 onClick={() => chooseInterviewerSource("A")}
@@ -931,7 +935,7 @@ export default function InterviewPage() {
               {transcriptVisible ? "Hide" : "Show"}
             </button>
           </div>
-          {!interviewerSource && (
+          {showSourceSetup && (
             <div className="px-6 py-6">
               <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
                 Transcript writing is blocked until you choose whether source A (screen share) or source B (mic) is the interviewer.
@@ -949,7 +953,12 @@ export default function InterviewPage() {
                 </p>
               ) : (
                 transcript.map((entry) => (
-                  <TranscriptEntry key={entry.id} entry={entry} highlights={highlights} />
+                  <TranscriptEntry
+                    key={entry.id}
+                    entry={entry}
+                    highlights={highlights}
+                    showSpeaker={!isCompleted}
+                  />
                 ))
               )}
             </div>
