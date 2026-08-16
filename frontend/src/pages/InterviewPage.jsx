@@ -149,14 +149,7 @@ function HighlightedText({ text, highlights }) {
     }
 
     const phrase = match[0];
-    const matchingHighlight = (highlights || []).find(
-      (item) => item.text?.toLowerCase() === phrase.toLowerCase()
-    );
-    const importance = matchingHighlight?.importance ?? 3;
-    const colorClass =
-      importance >= 4
-        ? "bg-coral-100 text-coral-800 border-coral-300"
-        : "bg-amber-100 text-amber-800 border-amber-300";
+    const colorClass = "bg-yellow-100 text-yellow-800 border-yellow-300";
 
     parts.push(
       <span
