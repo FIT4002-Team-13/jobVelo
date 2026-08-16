@@ -29,6 +29,10 @@ class JobCandidateCreate(BaseModel):
     problem_solving_score: float | None = None
 
 
+class JobCandidatePlanUpdate(BaseModel):
+    plan_sections: list[dict]
+
+
 class JobCandidateScoreUpdate(BaseModel):
     """Body for PATCH /api/job-candidates/{id}/scores.
 
@@ -64,6 +68,7 @@ class JobCandidateOut(BaseModel):
     problem_solving_score: float | None = None
     final_score: float | None = None
     rank: int | None = None
+    plan_sections: list[dict] | None = None
     created_at: datetime
     updated_at: datetime
 

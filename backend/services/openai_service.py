@@ -89,6 +89,7 @@ async def generate_interview_plan(
     job_description: str | None,
     candidate_name: str,
     cv_analysis: dict | None = None,
+    total_minutes: int | None = None,
 ) -> list[dict]:
     """Return AI-suggested interview sections (name, description, suggested_minutes)."""
     desc_block = (
@@ -113,12 +114,17 @@ async def generate_interview_plan(
         if parts:
             cv_block = "\n\nCandidate CV analysis:\n" + "\n".join(parts)
 
+    time_constraint = (
+        f" The total of all suggested_minutes values must sum to exactly {total_minutes} minutes."
+        if total_minutes
+        else ""
+    )
     prompt = (
         f"You are preparing an interview plan for {candidate_name} applying for the role of {job_title}.{desc_block}{cv_block}\n\n"
         "Generate 4 to 6 interview sections that a structured interview should cover for this role. "
         "Tailor sections to probe the candidate's specific background, skills, and any gaps identified above. "
         "For each section return: a short name (2-4 words), a one-sentence description of what to explore, "
-        "and a suggested duration in minutes (between 5 and 20). "
+        f"and a suggested duration in minutes (between 5 and 20).{time_constraint} "
         'Reply with valid JSON only — an array of objects with keys "name", "description", "suggested_minutes".'
     )
 

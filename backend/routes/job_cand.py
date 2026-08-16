@@ -22,6 +22,7 @@ from dependencies import get_current_comp_id
 from models.job_candidate import (
     JobCandidateCreate,
     JobCandidateOut,
+    JobCandidatePlanUpdate,
     JobCandidateScoreUpdate,
 )
 
@@ -43,6 +44,7 @@ def job_candidate_helper(job_candidate: dict) -> JobCandidateOut:
         problem_solving_score=job_candidate.get("problem_solving_score"),
         final_score=job_candidate.get("final_score"),
         rank=job_candidate.get("rank"),
+        plan_sections=job_candidate.get("plan_sections"),
         created_at=job_candidate.get("created_at") or datetime.now(timezone.utc),
         updated_at=job_candidate.get("updated_at") or datetime.now(timezone.utc),
     )
@@ -102,7 +104,9 @@ async def create_job_candidate(
     }
 
     result = await db.job_candidates.insert_one(job_candidate_doc)
-    created_job_candidate = await db.job_candidates.find_one({"_id": result.inserted_id})
+    created_job_candidate = await db.job_candidates.find_one(
+        {"_id": result.inserted_id}
+    )
 
     if not created_job_candidate:
         raise HTTPException(
@@ -120,7 +124,9 @@ async def _link_in_company(db, link: dict, comp_id: ObjectId) -> bool:
     job_id = link.get("job_id")
     if not job_id or not ObjectId.is_valid(job_id):
         return False
-    job = await db.jobs.find_one({"_id": ObjectId(job_id), "comp_id": comp_id}, {"_id": 1})
+    job = await db.jobs.find_one(
+        {"_id": ObjectId(job_id), "comp_id": comp_id}, {"_id": 1}
+    )
     return job is not None
 
 
@@ -135,7 +141,9 @@ async def list_job_candidates_by_job(
         {"_id": ObjectId(job_id), "comp_id": comp_id}, {"_id": 1}
     ):
         raise HTTPException(status_code=404, detail="Job not found")
-    job_candidates = await db.job_candidates.find({"job_id": job_id}).to_list(length=100)
+    job_candidates = await db.job_candidates.find({"job_id": job_id}).to_list(
+        length=100
+    )
     return [job_candidate_helper(doc) for doc in job_candidates]
 
 
@@ -221,7 +229,9 @@ async def list_job_candidates_by_candidate(
         {"_id": ObjectId(cand_id), "comp_id": comp_id}, {"_id": 1}
     ):
         raise HTTPException(status_code=404, detail="Candidate not found")
-    job_candidates = await db.job_candidates.find({"cand_id": cand_id}).to_list(length=100)
+    job_candidates = await db.job_candidates.find({"cand_id": cand_id}).to_list(
+        length=100
+    )
     return [job_candidate_helper(doc) for doc in job_candidates]
 
 
@@ -291,4 +301,34 @@ async def update_job_candidate_scores(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Job-candidate link not found.",
         )
+    return job_candidate_helper(result)
+
+
+@router.patch("/{jobcand_id}/plan", response_model=JobCandidateOut)
+async def update_job_candidate_plan(
+    jobcand_id: str,
+    payload: JobCandidatePlanUpdate,
+    comp_id: ObjectId = Depends(get_current_comp_id),
+) -> JobCandidateOut:
+    """Save or replace the AI-generated interview plan sections for a job-candidate link."""
+    db = get_db()
+    oid = _validate_oid(jobcand_id, "job-candidate")
+
+    existing = await db.job_candidates.find_one({"_id": oid})
+    if not existing or not await _link_in_company(db, existing, comp_id):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Job-candidate link not found.",
+        )
+
+    result = await db.job_candidates.find_one_and_update(
+        {"_id": oid},
+        {
+            "$set": {
+                "plan_sections": payload.plan_sections,
+                "updated_at": datetime.now(timezone.utc),
+            }
+        },
+        return_document=True,
+    )
     return job_candidate_helper(result)

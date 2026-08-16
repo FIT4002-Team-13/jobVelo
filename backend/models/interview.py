@@ -6,7 +6,9 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 # Interview cycle for scheduling + running + post-interview state.
-InterviewStatus = Literal["not_scheduled", "scheduled", "in_progress", "completed", "cancelled"]
+InterviewStatus = Literal[
+    "not_scheduled", "scheduled", "in_progress", "completed", "cancelled"
+]
 
 
 class TranscriptEntry(BaseModel):
@@ -15,6 +17,7 @@ class TranscriptEntry(BaseModel):
     timestamp: str
     text: str
     comment: str | None = None
+
 
 class InterviewFeedbackSection(BaseModel):
     """
@@ -31,8 +34,12 @@ class InterviewFeedback(BaseModel):
     """
 
     summary: str | None = None
-    strengths: InterviewFeedbackSection = Field(default_factory=InterviewFeedbackSection)
-    improvements: InterviewFeedbackSection = Field(default_factory=InterviewFeedbackSection)
+    strengths: InterviewFeedbackSection = Field(
+        default_factory=InterviewFeedbackSection
+    )
+    improvements: InterviewFeedbackSection = Field(
+        default_factory=InterviewFeedbackSection
+    )
 
 
 class InterviewCreate(BaseModel):
@@ -60,6 +67,7 @@ class InterviewUpdate(BaseModel):
     intv_duration_seconds: int | None = None
     intv_candidate_report: str | None = None
     intv_interviewer_report: str | None = None
+    intv_sections: list[dict] | None = None
 
 
 class InterviewOut(BaseModel):
@@ -78,5 +86,6 @@ class InterviewOut(BaseModel):
     intv_duration_seconds: int | None = None
     intv_candidate_report: str | None = None
     intv_interviewer_report: str | None = None
+    intv_sections: list[dict] | None = None
     intv_created_at: datetime
     intv_updated_at: datetime

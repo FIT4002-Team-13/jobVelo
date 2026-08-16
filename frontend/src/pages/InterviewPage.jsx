@@ -23,6 +23,13 @@ const SCORE_COLORS = {
   "Problem Solving": "bg-mint-500",
 };
 
+const SECTION_COLORS = [
+  { border: "border-primary-200", activeBorder: "border-primary-400", badge: "bg-primary-100 text-primary-700", pauseBg: "bg-primary-100 hover:bg-primary-200 text-primary-600", timer: "text-primary-600" },
+  { border: "border-sky-200",     activeBorder: "border-sky-400",     badge: "bg-sky-100 text-sky-700",         pauseBg: "bg-sky-100 hover:bg-sky-200 text-sky-600",           timer: "text-sky-600"     },
+  { border: "border-mint-200",    activeBorder: "border-mint-400",    badge: "bg-mint-100 text-mint-700",       pauseBg: "bg-mint-100 hover:bg-mint-200 text-mint-600",        timer: "text-mint-600"    },
+  { border: "border-coral-200",   activeBorder: "border-coral-400",   badge: "bg-coral-100 text-coral-700",     pauseBg: "bg-coral-100 hover:bg-coral-200 text-coral-600",     timer: "text-coral-600"   },
+];
+
 // ── Placeholder data — replace with API calls when endpoints are ready ─────────
 
 
@@ -237,6 +244,94 @@ function QuestionCard({ q }) {
   );
 }
 
+function SectionCard({ section, st, color, onStart, onPause, onResume, onDone }) {
+  const budget = section.suggested_minutes * 60;
+  const pct = Math.min(100, (st.elapsed / budget) * 100);
+  const over = st.elapsed > budget && st.status === "running";
+
+  const isIdle    = st.status === "idle";
+  const isRunning = st.status === "running";
+  const isPaused  = st.status === "paused";
+  const isDone    = st.status === "done";
+
+  const borderClass = isRunning
+    ? (over ? "border-coral-400" : color.activeBorder)
+    : isPaused ? "border-amber-400"
+    : isDone   ? "border-neutral-200"
+    : color.border;
+
+  const barClass = isRunning ? "bg-primary-500"
+    : isPaused ? "bg-amber-400"
+    : isDone   ? "bg-neutral-300"
+    : "bg-neutral-200";
+
+  const timerClass = over
+    ? "text-coral-500 animate-pulse"
+    : isRunning ? color.timer
+    : "text-neutral-700";
+
+  return (
+    <div className={`shrink-0 w-[200px] border-2 ${borderClass} rounded-2xl overflow-hidden bg-neutral-0 transition-colors duration-300 ${isDone ? "opacity-40" : ""}`}>
+      <div className="h-1 bg-neutral-100">
+        <div className={`h-1 ${barClass} transition-all duration-1000`} style={{ width: `${pct}%` }} />
+      </div>
+
+      <div className={`${flex.col} gap-2.5 p-3.5`}>
+        <div className={`${flex.rowBetween} gap-1.5`}>
+          <span className="font-semibold text-neutral-800 text-sm leading-tight">{section.name}</span>
+          <span className={`text-xs px-1.5 py-0.5 rounded-full shrink-0 ${isDone ? "bg-neutral-100 text-neutral-400" : color.badge}`}>
+            {section.suggested_minutes}m
+          </span>
+        </div>
+
+        <p className="text-xs text-neutral-400 leading-snug">{section.description}</p>
+
+        <div className={`${flex.row} items-baseline gap-1`}>
+          <span className={`font-mono text-xl font-bold ${timerClass}`}>{formatTimer(st.elapsed)}</span>
+          <span className="text-xs text-neutral-400">/ {formatTimer(budget)}</span>
+        </div>
+
+        {isIdle && (
+          <button onClick={onStart} className="w-full py-2 rounded-xl bg-primary-500 hover:bg-primary-600 text-white text-sm font-semibold transition-colors">
+            Start
+          </button>
+        )}
+
+        {(isRunning || isPaused) && (
+          <div className={`${flex.row} gap-2`}>
+            <button
+              onClick={isRunning ? onPause : onResume}
+              className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 transition-colors ${color.pauseBg}`}
+            >
+              {isRunning ? (
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+                  <rect x="6" y="4" width="4" height="16" /><rect x="14" y="4" width="4" height="16" />
+                </svg>
+              ) : (
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+                  <polygon points="5 3 19 12 5 21" />
+                </svg>
+              )}
+            </button>
+            <button onClick={onDone} className="flex-1 py-2 rounded-xl bg-neutral-100 hover:bg-neutral-200 text-neutral-600 text-sm font-semibold transition-colors">
+              Done
+            </button>
+          </div>
+        )}
+
+        {isDone && (
+          <div className={`${flex.row} gap-1.5 py-1`}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-neutral-400">
+              <polyline points="20 6 9 17 4 12" />
+            </svg>
+            <span className="text-sm font-semibold text-neutral-400">Done</span>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function InterviewPage() {
@@ -244,7 +339,8 @@ export default function InterviewPage() {
   const navigate = useNavigate();
 
   const [transcriptVisible, setTranscriptVisible] = useState(true);
-  const [status, setStatus] = useState("Ready to start screen share");
+  const [status, setStatus] = useState("Ready to start recording");
+  const [isMicActive, setIsMicActive] = useState(false);
   const [isScreenSharing, setIsScreenSharing] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
   const [isCompleted, setIsCompleted] = useState(false);
@@ -258,6 +354,9 @@ export default function InterviewPage() {
   const [scores] = useState(MOCK_SCORES);
   const [questions] = useState(MOCK_QUESTIONS);
   const [timer, setTimer] = useState(0);
+  const [sections, setSections] = useState([]);
+  const [sectionStates, setSectionStates] = useState([]);
+  const sectionIntervals = useRef([]);
 
   const transcriptRef = useRef([]);
   const timerRef = useRef(0);
@@ -315,6 +414,72 @@ export default function InterviewPage() {
         partialEntry,
       ]);
     }
+  }
+
+  useEffect(() => {
+    return () => {
+      sectionIntervals.current.forEach((id) => clearInterval(id));
+    };
+  }, []);
+
+  function startSection(i) {
+    setSectionStates((prev) =>
+      prev.map((st, j) => {
+        if (j === i) return { ...st, status: "running" };
+        if (st.status === "running" || st.status === "paused") {
+          clearInterval(sectionIntervals.current[j]);
+          sectionIntervals.current[j] = null;
+          return { ...st, status: "done" };
+        }
+        return st;
+      })
+    );
+    clearInterval(sectionIntervals.current[i]);
+    sectionIntervals.current[i] = setInterval(() => {
+      setSectionStates((prev) => {
+        const next = [...prev];
+        next[i] = { ...next[i], elapsed: next[i].elapsed + 1 };
+        return next;
+      });
+    }, 1000);
+  }
+
+  function pauseSection(i) {
+    clearInterval(sectionIntervals.current[i]);
+    sectionIntervals.current[i] = null;
+    setSectionStates((prev) =>
+      prev.map((st, j) => (j === i ? { ...st, status: "paused" } : st))
+    );
+  }
+
+  function resumeSection(i) {
+    setSectionStates((prev) =>
+      prev.map((st, j) => {
+        if (j === i) return { ...st, status: "running" };
+        if (st.status === "running") {
+          clearInterval(sectionIntervals.current[j]);
+          sectionIntervals.current[j] = null;
+          return { ...st, status: "done" };
+        }
+        return st;
+      })
+    );
+    clearInterval(sectionIntervals.current[i]);
+    sectionIntervals.current[i] = setInterval(() => {
+      setSectionStates((prev) => {
+        const next = [...prev];
+        next[i] = { ...next[i], elapsed: next[i].elapsed + 1 };
+        return next;
+      });
+    }, 1000);
+  }
+
+  function doneSection(i) {
+    clearInterval(sectionIntervals.current[i]);
+    sectionIntervals.current[i] = null;
+    setSectionStates((prev) =>
+      prev.map((st, j) => (j === i ? { ...st, status: "done" } : st))
+    );
   }
 
   function togglePause() {
@@ -429,11 +594,12 @@ export default function InterviewPage() {
         });
       }
 
+      setIsMicActive(true);
       setIsScreenSharing(true);
       setStatus(
         displayStream.getAudioTracks().length > 0
-          ? "Screen sharing & listening (interviewer + candidate)…"
-          : "Screen sharing & listening (interviewer mic only)…"
+          ? "Listening (interviewer + candidate)…"
+          : "Screen shared — no computer audio detected"
       );
 
       displayStream.getTracks().forEach((track) => {
@@ -526,16 +692,159 @@ export default function InterviewPage() {
       wsDisplayRef.current = null;
     }
 
+    setIsMicActive(false);
     setIsScreenSharing(false);
-    setStatus("Screen share stopped");
+    setStatus("Ready to start recording");
   }
 
   async function toggleScreenShare() {
     if (isScreenSharing) {
-      await stopScreenShare();
+      if (isMicActive) {
+        removeDisplayAudio();
+      } else {
+        await stopScreenShare();
+      }
     } else {
-      await startScreenShare();
+      if (isMicActive) {
+        await addDisplayAudio();
+      } else {
+        await startScreenShare();
+      }
     }
+  }
+
+  async function startMicOnly() {
+    const interviewerLabel = user?.full_name || "Interviewer";
+    try {
+      wsRef.current = createTranscriptionSocket(interviewerLabel, partialEntryRef);
+      setStatus("Requesting microphone access...");
+
+      const micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      micStreamRef.current = micStream;
+
+      const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+      await audioContext.resume();
+      audioContextRef.current = audioContext;
+
+      const micSource = audioContext.createMediaStreamSource(micStream);
+      const micProcessor = audioContext.createScriptProcessor(4096, 1, 1);
+      processorRef.current = micProcessor;
+
+      micProcessor.onaudioprocess = (event) => {
+        if (isPausedRef.current) return;
+        const inputBuffer = event.inputBuffer.getChannelData(0);
+        if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
+        wsRef.current.send(downsampleBuffer(inputBuffer, audioContext.sampleRate, 16000));
+      };
+
+      micSource.connect(micProcessor);
+      micProcessor.connect(audioContext.destination);
+
+      setIsMicActive(true);
+      setStatus("Listening (interviewer mic)…");
+    } catch (error) {
+      if (audioContextRef.current) {
+        audioContextRef.current.close().catch(() => {});
+        audioContextRef.current = null;
+      }
+      if (micStreamRef.current) {
+        micStreamRef.current.getTracks().forEach((t) => t.stop());
+        micStreamRef.current = null;
+      }
+      if (wsRef.current) {
+        wsRef.current.close();
+        wsRef.current = null;
+      }
+      if (error.name === "NotAllowedError") {
+        setStatus("Microphone access denied");
+      } else if (error.name === "NotFoundError") {
+        setStatus("No microphone found");
+      } else {
+        setStatus("Unable to start microphone");
+      }
+    }
+  }
+
+  async function addDisplayAudio() {
+    const candidateLabel = candidateName || "Candidate";
+    try {
+      setStatus("Requesting screen access...");
+
+      const displayStream = await navigator.mediaDevices.getDisplayMedia({
+        audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
+        video: { cursor: "always" },
+      });
+      mediaStreamRef.current = displayStream;
+
+      if (displayStream.getAudioTracks().length > 0) {
+        wsDisplayRef.current = createTranscriptionSocket(candidateLabel, displayPartialEntryRef);
+
+        const displaySource = audioContextRef.current.createMediaStreamSource(displayStream);
+        const displayProcessor = audioContextRef.current.createScriptProcessor(4096, 1, 1);
+        displayProcessorRef.current = displayProcessor;
+
+        displayProcessor.onaudioprocess = (event) => {
+          if (isPausedRef.current) return;
+          const inputBuffer = event.inputBuffer.getChannelData(0);
+          if (!wsDisplayRef.current || wsDisplayRef.current.readyState !== WebSocket.OPEN) return;
+          wsDisplayRef.current.send(downsampleBuffer(inputBuffer, audioContextRef.current.sampleRate, 16000));
+        };
+
+        displaySource.connect(displayProcessor);
+        displayProcessor.connect(audioContextRef.current.destination);
+      }
+
+      if (videoRef.current) {
+        videoRef.current.srcObject = displayStream;
+        videoRef.current.play().catch((err) => console.warn("Video play failed", err));
+      }
+
+      setIsScreenSharing(true);
+      setStatus(
+        displayStream.getAudioTracks().length > 0
+          ? "Listening (interviewer + candidate)…"
+          : "Screen shared — no computer audio detected"
+      );
+
+      displayStream.getTracks().forEach((track) => {
+        track.onended = () => { removeDisplayAudio(); };
+      });
+    } catch (error) {
+      if (mediaStreamRef.current) {
+        mediaStreamRef.current.getTracks().forEach((t) => t.stop());
+        mediaStreamRef.current = null;
+      }
+      if (wsDisplayRef.current) {
+        wsDisplayRef.current.close();
+        wsDisplayRef.current = null;
+      }
+      if (error.name === "NotAllowedError") {
+        setStatus("Screen share cancelled — mic still active");
+      } else {
+        setStatus("Unable to share screen — mic still active");
+      }
+    }
+  }
+
+  function removeDisplayAudio() {
+    if (mediaStreamRef.current) {
+      mediaStreamRef.current.getTracks().forEach((t) => t.stop());
+      mediaStreamRef.current = null;
+    }
+    if (displayProcessorRef.current) {
+      displayProcessorRef.current.disconnect();
+      displayProcessorRef.current.onaudioprocess = null;
+      displayProcessorRef.current = null;
+    }
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
+    if (wsDisplayRef.current) {
+      if (wsDisplayRef.current.readyState === WebSocket.OPEN) wsDisplayRef.current.close();
+      wsDisplayRef.current = null;
+    }
+    setIsScreenSharing(false);
+    setStatus("Listening (interviewer mic)…");
   }
 
   useEffect(() => {
@@ -655,6 +964,33 @@ export default function InterviewPage() {
             })
             .catch(() => {});
         }
+        if (data.job_id && data.cand_id) {
+          if (Array.isArray(data.intv_sections) && data.intv_sections.length > 0) {
+            setSections(data.intv_sections);
+            setSectionStates(data.intv_sections.map(() => ({ status: "idle", elapsed: 0 })));
+            sectionIntervals.current = new Array(data.intv_sections.length).fill(null);
+          } else {
+            fetch("/api/interviews/generate-plan", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ job_id: data.job_id, cand_id: data.cand_id }),
+            })
+              .then((r) => r.json())
+              .then((plan) => {
+                if (Array.isArray(plan) && plan.length > 0) {
+                  setSections(plan);
+                  setSectionStates(plan.map(() => ({ status: "idle", elapsed: 0 })));
+                  sectionIntervals.current = new Array(plan.length).fill(null);
+                  fetch(`/api/interviews/${id}`, {
+                    method: "PATCH",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ intv_sections: plan }),
+                  }).catch(() => {});
+                }
+              })
+              .catch(() => {});
+          }
+        }
       });
   }, [id]);
 
@@ -720,12 +1056,30 @@ export default function InterviewPage() {
             </button>
             <button
               className={`${button.outline} ${
-                isScreenSharing
-                  ? "bg-sky-100 text-sky-800 hover:bg-sky-200"
+                isMicActive
+                  ? "bg-coral-100 text-coral-800 hover:bg-coral-200"
                   : ""
               } ${isCompleted ? "opacity-60 cursor-not-allowed" : ""}`}
-              onClick={() => !isCompleted && void toggleScreenShare()}
+              onClick={() => {
+                if (isCompleted) return;
+                if (isMicActive) void stopScreenShare();
+                else void startMicOnly();
+              }}
               disabled={isCompleted}
+            >
+              {isMicActive ? "Stop Recording" : "Start Recording"}
+            </button>
+            <button
+              className={`${button.outline} ${
+                isScreenSharing
+                  ? "bg-sky-100 text-sky-800 hover:bg-sky-200"
+                  : !isMicActive || isCompleted
+                  ? "opacity-50 cursor-not-allowed"
+                  : ""
+              }`}
+              onClick={() => !isCompleted && isMicActive && void toggleScreenShare()}
+              disabled={isCompleted || !isMicActive}
+              title={!isMicActive ? "Start recording first" : isScreenSharing ? "Stop sharing screen" : "Share screen to capture computer audio"}
             >
               {isScreenSharing ? "Stop screen share" : "Share screen"}
             </button>
@@ -811,6 +1165,31 @@ export default function InterviewPage() {
               ))}
             </div>
           </div>
+
+          {/* Interview Sections */}
+          {sections.length > 0 && (
+            <div className={`${card.flat} flex flex-col shrink-0 overflow-hidden`}>
+              <div className="px-6 pt-4 pb-3 border-b border-neutral-100 shrink-0">
+                <h2 className="text-base font-semibold text-neutral-800">Interview Sections</h2>
+              </div>
+              <div className="overflow-x-auto px-6 py-4" style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}>
+                <div className={`${flex.row} gap-3 items-stretch`}>
+                  {sections.map((section, i) => (
+                    <SectionCard
+                      key={i}
+                      section={section}
+                      st={sectionStates[i] ?? { status: "idle", elapsed: 0 }}
+                      color={SECTION_COLORS[i % SECTION_COLORS.length]}
+                      onStart={() => startSection(i)}
+                      onPause={() => pauseSection(i)}
+                      onResume={() => resumeSection(i)}
+                      onDone={() => doneSection(i)}
+                    />
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Suggested Questions */}
           <div className={`${card.flat} flex flex-col flex-1 overflow-hidden`}>

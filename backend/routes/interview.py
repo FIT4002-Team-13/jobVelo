@@ -18,6 +18,7 @@ router = APIRouter(prefix="/api/interviews", tags=["interviews"])
 class PlanRequest(BaseModel):
     job_id: str
     cand_id: str
+    total_minutes: int | None = None
 
 
 @router.post("/generate-plan", summary="Generate an AI interview plan for a candidate.")
@@ -61,7 +62,11 @@ async def generate_plan(payload: PlanRequest) -> list[dict]:
 
     try:
         sections = await generate_interview_plan(
-            job_title, job_description, candidate_name, cv_analysis
+            job_title,
+            job_description,
+            candidate_name,
+            cv_analysis,
+            payload.total_minutes,
         )
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"AI generation failed: {exc}")
@@ -83,6 +88,7 @@ def interview_helper(interview: dict) -> InterviewOut:
         intv_duration_seconds=interview.get("intv_duration_seconds"),
         intv_candidate_report=interview.get("intv_candidate_report"),
         intv_interviewer_report=interview.get("intv_interviewer_report"),
+        intv_sections=interview.get("intv_sections"),
         intv_created_at=interview["intv_created_at"],
         intv_updated_at=interview["intv_updated_at"],
     )
