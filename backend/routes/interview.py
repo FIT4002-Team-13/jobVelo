@@ -25,7 +25,7 @@ def interview_helper(interview: dict) -> InterviewOut:
         intv_id=str(interview["_id"]),
         cand_id=str(interview["cand_id"]),
         job_id=str(interview["job_id"]),
-        intv_date_time=interview["intv_date_time"],
+        intv_date_time=interview.get("intv_date_time"),
         intv_location=interview.get("intv_location"),
         intv_transcript=interview.get("intv_transcript"),
         intv_status=interview["intv_status"],
@@ -35,6 +35,7 @@ def interview_helper(interview: dict) -> InterviewOut:
         intv_created_at=interview["intv_created_at"],
         intv_updated_at=interview["intv_updated_at"],
     )
+
 
 @router.post(
     "",
@@ -76,6 +77,7 @@ async def create_interview(payload: InterviewCreate) -> InterviewOut:
 
     return interview_helper(created_interview)
 
+
 @router.get(
     "",
     response_model=list[InterviewOut],
@@ -95,6 +97,7 @@ async def list_interviews(
 
     interviews = await db.interviews.find(query).to_list(length=100)
     return [interview_helper(doc) for doc in interviews]
+
 
 @router.get(
     "/{intv_id}",
@@ -119,19 +122,26 @@ async def get_interview(intv_id: str) -> InterviewOut:
 
     return interview_helper(interview)
 
+
 @router.post(
     "/{intv_id}/highlights",
     summary="Generate highlighted phrases for a live transcript.",
 )
-async def generate_highlights(intv_id: str, payload: HighlightRequest) -> dict[str, Any]:
+async def generate_highlights(
+    intv_id: str, payload: HighlightRequest
+) -> dict[str, Any]:
     db = get_db()
 
     if not ObjectId.is_valid(intv_id):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid interview id.")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid interview id."
+        )
 
     interview = await db.interviews.find_one({"_id": ObjectId(intv_id)})
     if not interview:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Interview not found.")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Interview not found."
+        )
 
     highlights = await extract_highlights(payload.transcript, limit=5)
     return {"highlights": highlights}

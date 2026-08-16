@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
-import { modal, form } from '../../styles/layout'
+import { modal, form, flex, button } from '../../styles/layout'
 import { useAuth } from '../../lib/AuthContext.jsx'
-import { authedFetch } from '../../lib/api.js'
+import { api, authedFetch } from '../../lib/api.js'
 import { isEmail, isPhone, isFullName, isFutureDateTime } from '../../lib/validators.js'
 import InterviewerCombobox from './InterviewerCombobox.jsx'
 
@@ -61,7 +61,7 @@ function FileDropzone({
               setDragging(false)
               handlePick(e.dataTransfer.files)
             }}
-            className={`flex h-[130px] w-full flex-col items-center justify-center rounded-2xl border border-dashed text-center transition-colors ${
+            className={`flex h-[130px] w-full flex-col items-center justify-center rounded-lg border border-dashed text-center transition-colors ${
               dragging
                 ? 'border-primary-500 bg-primary-50'
                 : 'border-neutral-300 bg-white'
@@ -146,10 +146,6 @@ export default function AddCandidateForm({ jobs = [], onClose, onSaved }) {
     setSubmitting(true)
 
     try {
-      // Replace with real upload logic later.
-      const cv_url = null
-      const cover_letter_url = null
-
       const res = await authedFetch(`/api/candidates/create-for-job`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -157,8 +153,10 @@ export default function AddCandidateForm({ jobs = [], onClose, onSaved }) {
           cand_full_name: formState.name.trim(),
           cand_email: formState.email.trim().toLowerCase(),
           cand_phone: formState.phone.trim() || null,
-          cand_cv_url: cv_url,
-          cand_cover_letter_url: cover_letter_url,
+          // Document URLs are written server-side by the CV-analysis upload
+          // below - nothing to send from here.
+          cand_cv_url: null,
+          cand_cover_letter_url: null,
           comp_id: user.comp_id,
           job_id: formState.job_id,
           interviewer_user_id: formState.interviewer_user_id || null,
@@ -177,6 +175,32 @@ export default function AddCandidateForm({ jobs = [], onClose, onSaved }) {
       }
 
       const saved = await res.json()
+
+      // Candidate added with a CV → hand it to the analyser right away
+      // (the cover letter rides along). The POST returns as soon as the
+      // upload is stored (status=processing); the candidate page polls for
+      // completion. A cover letter WITHOUT a CV can't be analysed, so it
+      // goes through the standalone document upload instead. Failures here
+      // are non-fatal - the candidate exists, and the files can be
+      // re-uploaded from the Edit form.
+      const jobcandId = saved.job_candidate?.jobcand_id
+      const candId = saved.candidate?.cand_id
+      try {
+        if (cvFile && jobcandId) {
+          const fd = new FormData()
+          fd.append('jobcand_id', jobcandId)
+          fd.append('cv', cvFile)
+          if (coverLetterFile) fd.append('cover_letter', coverLetterFile)
+          await api.analyseCv(fd)
+        } else if (coverLetterFile && candId) {
+          const fd = new FormData()
+          fd.append('cover_letter', coverLetterFile)
+          await api.uploadCandidateCoverLetter(candId, fd)
+        }
+      } catch (err) {
+        console.warn('Document upload failed:', err)
+      }
+
       onSaved(saved.candidate ?? saved)
     } catch (err) {
       setError(err.message || 'Something went wrong.')
@@ -187,58 +211,56 @@ export default function AddCandidateForm({ jobs = [], onClose, onSaved }) {
 
   return (
     <div className={modal.overlay}>
-      <div className={`${modal.panel} max-w-[760px] px-8 py-7`}>
+      <div className={`${modal.panel} max-w-2xl max-h-[90vh] overflow-y-auto`}>
         <button
           type="button"
           onClick={onClose}
-          className="absolute right-6 top-5 text-2xl text-neutral-400 hover:text-neutral-700"
+          className="absolute top-4 right-4 text-neutral-400 hover:text-neutral-700 text-xl leading-none"
         >
           ×
         </button>
 
-        <h2 className="mb-1 text-3xl font-bold text-neutral-800">Add Candidate</h2>
-        <p className="mb-5 text-sm text-neutral-500">
-          Required field are indicated with asterisk <span className="text-coral-500">*</span>
-        </p>
+        <h2 className="text-xl font-bold text-neutral-800 mb-1">Add Candidate</h2>
+        <p className="text-xs text-neutral-400 mb-5">Required fields are indicated with a asterisk *</p>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className={`${flex.col} gap-4`}>
           <div>
-            <label className={form.label}>NAME <span className="text-coral-500">*</span></label>
+            <label className={form.label}>Name *</label>
             <input
               value={formState.name}
               onChange={(e) => setField('name', e.target.value)}
               placeholder="eg. John Doe"
-              className={`${form.input} h-12`}
+              className={form.input}
             />
           </div>
 
           <div>
-            <label className={form.label}>EMAIL <span className="text-coral-500">*</span></label>
+            <label className={form.label}>Email *</label>
             <input
               value={formState.email}
               onChange={(e) => setField('email', e.target.value)}
               placeholder="eg. johndoe123@gmail.com"
-              className={`${form.input} h-12`}
+              className={form.input}
             />
           </div>
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className={form.label}>PHONE <span className="text-coral-500">*</span></label>
+              <label className={form.label}>Phone *</label>
               <input
                 value={formState.phone}
                 onChange={(e) => setField('phone', e.target.value)}
                 placeholder="04XXXXXXXX"
-                className={`${form.input} h-12`}
+                className={form.input}
               />
             </div>
 
             <div>
-              <label className={form.label}>ASSIGN TO JOB <span className="text-coral-500">*</span></label>
+              <label className={form.label}>Assign to Job *</label>
               <select
                 value={formState.job_id}
                 onChange={(e) => setField('job_id', e.target.value)}
-                className={`${form.input} h-12`}
+                className={form.input}
               >
                 <option value="">Select a existing job position</option>
                 {jobs
@@ -254,14 +276,14 @@ export default function AddCandidateForm({ jobs = [], onClose, onSaved }) {
 
           <div className="grid grid-cols-2 gap-4">
             <FileDropzone
-              label="RESUME / CV"
+              label="Resume / CV"
               file={cvFile}
               onFileChange={setCvFile}
               onRemove={() => setCvFile(null)}
             />
 
             <FileDropzone
-              label="COVER LETTER"
+              label="Cover Letter"
               file={coverLetterFile}
               onFileChange={setCoverLetterFile}
               onRemove={() => setCoverLetterFile(null)}
@@ -270,7 +292,7 @@ export default function AddCandidateForm({ jobs = [], onClose, onSaved }) {
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className={form.label}>INTERVIEWER</label>
+              <label className={form.label}>Interviewer</label>
               <InterviewerCombobox
                 value={{
                   label: formState.interviewer,
@@ -285,23 +307,23 @@ export default function AddCandidateForm({ jobs = [], onClose, onSaved }) {
             </div>
 
             <div>
-              <label className={form.label}>INTERVIEW DATE</label>
+              <label className={form.label}>Interview Date</label>
               <input
                 type="datetime-local"
                 value={formState.scheduled_at}
                 onChange={(e) => setField('scheduled_at', e.target.value)}
-                className={`${form.input} h-12`}
+                className={form.input}
               />
             </div>
           </div>
 
-          {error && <p className="text-sm text-coral-500">{error}</p>}
+          {error && <p className={form.error}>{error}</p>}
 
-          <div className="mt-4 flex justify-center gap-5">
+          <div className="flex justify-end gap-3 pt-1">
             <button
               type="button"
               onClick={onClose}
-              className="min-w-[110px] rounded-2xl bg-neutral-200 px-5 py-2 text-lg font-bold text-neutral-500"
+              className={`${button.cancel} px-6 py-2`}
             >
               Cancel
             </button>
@@ -309,7 +331,7 @@ export default function AddCandidateForm({ jobs = [], onClose, onSaved }) {
             <button
               type="submit"
               disabled={submitting}
-              className="min-w-[110px] rounded-2xl bg-primary-500 px-5 py-2 text-lg font-bold text-white disabled:opacity-60"
+              className={`${button.primary} disabled:opacity-60`}
             >
               {submitting ? 'Adding…' : 'Add'}
             </button>

@@ -10,6 +10,7 @@ import DashboardPage from './pages/DashboardPage.jsx'
 import AdminDashboardPage from './pages/AdminDashboardPage.jsx'
 import JobsPage from './pages/JobsPage'
 import JobDetailPage from './pages/JobDetailPage'
+import CvAnalysisPage from './pages/CvAnalysisPage'
 import InterviewPage from './pages/InterviewPage'
 import CandidateDetailPage from './pages/CandidateDetailPage.jsx'
 import ApplicationsPage from './pages/ApplicationsPage.jsx'
@@ -60,6 +61,17 @@ export default function App() {
             element={
               <RequireAuth>
                 <JobDetailPage />
+              </RequireAuth>
+            }
+          />
+          {/* CV analysis report, keyed by the job-candidate link. Deep-
+              linkable: the page fetches the analysis by :jobcandId, so the
+              candidate page's "View" button can navigate straight here. */}
+          <Route
+            path="/cv-analysis/:jobcandId"
+            element={
+              <RequireAuth>
+                <CvAnalysisPage />
               </RequireAuth>
             }
           />

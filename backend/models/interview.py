@@ -6,7 +6,9 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 # Interview cycle for scheduling + running + post-interview state.
-InterviewStatus = Literal["not_scheduled", "scheduled", "in_progress", "completed", "cancelled"]
+InterviewStatus = Literal[
+    "not_scheduled", "scheduled", "in_progress", "completed", "cancelled"
+]
 
 
 class TranscriptEntry(BaseModel):
@@ -15,6 +17,7 @@ class TranscriptEntry(BaseModel):
     timestamp: str
     text: str
     comment: str | None = None
+
 
 class InterviewFeedbackSection(BaseModel):
     """
@@ -31,8 +34,12 @@ class InterviewFeedback(BaseModel):
     """
 
     summary: str | None = None
-    strengths: InterviewFeedbackSection = Field(default_factory=InterviewFeedbackSection)
-    improvements: InterviewFeedbackSection = Field(default_factory=InterviewFeedbackSection)
+    strengths: InterviewFeedbackSection = Field(
+        default_factory=InterviewFeedbackSection
+    )
+    improvements: InterviewFeedbackSection = Field(
+        default_factory=InterviewFeedbackSection
+    )
 
 
 class InterviewCreate(BaseModel):
@@ -74,6 +81,9 @@ class InterviewOut(BaseModel):
     intv_id: str
     cand_id: str
     job_id: str
+    # None for interviews that exist but haven't been scheduled yet - an
+    # interviewer can be assigned before a date is picked (intv_status
+    # "not_scheduled"), and both cand.py and applications.py store None.
     intv_date_time: datetime | None = None
     intv_location: str | None = None
     intv_transcript: list[TranscriptEntry] | None = None

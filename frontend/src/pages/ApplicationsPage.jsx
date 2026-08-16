@@ -4,7 +4,7 @@ import Sidebar from '../components/common/Sidebar'
 import AddCandidateForm from '../components/candidate/AddCandidateForm'
 import EditCandidateForm from '../components/candidate/EditCandidateForm'
 import { SortMenu, FilterMenu } from '../components/job-candidate/TableControls'
-import { page, card, button } from '../styles/layout'
+import { page, card, button, badge } from '../styles/layout'
 import { useAuth } from '../lib/AuthContext.jsx'
 import { authedFetch } from '../lib/api.js'
 
@@ -198,16 +198,9 @@ export default function ApplicationsPage() {
       <Sidebar />
 
       <main className={page.main}>
-        {loading && (
-          <p className="text-sm text-neutral-400">Loading…</p>
-        )}
-
-        {!loading && error && (
-          <p className="text-sm text-coral-500">{error}</p>
-        )}
-
-        {!loading && !error && (
-          <>
+        {/* Header + controls render unconditionally - same skeleton as
+            JobsPage, where loading/error/empty states appear as a small
+            status line BELOW the controls instead of blanking the page. */}
         <div className="mb-6 flex items-start justify-between">
           <div>
             <h1 className="text-4xl font-extrabold tracking-tight text-neutral-800">
@@ -265,48 +258,45 @@ export default function ApplicationsPage() {
           />
         </div>
 
+        {loading && <p className="text-sm text-neutral-400">Loading…</p>}
+        {!loading && error && <p className="text-sm text-coral-500">{error}</p>}
+
+        {!loading && !error && (
+          filteredRows.length === 0
+            ? <p className="text-sm text-neutral-400">No applications found.</p>
+            : (
         <div className={`${card.base} overflow-hidden !p-0`}>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="bg-neutral-50">
-                  <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wide text-neutral-500">
+                <tr className="bg-neutral-50 border-b border-neutral-100">
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-neutral-500">
                     Candidate
                   </th>
-                  <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wide text-neutral-500">
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-neutral-500">
                     Job Applied
                   </th>
-                  <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wide text-neutral-500">
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-neutral-500">
                     Status
                   </th>
-                  <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wide text-neutral-500">
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-neutral-500">
                     CV
                   </th>
-                  <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wide text-neutral-500">
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-neutral-500">
                     CL
                   </th>
-                  <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wide text-neutral-500">
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-neutral-500">
                     Score
                   </th>
-                  <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wide text-neutral-500">
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-neutral-500">
                     Date
                   </th>
-                  <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wide text-neutral-500"></th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-neutral-500"></th>
                 </tr>
               </thead>
 
               <tbody>
-                {filteredRows.length === 0 ? (
-                  <tr>
-                    <td
-                      colSpan={8}
-                      className="px-6 py-10 text-center text-sm text-neutral-400"
-                    >
-                      No applications found.
-                    </td>
-                  </tr>
-                ) : (
-                  filteredRows.map((row) => (
+                {filteredRows.map((row) => (
                     // Whole row navigates to the candidate page now. Action
                     // cells below (CV / CL links, Edit button) all carry
                     // stopPropagation so they keep their own click without
@@ -316,33 +306,66 @@ export default function ApplicationsPage() {
                       onClick={() => openCandidate(row)}
                       className="border-t border-neutral-100 last:border-b-0 hover:bg-neutral-50 cursor-pointer transition-colors"
                     >
-                      <td className="px-6 py-4">
+                      <td className="px-4 py-3">
                         <div className="flex items-center gap-3">
                           <div
-                            className={`flex h-10 w-10 items-center justify-center rounded-pill text-sm font-bold text-white ${avatarColor(row.candidate_name)}`}
+                            className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-pill text-xs font-bold text-white ${avatarColor(row.candidate_name)}`}
                           >
                             {getInitials(row.candidate_name)}
                           </div>
-                          <span className="text-[16px] font-medium text-neutral-800">
+                          <span className="font-medium text-neutral-800">
                             {row.candidate_name}
                           </span>
                         </div>
                       </td>
 
-                      <td className="px-6 py-4 text-[16px] text-neutral-800">
+                      <td className="px-4 py-3 text-neutral-700">
                         {row.job_title}
                       </td>
 
-                      <td className="px-6 py-4">
-                        <span
-                          className={`rounded-pill px-4 py-1 text-xs font-semibold ${statusClass(row.status)}`}
-                        >
+                      <td className="px-4 py-3">
+                        <span className={`${badge.sm} ${statusClass(row.status)}`}>
                           {row.status}
                         </span>
                       </td>
 
-                      <td className="px-6 py-4" onClick={(e) => e.stopPropagation()}>
-                        {row.cv_url ? (
+                      <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                        {/* Once an analysis exists the cell links to the CV
+                            analysis report; the raw-PDF link only remains for
+                            legacy rows that have a file but no analysis. */}
+                        {row.cv_analysis_status === 'completed' ? (
+                          <button
+                            type="button"
+                            onClick={() => navigate(`/cv-analysis/${row.application_id}`)}
+                            className="text-primary-500 font-semibold hover:underline"
+                          >
+                            View
+                          </button>
+                        ) : row.cv_analysis_status === 'processing' ? (
+                          <span
+                            className="inline-flex items-center gap-1.5 text-neutral-400"
+                            title="The CV is being analysed."
+                          >
+                            <svg
+                              className="h-3.5 w-3.5 animate-spin"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="3"
+                              strokeLinecap="round"
+                            >
+                              <path d="M21 12a9 9 0 1 1-6.2-8.56" />
+                            </svg>
+                            Analysing…
+                          </span>
+                        ) : row.cv_analysis_status === 'failed' ? (
+                          <span
+                            className="text-coral-500"
+                            title="Analysis failed. Re-upload the CV via Edit to retry."
+                          >
+                            Failed
+                          </span>
+                        ) : row.cv_url ? (
                           <a
                             href={row.cv_url}
                             target="_blank"
@@ -356,7 +379,7 @@ export default function ApplicationsPage() {
                         )}
                       </td>
 
-                      <td className="px-6 py-4" onClick={(e) => e.stopPropagation()}>
+                      <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                         {row.cover_letter_url ? (
                           <a
                             href={row.cover_letter_url}
@@ -371,15 +394,15 @@ export default function ApplicationsPage() {
                         )}
                       </td>
 
-                      <td className="px-6 py-4 text-[16px] text-neutral-800">
+                      <td className="px-4 py-3 font-semibold text-neutral-700">
                         {formatScore(row.score)}
                       </td>
 
-                      <td className="px-6 py-4 text-[16px] text-neutral-800">
+                      <td className="px-4 py-3 text-neutral-500 whitespace-nowrap">
                         {formatShortDate(row.interview_datetime)}
                       </td>
 
-                      <td className="px-6 py-4" onClick={(e) => e.stopPropagation()}>
+                      <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                         <button
                           type="button"
                           onClick={(e) => {
@@ -404,13 +427,12 @@ export default function ApplicationsPage() {
                         </button>
                       </td>
                     </tr>
-                  ))
-                )}
+                ))}
               </tbody>
             </table>
           </div>
         </div>
-          </>
+            )
         )}
       </main>
 
