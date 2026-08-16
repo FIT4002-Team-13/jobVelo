@@ -301,6 +301,7 @@ export default function InterviewPage() {
   const [transcriptVisible, setTranscriptVisible] = useState(true);
   const [status, setStatus] = useState("Ready to start screen share");
   const [isScreenSharing, setIsScreenSharing] = useState(false);
+  const [isMicMuted, setIsMicMuted] = useState(true);
   const [isPaused, setIsPaused] = useState(false);
   const [isCompleted, setIsCompleted] = useState(false);
 
@@ -335,6 +336,7 @@ export default function InterviewPage() {
   const highlightInFlightRef = useRef(false);
   const lastHighlightRunRef = useRef(0);
   const lastHighlightSignatureRef = useRef("");
+  const isMicMutedRef = useRef(true);
 
   useEffect(() => {
     const element = transcriptContainerRef.current;
@@ -393,6 +395,42 @@ export default function InterviewPage() {
     isPausedRef.current = isPaused;
   }, [isPaused]);
 
+  useEffect(() => {
+    isMicMutedRef.current = isMicMuted;
+  }, [isMicMuted]);
+
+  async function ensureMicAccess() {
+    if (micStreamRef.current && audioContextRef.current) {
+      return;
+    }
+
+    const interviewerLabel = user?.full_name || "Interviewer";
+    if (!wsRef.current) {
+      wsRef.current = createTranscriptionSocket(interviewerLabel, partialEntryRef);
+    }
+
+    const micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    micStreamRef.current = micStream;
+
+    const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    await audioContext.resume();
+    audioContextRef.current = audioContext;
+
+    const micSource = audioContext.createMediaStreamSource(micStream);
+    const micProcessor = audioContext.createScriptProcessor(4096, 1, 1);
+    processorRef.current = micProcessor;
+
+    micProcessor.onaudioprocess = (event) => {
+      if (isPausedRef.current || isMicMutedRef.current) return;
+      const inputBuffer = event.inputBuffer.getChannelData(0);
+      if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
+      wsRef.current.send(downsampleBuffer(inputBuffer, audioContext.sampleRate, 16000));
+    };
+
+    micSource.connect(micProcessor);
+    micProcessor.connect(audioContext.destination);
+  }
+
   function createTranscriptionSocket(speaker, partialRef) {
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     const socket = new WebSocket(
@@ -418,12 +456,11 @@ export default function InterviewPage() {
   }
 
   async function startScreenShare() {
-    const interviewerLabel = user?.full_name || "Interviewer";
     const candidateLabel = candidateName || "Candidate";
 
     try {
-      // Mic socket — always created
-      wsRef.current = createTranscriptionSocket(interviewerLabel, partialEntryRef);
+      setStatus("Requesting microphone access...");
+      await ensureMicAccess();
       setStatus("Requesting screen access...");
 
       const displayStream = await navigator.mediaDevices.getDisplayMedia({
@@ -436,30 +473,10 @@ export default function InterviewPage() {
       });
       mediaStreamRef.current = displayStream;
 
-      setStatus("Requesting microphone access...");
-      const micStream = await navigator.mediaDevices.getUserMedia({
-        audio: true,
-      });
-      micStreamRef.current = micStream;
-
-      const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-      await audioContext.resume();
-      audioContextRef.current = audioContext;
-
-      // Mic processor → mic WebSocket (Interviewer)
-      const micSource = audioContext.createMediaStreamSource(micStream);
-      const micProcessor = audioContext.createScriptProcessor(4096, 1, 1);
-      processorRef.current = micProcessor;
-
-      micProcessor.onaudioprocess = (event) => {
-        if (isPausedRef.current) return;
-        const inputBuffer = event.inputBuffer.getChannelData(0);
-        if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
-        wsRef.current.send(downsampleBuffer(inputBuffer, audioContext.sampleRate, 16000));
-      };
-
-      micSource.connect(micProcessor);
-      micProcessor.connect(audioContext.destination);
+      const audioContext = audioContextRef.current;
+      if (!audioContext) {
+        throw new Error("Microphone audio context not ready");
+      }
 
       // Display audio processor → separate WebSocket (Candidate)
       // macOS getDisplayMedia returns video-only by default — skip if no audio tracks.
@@ -499,21 +516,9 @@ export default function InterviewPage() {
         track.onended = () => { void stopScreenShare(); };
       });
     } catch (error) {
-      if (audioContextRef.current) {
-        audioContextRef.current.close().catch(() => {});
-        audioContextRef.current = null;
-      }
       if (mediaStreamRef.current) {
         mediaStreamRef.current.getTracks().forEach((t) => t.stop());
         mediaStreamRef.current = null;
-      }
-      if (micStreamRef.current) {
-        micStreamRef.current.getTracks().forEach((t) => t.stop());
-        micStreamRef.current = null;
-      }
-      if (wsRef.current) {
-        wsRef.current.close();
-        wsRef.current = null;
       }
       if (wsDisplayRef.current) {
         wsDisplayRef.current.close();
@@ -532,24 +537,10 @@ export default function InterviewPage() {
   }
 
   async function stopScreenShare() {
-    // Stop media tracks first (synchronous) so the OS releases the screen
-    // recording session before any async work. If this runs during page unload
-    // via `void stopScreenShare()`, the async parts below may never execute —
-    // but the tracks must be stopped or macOS hangs the next getDisplayMedia.
+    // Stop display-specific resources without tearing down the independent mic stream.
     if (mediaStreamRef.current) {
       mediaStreamRef.current.getTracks().forEach((track) => track.stop());
       mediaStreamRef.current = null;
-    }
-
-    if (micStreamRef.current) {
-      micStreamRef.current.getTracks().forEach((track) => track.stop());
-      micStreamRef.current = null;
-    }
-
-    if (processorRef.current) {
-      processorRef.current.disconnect();
-      processorRef.current.onaudioprocess = null;
-      processorRef.current = null;
     }
 
     if (displayProcessorRef.current) {
@@ -558,24 +549,8 @@ export default function InterviewPage() {
       displayProcessorRef.current = null;
     }
 
-    if (audioContextRef.current) {
-      try {
-        await audioContextRef.current.close();
-      } catch (err) {
-        console.warn("Audio context close failed", err);
-      }
-      audioContextRef.current = null;
-    }
-
     if (videoRef.current) {
       videoRef.current.srcObject = null;
-    }
-
-    if (wsRef.current) {
-      if (wsRef.current.readyState === WebSocket.OPEN) {
-        wsRef.current.close();
-      }
-      wsRef.current = null;
     }
 
     if (wsDisplayRef.current) {
@@ -833,6 +808,22 @@ export default function InterviewPage() {
               disabled={!cvUrl}
             >
               View Resume
+            </button>
+            <button
+              className={`${button.outline} ${
+                isMicMuted ? "bg-neutral-200 text-neutral-700" : "bg-sky-100 text-sky-800"
+              } ${isCompleted ? "opacity-60 cursor-not-allowed" : ""}`}
+              onClick={() => {
+                if (isCompleted) return;
+                if (isMicMuted) {
+                  void ensureMicAccess().then(() => setIsMicMuted(false));
+                  return;
+                }
+                setIsMicMuted(true);
+              }}
+              disabled={isCompleted}
+            >
+              {isMicMuted ? "Mic muted" : "Mic unmuted"}
             </button>
             <button
               className={`${button.outline} ${
