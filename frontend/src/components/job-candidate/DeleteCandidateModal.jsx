@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { modal, button } from '../../styles/layout'
-import { authedFetch } from '../lib/api'
+import { authedFetch } from '../../lib/api'
+
 /**
  * Confirmation dialog for removing a candidate from a job.
  *
