@@ -12,18 +12,18 @@ from database import (
 )
 from routes import (
     applications,
-    auth,   
+    auth,
     cand,
-    cv_analysis,   
     companies,
-    dashboard,   
+    cv_analysis,
+    dashboard,
     files,
-    interview,   
-    invitations,   
-    job_cand,   
+    interview,
+    invitations,
+    job_cand,
     jobs,
     realtime,
-    user_interview,   
+    user_interview,
     users,
 )
 
