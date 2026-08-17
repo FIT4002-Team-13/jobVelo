@@ -1,6 +1,6 @@
 import { useAuth } from "../lib/AuthContext";
 import Sidebar from '../components/common/Sidebar'
-import { page } from '../styles/layout'
+import { button, modal, page } from '../styles/layout'
 import commentIcon from '../assets/icons/comment.png'
 import StatDelta from '../components/common/StatDelta';
 import { useEffect, useRef, useState } from "react";
@@ -44,6 +44,10 @@ export default function Profile() {
     {
       title: "Team Player",
       description: "Works effectively with cross-functional teams and contributes positively."
+    },
+    {
+      title:"test",
+      description: "test"
     }
   ]
 
@@ -79,89 +83,94 @@ export default function Profile() {
               
   const profileGrid = (
 
-    <div className="grid grid-cols-[1fr_2fr] items-start gap-4 mt-6">
+    <div className="grid h-full min-h-0 w-full grid-cols-[minmax(260px,1fr)_minmax(0,2fr)] items-stretch gap-4">
 
-      <div className="flex flex-col gap-4">
-        <div className="bg-white border p-5 rounded-xl">
+      <div className="grid min-h-0  min-w-0 grid-cols-1 grid-rows-[auto_minmax(0,1fr)] gap-4">
+        <div className="bg-white border p-4 rounded-xl">
           <div className="flex flex-col items-center text-center">
-            <div className="w-24 h-24 rounded-pill bg-primary-500 flex items-center justify-center text-white font-bold text-3xl">
+            <div className="w-16 h-16 rounded-pill bg-primary-500 flex items-center justify-center text-white font-bold text-2xl">
               {initials}
             </div>
-            <h2 className="mt-4 text-4xl font-bold tracking-tight text-neutral-800">
+            <h2 className="mt-2 text-2xl font-bold tracking-tight text-neutral-800">
               {user.full_name}
             </h2>
             <p className="mt-1 text-sm font-medium text-primary-500">
               {roleLabel}
             </p>
-            <p className="mt-3 text-sm text-neutral-500">
+            <p className="mt-1 text-xs text-neutral-500">
               {user.email}
             </p>
           </div>
         </div>
 
         {/* To be refined in US35. Currently uses hardcoded data for everything. */}
-        <div className="bg-white border rounded-xl p-5  col-span-2">
-            <div className="flex flex-col gap-3">
-            <div>
-              <p className="mt-1 text-sm font-medium text-neutral-500">TOTAL INTERVIEWS</p>
-              <div className="flex items-center justify-between">
-                <p className="text-2xl font-bold text-neutral-800">20</p>
-                <StatDelta value="+3%" label="from past 7 days" />
+        <div className="bg-white border rounded-xl p-3  ">
+            <div className="grid h-full min-h-0 grid-rows-[64px_64px_minmax(0,1fr)] gap-3">
+              <div className="flex flex-col justify-center">
+                <p className="text-xs font-medium text-neutral-500 pb-1">
+                  TOTAL INTERVIEWS
+                </p>
+                <div className="flex items-center justify-between">
+                  <p className="text-xl font-bold text-neutral-800">20</p>
+                  <StatDelta value="+3%" label="from past 7 days" />
+                </div>
               </div>
-            </div>
-            <div>
-              <p className="mt-1 text-sm font-medium text-neutral-500 mb-1">HIRE RATE</p>
-              <div className="flex items-center justify-between">
-                <p className="text-2xl font-bold text-neutral-800">2</p>
-                <StatDelta value="-50%" label="from last month" />
+
+              <div className="flex flex-col justify-center">
+                <p className="text-xs font-medium text-neutral-500 pb-1">
+                  AVERAGE CANDIDATE SCORE
+                </p>
+                <div className="flex items-center justify-between">
+                  <p className="text-xl font-bold text-neutral-800">7.4</p>
+                  <StatDelta value="+10%" label="from last month" />
+                </div>
               </div>
-            </div>
-            <div>
-              <p className="mt-1 text-sm font-medium text-neutral-500 mb-1">AVERAGE CANDIDATE SCORE</p>
-              <div className="flex items-center justify-between">
-                <p className="text-2xl font-bold text-neutral-800">7.4</p>
-                <StatDelta value="+10%" label="from last month" />
-              </div>
-            </div> 
-            <div className="flex flex-col gap-2">
-              <p className="mt-1 text-sm font-medium text-neutral-500 mb-1">
-                SCORE TRENDS
-              </p>
-              <div className="flex items-end gap-3 h-28">
-                {stats.map(d => (
-                    <div key={d.m} className="flex flex-col items-center gap-1 flex-1">
-                      <div
-                        className={`w-8 rounded-t-md ${colorMap.get(d.m)}`}
-                        style={{ height: `${d.v * 12}px` }}
-                      />
-                      <p className="text-xs text-neutral-600">{d.m}</p>
+
+              <div className="flex min-h-0 flex-col gap-2">
+                <p className="shrink-0 text-xs font-medium text-neutral-500">
+                  SCORE TRENDS
+                </p>
+
+                <div className="flex min-h-0 flex-1 gap-3">
+                  {stats.map((d) => (
+                    <div key={d.m} className="flex h-full min-w-0 flex-1 flex-col items-center gap-1">
+                      <div className="flex min-h-0 w-full flex-1 items-end justify-center">
+                        <div
+                          className={`w-8 rounded-t-md ${colorMap.get(d.m)}`}
+                          style={{ height: `${(d.v / 10) * 100}%` }}
+                        />
+                      </div>
+
+                      <p className="shrink-0 text-xs text-neutral-600">
+                        {d.m}
+                      </p>
                     </div>
-                ))}
+                  ))}
+                </div>
               </div>
             </div>
-          </div>
         </div>
       </div>
 
 
-      <div className="flex flex-col gap-4">
+      <div className="grid min-h-0 min-w-0 grid-cols-1 grid-rows-2 gap-4">
         {/* To be refined in US34. Currently uses hardcoded data and comment function does not work. */}
-        <div className="bg-white border rounded-xl p-5 col-span-3 ">
-          <h2 className="text-lg font-semibold text-neutral-800 mb-4">
+        <div className="min-h-0 overflow-hidden bg-white border rounded-xl p-3 flex flex-col ">
+          <h2 className="text-lg font-semibold text-neutral-800 mb-3">
             Strengths
           </h2>
 
-          <div className="space-y-3">
+          <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto pr-2 scrollbar-primary">
             {strengths.map((item, idx) => (
               <div
                 key={idx}
-                className="group bg-neutral-100 rounded-xl px-4 py-3 flex items-center justify-between"
+                className="group shrink-0 bg-neutral-100 rounded-xl px-3 py-2 flex items-center justify-between"
               >
-                <div>
+                <div className="min-w-0 pr-3">
                   <p className="text-sm font-bold text-neutral-800">
                     {item.title}
                   </p>
-                  <p className="text-sm text-neutral-500 mt-1">
+                  <p className="line-clamp-2 text-xs leading-snug text-neutral-500 mt-0.5">
                     {item.description}
                   </p>
                 </div>
@@ -178,22 +187,22 @@ export default function Profile() {
         </div>
 
         {/* To be refined in US34. Currently uses hardcoded data and comment function does not work. */}
-        <div className="bg-white border rounded-xl p-5 col-span-3">
-          <h2 className="text-lg font-semibold text-neutral-800 mb-4">
+        <div className="flex min-h-0 flex-col overflow-hidden bg-white border rounded-xl p-3">
+          <h2 className="text-lg font-semibold text-neutral-800 mb-3">
             Improvements
           </h2>
 
-          <div className="space-y-3">
+          <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto pr-2 scrollbar-primary">
             {improvements.map((item, idx) => (
               <div
                 key={idx}
-                className="group bg-neutral-100 rounded-xl px-4 py-3 flex items-center justify-between"
+                className="group shrink-0 bg-neutral-100 rounded-xl px-3 py-2 flex items-center justify-between"
               >
-                <div>
+                <div className="min-w-0 pr-3">
                   <p className="text-sm font-bold text-neutral-800">
                     {item.title}
                   </p>
-                  <p className="text-sm text-neutral-500 mt-1">
+                  <p className="line-clamp-2 text-xs leading-snug text-neutral-500 mt-0.5">
                     {item.description}
                   </p>
                 </div>
@@ -215,7 +224,7 @@ export default function Profile() {
   function CompanyProfileTab({ compId }) {
     const [company, setCompany] = useState(null);
     const [form, setForm] = useState({});
-    const [setLoading] = useState(true);
+    const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState(null);
     const [success, setSuccess] = useState(false);
@@ -230,7 +239,7 @@ export default function Profile() {
       try {
         const updated = await api.updateCompanyLogo(compId, formData);
         setCompany(updated);
-      } catch {
+      } catch (e) {
         setError('Failed to upload logo.');
       }
     };
@@ -284,24 +293,24 @@ export default function Profile() {
       : null;
 
     return (
-      <div className="flex flex-col gap-6">
-        <div className="grid grid-cols-[2fr_3fr] gap-6 items-start">
+      <div className="flex h-full min-h-0 flex-col gap-3">
+        <div className="grid min-h-0 flex-1 grid-cols-[2fr_3fr] gap-4 items-stretch">
 
           {/* Left — Company Branding */}
-          <div className="bg-white border rounded-xl p-6 flex flex-col gap-5">
+          <div className="bg-white border rounded-xl p-4 flex min-h-0 flex-col gap-3">
             <h2 className="text-lg font-semibold text-neutral-800">Company Branding</h2>
 
             {/* Logo */}
-            <div className="border rounded-xl p-4 flex flex-col items-center gap-3">
+            <div className="border rounded-xl p-3 flex min-h-0 flex-1 flex-col items-center justify-center gap-2">
               {logoUrl
-                ? <img src={`${logoUrl}?t=${Date.now()}`} alt="Company logo" className="h-40 object-contain" />
+                ? <img src={`${logoUrl}?t=${Date.now()}`} alt="Company logo" className="max-h-40 max-w-full object-contain" />
                 : <div className="h-20 w-20 rounded-full bg-neutral-200 flex items-center justify-center text-neutral-400 text-sm">No logo</div>
               }
               <button
                 onClick={() => fileRef.current?.click()}
-                className="text-sm text-primary-500 flex items-center gap-1 hover:underline"
+                className="text-sm text-primary-500 flex pt-2 items-center gap-1 hover:underline"
               >
-                ✏️ Edit Logo
+                Edit Logo
               </button>
               <input
                 ref={fileRef}
@@ -336,15 +345,15 @@ export default function Profile() {
           </div>
 
           {/* Right — Description + Contact */}
-          <div className="flex flex-col gap-6">
-            <div className="bg-white border rounded-xl p-6 flex flex-col gap-2">
+          <div className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-3">
+            <div className="bg-white border rounded-xl p-4 flex flex-col gap-2">
               <h2 className="text-lg font-semibold text-neutral-800">Company Description</h2>
               <textarea
                 name="comp_description"
                 value={form.comp_description}
                 onChange={handleChange}
                 maxLength={500}
-                rows={5}
+                rows={4}
                 className="border rounded-lg px-3 py-2 text-sm text-neutral-800 resize-none focus:outline-none focus:ring-2 focus:ring-primary-300"
               />
               <p className="text-xs text-neutral-400 text-right">
@@ -352,7 +361,7 @@ export default function Profile() {
               </p>
             </div>
 
-            <div className="bg-white border rounded-xl p-6 flex flex-col gap-4">
+            <div className="bg-white border rounded-xl p-4 flex min-h-0 flex-col overflow-hidden gap-3">
               <h2 className="text-lg font-semibold text-neutral-800">Contact Details</h2>
 
               <div className="flex flex-col gap-1">
@@ -389,7 +398,7 @@ export default function Profile() {
         </div>
 
         {/* Save Row */}
-        <div className="flex justify-end items-center gap-4">
+        <div className="flex shrink-0 justify-end items-center gap-4">
           {success && <p className="text-sm text-green-500">Changes saved successfully.</p>}
           {error && <p className="text-sm text-red-500">{error}</p>}
           <button
@@ -407,38 +416,42 @@ export default function Profile() {
 
   if (user?.role !== 'admin') {
     return (
-      <div className="flex min-h-screen bg-neutral-50">
+      <div className="flex h-screen overflow-hidden bg-neutral-50">
         <Sidebar user={user} />
-        <main className={page.main}>
-          <div className="mb-6">
-            <h1 className="text-4xl font-extrabold tracking-tight text-neutral-800">
+
+        <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+          <header className="shrink-0 border-b border-neutral-100 bg-white px-10 py-5">
+            <h1 className="text-3xl font-extrabold tracking-tight text-neutral-800">
               My Profile
             </h1>
-            <p className="text-xs text-neutral-400 mt-1">
+            <p className="mt-1 text-sm text-neutral-400">
               Your interviewing performance and feedback
             </p>
-          </div>
-          {profileGrid}
+          </header>
+
+          <section className="min-h-0 flex-1 overflow-hidden p-6">
+            {profileGrid}
+          </section>
         </main>
       </div>
     );
-  }        
+  }
 
   return (
-    <div className="flex min-h-screen bg-neutral-50">
+    <div className="flex h-screen overflow-hidden bg-neutral-50">
       <Sidebar user={user} />
-      <main className={page.main}>
 
-        <div className="mb-6">
-          <h1 className="text-4xl font-extrabold tracking-tight text-neutral-800">
+      <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+        <header className="shrink-0 border-b border-neutral-100 bg-white px-10 py-5">
+          <h1 className="text-3xl font-extrabold tracking-tight text-neutral-800">
             Profile
           </h1>
-          <p className="text-xs text-neutral-400 mt-1">
-            Your interviewing performance and feedback
+          <p className="mt-1 text-sm text-neutral-400">
+            Manage your personal and company profile
           </p>
-        </div>
+        </header>
 
-        <div className="flex border-b border-neutral-200 mb-6">
+        <div className="flex shrink-0 border-b border-neutral-200 bg-neutral-100 px-8">
           <button
             onClick={() => setActiveTab('profile')}
             className={`px-5 py-2.5 text-sm font-medium border-b-2 transition-colors ${
@@ -449,6 +462,7 @@ export default function Profile() {
           >
             My Profile
           </button>
+
           <button
             onClick={() => setActiveTab('company')}
             className={`px-5 py-2.5 text-sm font-medium border-b-2 transition-colors ${
@@ -461,12 +475,13 @@ export default function Profile() {
           </button>
         </div>
 
-        {activeTab === 'profile' && profileGrid}    
+        <section className="min-h-0 flex-1 overflow-hidden p-5">
+          {activeTab === 'profile' && profileGrid}
 
-        {activeTab === 'company' && (
-          <CompanyProfileTab compId={user.comp_id} />
-        )}
-
+          {activeTab === 'company' && (
+            <CompanyProfileTab compId={user.comp_id} />
+          )}
+        </section>
       </main>
     </div>
   );
