@@ -1,6 +1,5 @@
 import { useAuth } from "../lib/AuthContext";
 import Sidebar from '../components/common/Sidebar'
-import { button, modal, page } from '../styles/layout'
 import commentIcon from '../assets/icons/comment.png'
 import StatDelta from '../components/common/StatDelta';
 import { useEffect, useRef, useState } from "react";
@@ -224,7 +223,7 @@ export default function Profile() {
   function CompanyProfileTab({ compId }) {
     const [company, setCompany] = useState(null);
     const [form, setForm] = useState({});
-    const [loading, setLoading] = useState(true);
+    const [, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState(null);
     const [success, setSuccess] = useState(false);
@@ -239,7 +238,7 @@ export default function Profile() {
       try {
         const updated = await api.updateCompanyLogo(compId, formData);
         setCompany(updated);
-      } catch (e) {
+      } catch {
         setError('Failed to upload logo.');
       }
     };
