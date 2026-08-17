@@ -12,3 +12,4 @@ Thumbs.db
 .env.*.local
 !.env.example
 backend/.env.example 
+.claude
