@@ -31,10 +31,10 @@ export default function Sidebar({ user: userProp }) {
   const roleLabel = formatRole(user?.role);
 
   const navItems = [
-    { label: 'Dashboard',  path: '/dashboard',  icon: <LayoutDashboard size={16} />, group: 'MAIN'  },
-    { label: 'Schedules',  path: '/schedules',  icon: <CalendarDays    size={16} />, group: 'MAIN'  },
-    { label: 'Jobs',       path: '/jobs',        icon: <Briefcase       size={16} />, group: 'GROUP' },
-    { label: 'Candidates', path: '/candidates',  icon: <Users           size={16} />, group: 'GROUP' },
+    { label: 'Dashboard',   path: '/dashboard',    icon: <LayoutDashboard size={16} />, group: 'MAIN'  },
+    { label: 'Schedules',   path: '/schedules',    icon: <CalendarDays    size={16} />, group: 'MAIN'  },
+    { label: 'Jobs',        path: '/jobs',         icon: <Briefcase       size={16} />, group: 'GROUP' },
+    { label: 'Candidates',  path: '/candidates',   icon: <Users           size={16} />, group: 'GROUP' },
   ];
 
   const mainItems  = navItems.filter(i => i.group === 'MAIN');

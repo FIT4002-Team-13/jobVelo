@@ -3,41 +3,36 @@
 Used by UI elements that need to look up teammates - e.g. the AddCandidate
 modal's interviewer combobox.
 
-Currently accepts `comp_id` as a query param. Once auth is wired across
-the codebase, swap that for a forced filter from `Depends(get_current_user)`.
+Tenant isolation: comp_id comes from the JWT, NOT a query param, so a user
+can never enumerate another company's teammates. `role` stays a query
+filter for narrowing within the caller's own company.
 """
 
 from __future__ import annotations
 
 from bson import ObjectId
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from database import get_db
+from dependencies import get_current_comp_id
 
 router = APIRouter(prefix="/api/users", tags=["users"])
 
 
-def _comp_oid(comp_id: str) -> ObjectId:
-    if not ObjectId.is_valid(comp_id):
-        raise HTTPException(status_code=400, detail="Invalid comp_id")
-    return ObjectId(comp_id)
-
-
 @router.get("")
 async def list_users(
-    comp_id: str | None = None,
     role: str | None = None,
     db: AsyncIOMotorDatabase = Depends(get_db),
+    comp_id: ObjectId = Depends(get_current_comp_id),
 ):
-    """Return users matching the given filters. Password hash is projected
-    out at the DB level so it can never escape this endpoint by accident.
+    """Return teammates in the caller's company, optionally filtered by role.
+    Password hash is projected out at the DB level so it can never escape
+    this endpoint by accident.
 
-    Example: `GET /api/users?comp_id=abc...&role=interviewer`
+    Example: `GET /api/users?role=interviewer`
     """
-    query: dict = {}
-    if comp_id:
-        query["comp_id"] = _comp_oid(comp_id)
+    query: dict = {"comp_id": comp_id}
     if role:
         query["role"] = role
 

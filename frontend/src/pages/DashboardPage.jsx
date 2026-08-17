@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import Sidebar from '../components/common/Sidebar'
-import { api } from '../lib/api.js'
+import { api, authedFetch } from '../lib/api.js'
 import { SortMenu, FilterMenu, makeSorter } from '../components/job-candidate/TableControls'
 import { page } from '../styles/layout'
 
@@ -11,13 +11,16 @@ import { page } from '../styles/layout'
 //     `cand_status` field (SCHEDULED / EVALUATED). Kept in sync with the
 //     filter on JobDetailPage so the UX is identical across pages.
 const JOB_STATUS_OPTIONS = [
+  { value: '',            label: 'All'         },
   { value: 'Pending',     label: 'Pending'     },
   { value: 'In Progress', label: 'In Progress' },
   { value: 'Completed',   label: 'Completed'   },
 ]
 const CANDIDATE_FILTER_OPTIONS = [
-  { value: 'SCHEDULED', label: 'Scheduled' },
-  { value: 'EVALUATED', label: 'Evaluated' },
+  { value: '',              label: 'All'           },
+  { value: 'NOT SCHEDULED', label: 'Not Scheduled' },
+  { value: 'SCHEDULED',     label: 'Scheduled'     },
+  { value: 'EVALUATED',     label: 'Evaluated'     },
 ]
 
 // Solid-fill status pills - kept in sync with JobsPage + JobDetailPage.
@@ -32,8 +35,11 @@ const STATUS_STYLES = {
 // status looks identical wherever it shows. Soft tint here (vs solid for
 // jobs) because candidates appear in a denser list and solid would shout.
 const CANDIDATE_STATUS_STYLES = {
-  SCHEDULED: 'bg-neutral-100 text-neutral-500',
-  EVALUATED: 'bg-sky-100 text-sky-600',
+  'NOT SCHEDULED': 'bg-neutral-100 text-neutral-500',
+  SCHEDULED:       'bg-primary-100 text-primary-600',
+  EVALUATED:       'bg-mint-100 text-mint-700',
+  HIRED:           'bg-mint-500 text-white',
+  REJECTED:        'bg-coral-100 text-coral-700',
 }
 
 // ── Style tokens for summary cards ──────────────────────────────────────────
@@ -43,6 +49,11 @@ const CARD_STYLES = [
   { label: 'Completed', key: 'completed_interviews', bg: 'bg-tint-sky',   countColor: 'text-sky-500',   labelColor: 'text-sky-700',   unitColor: 'text-sky-400'   },
   { label: 'Up-coming', key: 'upcoming_interviews',  bg: 'bg-tint-coral', countColor: 'text-coral-500', labelColor: 'text-coral-700', unitColor: 'text-coral-400' },
 ]
+
+// Default page size for both panels. Five rows fits the dashboard layout
+// without forcing the viewport to scroll - "View All" remains the path
+// for someone who actually wants to browse the full list.
+const PAGE_SIZE = 5
 
 // ── Sub-components ───────────────────────────────────────────────────────────
 
@@ -78,6 +89,45 @@ function EmptyState({ message, hint }) {
   )
 }
 
+// Compact Prev/Next + page indicator. Used by both panels so the pagination
+// affordance reads identically across the page.
+//
+// Parent owns the page state; this component only renders + emits clicks.
+// Renders nothing when totalPages <= 1 - no point showing controls for a
+// single page.
+function Pagination({ page, totalPages, onPrev, onNext }) {
+  if (totalPages <= 1) return null
+  return (
+    <div className="flex items-center gap-2 text-xs text-neutral-500">
+      <button
+        type="button"
+        onClick={onPrev}
+        disabled={page === 0}
+        aria-label="Previous page"
+        className="w-7 h-7 flex items-center justify-center rounded-lg border border-neutral-200 text-neutral-500 hover:bg-neutral-50 hover:text-neutral-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+      >
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+          <polyline points="15 18 9 12 15 6" />
+        </svg>
+      </button>
+      <span className="tabular-nums font-medium">
+        Page <span className="text-neutral-700">{page + 1}</span> / {totalPages}
+      </span>
+      <button
+        type="button"
+        onClick={onNext}
+        disabled={page >= totalPages - 1}
+        aria-label="Next page"
+        className="w-7 h-7 flex items-center justify-center rounded-lg border border-neutral-200 text-neutral-500 hover:bg-neutral-50 hover:text-neutral-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+      >
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+          <polyline points="9 18 15 12 9 6" />
+        </svg>
+      </button>
+    </div>
+  )
+}
+
 // ── Page ────────────────────────────────────────────────────────────────────
 
 export default function DashboardPage() {
@@ -94,10 +144,16 @@ export default function DashboardPage() {
   // Search + sort + filter state, one set per panel.
   const [jobSearch,        setJobSearch]        = useState('')
   const [jobSortKey,       setJobSortKey]       = useState('latest')
-  const [jobStatusFilters, setJobStatusFilters] = useState([])
+  const [jobFilter,        setJobFilter]        = useState('')
   const [candSearch,       setCandSearch]       = useState('')
   const [candSortKey,      setCandSortKey]      = useState('latest')
-  const [candFilters,      setCandFilters]      = useState([])
+  const [candFilter,       setCandFilter]       = useState('')
+
+  // Pagination state, one page index per panel. Reset to 0 when a search
+  // or filter change shrinks the list out from under the current page
+  // (handled below via the `safePage` clamp - cheaper than a useEffect).
+  const [jobPage,  setJobPage]  = useState(0)
+  const [candPage, setCandPage] = useState(0)
 
   // Derived lists - search → filter → sort. Computed each render; cheap
   // enough at dashboard sizes that useMemo is overkill.
@@ -105,40 +161,79 @@ export default function DashboardPage() {
   const jobNeedle = jobSearch.trim().toLowerCase()
   const visibleJobs = jobs
     .filter(j => !jobNeedle || (j.title ?? '').toLowerCase().includes(jobNeedle))
-    .filter(j => jobStatusFilters.length === 0 || jobStatusFilters.includes(j.status))
+    .filter(j => !jobFilter || j.status === jobFilter)
   const sortedJobs = jobSorter ? [...visibleJobs].sort(jobSorter) : visibleJobs
 
   const candSorter = makeSorter(candSortKey, { nameField: 'cand_full_name', dateField: 'cand_created_at' })
   const candNeedle = candSearch.trim().toLowerCase()
   const visibleCandidates = candidates.filter((c) => {
+    // Dashboard is a glance-view of the active pipeline. A candidate with no
+    // application (cand_status is null) is just a stored profile - not in
+    // the pipeline yet - and showing them here would burn dashboard slots
+    // on rows the recruiter can't act on. Browse / clean-up of profile-only
+    // candidates belongs on a dedicated /candidates page later.
+    if (!c.cand_status) return false
     if (candNeedle) {
       const haystack = `${c.cand_full_name ?? ''} ${c.cand_email ?? ''}`.toLowerCase()
       if (!haystack.includes(candNeedle)) return false
     }
-    // candFilters is empty when no filter is active. With singleSelect on
-    // FilterMenu it'll always have 0 or 1 entries.
-    if (candFilters.length > 0 && !candFilters.includes(c.cand_status)) return false
+    // candFilter is '' for "All"; otherwise the selected status.
+    if (candFilter && c.cand_status !== candFilter) return false
     return true
   })
   const sortedCandidates = candSorter ? [...visibleCandidates].sort(candSorter) : visibleCandidates
 
+  // Pagination: clamp the current page against the (possibly) shrunken
+  // result set, then slice for display. We clamp at render-time instead
+  // of an effect so the controls always reflect the data we're actually
+  // showing - no flicker, no stale "Page 3 / 1" intermediate state.
+  const jobTotalPages   = Math.max(1, Math.ceil(sortedJobs.length        / PAGE_SIZE))
+  const candTotalPages  = Math.max(1, Math.ceil(sortedCandidates.length  / PAGE_SIZE))
+  const safeJobPage     = Math.min(jobPage,  jobTotalPages  - 1)
+  const safeCandPage    = Math.min(candPage, candTotalPages - 1)
+  const pagedJobs       = sortedJobs.slice(safeJobPage  * PAGE_SIZE, (safeJobPage  + 1) * PAGE_SIZE)
+  const pagedCandidates = sortedCandidates.slice(safeCandPage * PAGE_SIZE, (safeCandPage + 1) * PAGE_SIZE)
+
   useEffect(() => {
     async function load() {
       try {
-        // api.me() hits /api/auth/me with the stored JWT.
-        // /api/candidates (cand.py) returns CandidateOut shape with cand_*
-        // prefixed fields - the dashboard renders the new shape directly now,
-        // empty list shows an empty-state card.
-        const [meData, sumRes, jobsRes, candsRes] = await Promise.all([
-          api.me(),
-          fetch('/api/dashboard/summary'),
-          fetch('/api/jobs'),
-          fetch('/api/candidates'),
+        // Step 1: who am I? Need userid before /api/applications can scope
+        // to "my candidates" - matches the /candidates page filter.
+        const meData = await api.me()
+
+        // Step 2: parallel fetch the rest. Candidates panel now reads from
+        // /api/applications?user_id=<me> instead of /api/candidates so it
+        // shows the SAME rows as the /candidates page (one per application
+        // where the current user is the interviewer, scoped to the
+        // company server-side).
+        const [sumRes, jobsRes, appsRes] = await Promise.all([
+          authedFetch('/api/dashboard/summary'),
+          authedFetch('/api/jobs'),
+          authedFetch(`/api/applications?user_id=${encodeURIComponent(meData.userid)}`),
         ])
         setMe(meData)
         setSummary(await sumRes.json())
         setJobs(await jobsRes.json())
-        setCandidates(await candsRes.json())
+
+        // Map the application rows into the shape the panel renders
+        // (cand_full_name / cand_email / cand_status / cand_created_at).
+        // Keep `_cand_id` and `_job_id` around so a click can navigate
+        // straight to the candidate-detail page.
+        const apps = await appsRes.json()
+        const rows = Array.isArray(apps)
+          ? apps.map((a) => ({
+              // Application id is unique even when the same candidate has
+              // multiple applications - use it as the React key.
+              cand_id:         a.application_id,
+              cand_full_name:  a.candidate_name,
+              cand_email:      a.email,
+              cand_status:     a.status,
+              cand_created_at: a.interview_datetime,
+              _cand_id:        a.cand_id,
+              _job_id:         a.job_id,
+            }))
+          : []
+        setCandidates(rows)
       } catch (err) {
         console.error('Dashboard fetch failed:', err)
         setError('Failed to load dashboard data.')
@@ -208,7 +303,12 @@ export default function DashboardPage() {
                   onChange={setJobSearch}
                 />
                 <SortMenu value={jobSortKey} onChange={setJobSortKey} />
-                <FilterMenu values={jobStatusFilters} onChange={setJobStatusFilters} options={JOB_STATUS_OPTIONS} />
+                <FilterMenu
+                  values={[jobFilter]}
+                  onChange={(newValues) => setJobFilter(newValues[0] ?? '')}
+                  options={JOB_STATUS_OPTIONS}
+                  singleSelect
+                />
               </div>
             </div>
 
@@ -216,7 +316,7 @@ export default function DashboardPage() {
               {sortedJobs.length === 0 ? (
                 <EmptyState message="No jobs yet" hint="Create one from the Jobs page." />
               ) : (
-                sortedJobs.map((job) => (
+                pagedJobs.map((job) => (
                   // Whole row is now a Link to the job-detail page - matches
                   // how the JobsPage grid behaves and saves users the trip
                   // through /jobs just to drill into a job they can see here.
@@ -239,7 +339,18 @@ export default function DashboardPage() {
               )}
             </div>
 
-            <div className="text-right mt-3">
+            {/* Footer: pagination on the left when there's more than one
+                page, View-All on the right. justify-between keeps the
+                View-All anchored to the right whether pagination shows or
+                not (the empty <div /> placeholder takes care of layout). */}
+            <div className="flex items-center justify-between mt-3">
+              <Pagination
+                page={safeJobPage}
+                totalPages={jobTotalPages}
+                onPrev={() => setJobPage((p) => Math.max(0, p - 1))}
+                onNext={() => setJobPage((p) => Math.min(jobTotalPages - 1, p + 1))}
+              />
+              {jobTotalPages <= 1 && <div />}
               <Link to="/jobs" className="text-sm font-semibold text-primary-500 hover:text-primary-600">
                 &gt; View All
               </Link>
@@ -259,30 +370,37 @@ export default function DashboardPage() {
                 <SortMenu value={candSortKey} onChange={setCandSortKey} />
                 {/* Candidate filter is single-select so it stays consistent
                     with the JobDetailPage one (which has 2 options today). */}
-                <FilterMenu values={candFilters} onChange={setCandFilters} options={CANDIDATE_FILTER_OPTIONS} singleSelect />
+                <FilterMenu
+                  values={[candFilter]}
+                  onChange={(newValues) => setCandFilter(newValues[0] ?? '')}
+                  options={CANDIDATE_FILTER_OPTIONS}
+                  singleSelect
+                />
               </div>
             </div>
 
             <div className="flex flex-col gap-2.5">
-              {sortedCandidates.length === 0 ? (
+              {pagedCandidates.length === 0 ? (
                 <EmptyState
                   message="No candidates yet"
                   hint="Candidates appear here once someone is added to a job."
                 />
               ) : (
-                sortedCandidates.map((c) => (
-                  <div
+                pagedCandidates.map((c) => (
+                  // Whole row is a Link to the candidate-detail page now -
+                  // matches how the /candidates table behaves. The Link uses
+                  // the underlying cand_id + job_id captured during the
+                  // application-mapping (not the application_id we use as the
+                  // row key).
+                  <Link
                     key={c.cand_id}
-                    className="flex items-center justify-between bg-neutral-0 border border-neutral-200 rounded-xl px-4 py-3 hover:shadow-sm transition-shadow"
+                    to={c._cand_id && c._job_id ? `/candidates/${c._cand_id}/${c._job_id}` : '#'}
+                    className="flex items-center justify-between bg-neutral-0 border border-neutral-200 rounded-xl px-4 py-3 hover:shadow-sm hover:border-primary-200 transition-all no-underline"
                   >
                     <div>
                       <p className="text-sm font-semibold text-neutral-800">{c.cand_full_name}</p>
                       <p className="text-xs text-neutral-400 mt-0.5">{c.cand_email}</p>
                     </div>
-                    {/* Status pill replaces the old "View" button - the dashboard
-                        is a glance-view, drill-down lives on the job detail page.
-                        Falls back to a neutral "No application" pill when the
-                        candidate exists as a profile but isn't on any job. */}
                     <span
                       className={`text-xs font-bold px-3 py-1 rounded-pill ${
                         CANDIDATE_STATUS_STYLES[c.cand_status]
@@ -291,12 +409,21 @@ export default function DashboardPage() {
                     >
                       {c.cand_status ?? 'No application'}
                     </span>
-                  </div>
+                  </Link>
                 ))
               )}
             </div>
 
-            <div className="text-right mt-3">
+            {/* Footer: pagination on the left when there's more than one
+                page, View-All on the right. Same layout as the Jobs panel. */}
+            <div className="flex items-center justify-between mt-3">
+              <Pagination
+                page={safeCandPage}
+                totalPages={candTotalPages}
+                onPrev={() => setCandPage((p) => Math.max(0, p - 1))}
+                onNext={() => setCandPage((p) => Math.min(candTotalPages - 1, p + 1))}
+              />
+              {candTotalPages <= 1 && <div />}
               <Link to="/candidates" className="text-sm font-semibold text-primary-500 hover:text-primary-600">
                 &gt; View All
               </Link>
