@@ -812,7 +812,12 @@ export default function CandidateDetailPage() {
           candidate={startTarget}
           jobTitle={job?.title}
           onClose={() => setStartTarget(null)}
-          onConfirm={() => setStartTarget(null)}
+          onConfirm={() => {
+            setStartTarget(null)
+            if (interview?.intv_id) {
+              navigate(`/interview/${interview.intv_id}`)
+            }
+          }}
         />
       )}
 
