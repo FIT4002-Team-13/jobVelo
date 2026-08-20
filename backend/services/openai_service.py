@@ -78,7 +78,7 @@ async def generate_interview_questions(job_title: str, job_description: str) -> 
 
         Job description: "{job_description}" 
 
-        Generate 6 interview questions with 3 behavioural and 3 techincal question 
+        Generate 2 interview questions with 1 behavioural and 1 technical question
 
         Every question must relate to a skill, responsibility or expectation stated in the job description. 
 

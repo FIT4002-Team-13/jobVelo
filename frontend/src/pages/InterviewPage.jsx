@@ -774,14 +774,25 @@ export default function InterviewPage() {
     }
   }
 
+  // Minimum 2 questions, ignore only generate new questions when theres less than 2. 
+  const BASE_QUESTION_COUNT = 2;
+
   async function ignoreQuestion(question) {
     if (!jobId) return;
 
-    // Remove immediately for snappy UX; replacement is fetched in the
-    // background and appended when it arrives so the list never drops
-    // below its starting count.
-    setQuestions((current) => current.filter((q) => q.id !== question.id));
+    const remaining = questions.filter((q) => q.id !== question.id);
+    setQuestions(remaining);
     setQuestionsError("");
+
+    if (remaining.length >= BASE_QUESTION_COUNT) return;
+
+    const behCount = remaining.filter(
+      (q) => q.categoryValue === "behavioural"
+    ).length;
+    const techCount = remaining.filter(
+      (q) => q.categoryValue === "technical"
+    ).length;
+    const neededCategory = behCount <= techCount ? "behavioural" : "technical";
 
     try {
       const response = await fetch(
@@ -794,7 +805,7 @@ export default function InterviewPage() {
           },
           body: JSON.stringify({
             original_question: question.text,
-            category: question.categoryValue,
+            category: neededCategory,
           }),
         }
       );
@@ -970,7 +981,7 @@ export default function InterviewPage() {
 
           {/* Suggested Questions */}
           <div className={`${card.flat} flex flex-col flex-1 overflow-hidden`}>
-            <div className="px-6 pt-1 pb-1 border-b border-neutral-100 shrink-0">
+            <div className="px-6 pt-3 pb-1 border-b border-neutral-100 shrink-0">
               <h2 className="text-base font-semibold text-neutral-800">
                 Suggested Questions
               </h2>
@@ -978,21 +989,21 @@ export default function InterviewPage() {
             <div
               className={`flex-1 overflow-x-auto overflow-y-hidden px-6 py-3`}
             >
-              <div className={`${flex.row} gap-4 h-full items-start`}>
-                {questionsLoading ? (
-                  <p className="text-sm text-neutral-400">
-                    Generating questions...
-                  </p>
-                ) : questionsError && questions.length === 0 ? (
-                  <p className="text-sm text-coral-500">
-                    {questionsError}
-                  </p>
-                ) : questions.length === 0 ? (
-                  <p className="text-sm text-neutral-400">
-                    No suggested questions available.
-                  </p>
-                ) : (
-                  questions.map((q) => (
+              {questionsLoading ? (
+                <div className={`${flex.rowCenter} h-full`}>
+                  <p className="text-sm text-neutral-400">Generating questions...</p>
+                </div>
+              ) : questionsError && questions.length === 0 ? (
+                <div className={`${flex.rowCenter} h-full`}>
+                  <p className="text-sm text-coral-500 text-center">{questionsError}</p>
+                </div>
+              ) : questions.length === 0 ? (
+                <div className={`${flex.rowCenter} h-full`}>
+                  <p className="text-sm text-neutral-400">No suggested questions available.</p>
+                </div>
+              ) : (
+                <div className={`${flex.row} gap-4 h-full items-start`}>
+                  {questions.map((q) => (
                     <QuestionCard
                       key={q.id}
                       q={q}
@@ -1000,9 +1011,9 @@ export default function InterviewPage() {
                       onIgnore={ignoreQuestion}
                       isGeneratingSimilar={similarQuestionId === q.id}
                     />
-                  ))
-                )}
-              </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
 
