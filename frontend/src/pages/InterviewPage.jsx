@@ -162,7 +162,7 @@ function QuestionCard({ q, onMoreLike, onIgnore, isGeneratingSimilar }) {
   const [whyOpen, setWhyOpen] = useState(false);
   return (
     <div
-      className={`${flex.col} gap-3 bg-neutral-0 border border-neutral-200 rounded-2xl p-4 w-[280px] h-[345px] shrink-0 overflow-y-auto scrollbar-primary`}
+      className={`${flex.col} gap-3 bg-neutral-0 border border-neutral-200 rounded-2xl p-4 w-[280px] h-[345px] shrink-0 overflow-y-auto scrollbar-hide`}
     >
       <div className={`${flex.rowBetween}`}>
         <span className={`${badge.sm} ${q.categoryColor}`}>{q.category}</span>
