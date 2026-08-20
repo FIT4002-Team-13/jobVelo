@@ -284,6 +284,12 @@ export default function InterviewPage() {
   const videoRef = useRef(null);
   const transcriptContainerRef = useRef(null);
   const questionsRequestedJobRef = useRef(null);
+  const questionsRef = useRef([]);
+  const pendingCategoriesRef = useRef([]);
+
+  useEffect(() => {
+    questionsRef.current = questions;
+  }, [questions]);
 
   useEffect(() => {
     const element = transcriptContainerRef.current;
@@ -780,19 +786,36 @@ export default function InterviewPage() {
   async function ignoreQuestion(question) {
     if (!jobId) return;
 
-    const remaining = questions.filter((q) => q.id !== question.id);
+    // Read + update from the ref so a second click in the same tick sees
+    // the freshest list (React state hasn't re-rendered yet).
+    const remaining = questionsRef.current.filter((q) => q.id !== question.id);
+    questionsRef.current = remaining;
     setQuestions(remaining);
     setQuestionsError("");
 
     if (remaining.length >= BASE_QUESTION_COUNT) return;
 
-    const behCount = remaining.filter(
+    const behInList = remaining.filter(
       (q) => q.categoryValue === "behavioural"
     ).length;
-    const techCount = remaining.filter(
+    const techInList = remaining.filter(
       (q) => q.categoryValue === "technical"
     ).length;
-    const neededCategory = behCount <= techCount ? "behavioural" : "technical";
+    const behPending = pendingCategoriesRef.current.filter(
+      (c) => c === "behavioural"
+    ).length;
+    const techPending = pendingCategoriesRef.current.filter(
+      (c) => c === "technical"
+    ).length;
+    const neededCategory =
+      behInList + behPending <= techInList + techPending
+        ? "behavioural"
+        : "technical";
+
+    pendingCategoriesRef.current = [
+      ...pendingCategoriesRef.current,
+      neededCategory,
+    ];
 
     try {
       const response = await fetch(
@@ -819,12 +842,24 @@ export default function InterviewPage() {
       }
 
       const replacement = normaliseQuestion(data);
-      setQuestions((current) => [...current, replacement]);
+      setQuestions((current) => {
+        const next = [...current, replacement];
+        questionsRef.current = next;
+        return next;
+      });
     } catch (error) {
       console.error("Ignore replacement failed", error);
       setQuestionsError(
         error.message || "Unable to generate a replacement question"
       );
+    } finally {
+      const idx = pendingCategoriesRef.current.indexOf(neededCategory);
+      if (idx !== -1) {
+        pendingCategoriesRef.current = [
+          ...pendingCategoriesRef.current.slice(0, idx),
+          ...pendingCategoriesRef.current.slice(idx + 1),
+        ];
+      }
     }
   }
 
