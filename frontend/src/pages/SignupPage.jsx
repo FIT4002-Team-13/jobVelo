@@ -187,8 +187,7 @@ export default function SignupPage() {
     <AuthLayout title="Create your Smart Recruit account">
       <form onSubmit={onSubmit} className="space-y-4">
         <div className="rounded-lg bg-mint-50 border border-mint-200 px-4 py-3 text-sm text-mint-700">
-          You&apos;re joining <span className="font-semibold">{companyName}</span>.{' '}
-          <button
+          You&apos;re joining <span className="font-semibold">{companyName}</span>.{' '}          <button
             type="button"
             onClick={() => { setStep(1); setError(null) }}
             className="underline underline-offset-2 text-mint-700 hover:text-mint-800"
