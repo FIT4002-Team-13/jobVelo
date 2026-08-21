@@ -16,13 +16,6 @@ const AVATAR_COLORS = [
   "bg-coral-600",
 ];
 
-// Score bar accent colours — Communication blue, Skill coral, Problem Solving mint.
-const SCORE_COLORS = {
-  Communication: "bg-primary-500",
-  Skill: "bg-coral-500",
-  "Problem Solving": "bg-mint-500",
-};
-
 const SECTION_COLORS = [
   { border: "border-primary-200", activeBorder: "border-primary-400", badge: "bg-primary-100 text-primary-700", pauseBg: "bg-primary-100 hover:bg-primary-200 text-primary-600", timer: "text-primary-600" },
   { border: "border-sky-200",     activeBorder: "border-sky-400",     badge: "bg-sky-100 text-sky-700",         pauseBg: "bg-sky-100 hover:bg-sky-200 text-sky-600",           timer: "text-sky-600"     },
@@ -34,12 +27,6 @@ const SECTION_COLORS = [
 
 
 const INITIAL_TRANSCRIPT = [];
-
-const MOCK_SCORES = [
-  { label: "Communication", score: 7.0 },
-  { label: "Skill", score: 7.0 },
-  { label: "Problem Solving", score: 7.0 },
-];
 
 const MOCK_QUESTIONS = [
   {
@@ -146,25 +133,6 @@ function TranscriptEntry({ entry }) {
   );
 }
 
-function ScoreBar({ label, score }) {
-  const pct = (score / 10) * 100;
-  const color = SCORE_COLORS[label] ?? "bg-primary-500";
-  return (
-    <div className={`${flex.col} gap-1.5`}>
-      <div className={`${flex.rowBetween} text-sm`}>
-        <span className="text-neutral-700 font-medium">{label}</span>
-        <span className="text-neutral-500">{score.toFixed(1)}/10.0</span>
-      </div>
-      <div className="h-1.5 w-full bg-neutral-200 rounded-pill overflow-hidden">
-        <div
-          className={`h-full ${color} rounded-pill transition-all`}
-          style={{ width: `${pct}%` }}
-        />
-      </div>
-    </div>
-  );
-}
-
 function QuestionCard({ q }) {
   const [whyOpen, setWhyOpen] = useState(false);
   return (
@@ -244,7 +212,7 @@ function QuestionCard({ q }) {
   );
 }
 
-function SectionCard({ section, st, color, onStart, onPause, onResume, onDone }) {
+function SectionCard({ section, st, color, onStart, onPause, onResume, onDone, locked }) {
   const budget = section.suggested_minutes * 60;
   const pct = Math.min(100, (st.elapsed / budget) * 100);
   const over = st.elapsed > budget && st.status === "running";
@@ -292,7 +260,11 @@ function SectionCard({ section, st, color, onStart, onPause, onResume, onDone })
         </div>
 
         {isIdle && (
-          <button onClick={onStart} className="w-full py-2 rounded-xl bg-primary-500 hover:bg-primary-600 text-white text-sm font-semibold transition-colors">
+          <button
+            onClick={onStart}
+            disabled={locked}
+            className={`w-full py-2 rounded-xl text-sm font-semibold transition-colors ${locked ? "bg-neutral-200 text-neutral-400 cursor-not-allowed" : "bg-primary-500 hover:bg-primary-600 text-white"}`}
+          >
             Start
           </button>
         )}
@@ -301,7 +273,8 @@ function SectionCard({ section, st, color, onStart, onPause, onResume, onDone })
           <div className={`${flex.row} gap-2`}>
             <button
               onClick={isRunning ? onPause : onResume}
-              className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 transition-colors ${color.pauseBg}`}
+              disabled={locked}
+              className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 transition-colors ${locked ? "bg-neutral-100 text-neutral-300 cursor-not-allowed" : color.pauseBg}`}
             >
               {isRunning ? (
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
@@ -313,7 +286,11 @@ function SectionCard({ section, st, color, onStart, onPause, onResume, onDone })
                 </svg>
               )}
             </button>
-            <button onClick={onDone} className="flex-1 py-2 rounded-xl bg-neutral-100 hover:bg-neutral-200 text-neutral-600 text-sm font-semibold transition-colors">
+            <button
+              onClick={onDone}
+              disabled={locked}
+              className={`flex-1 py-2 rounded-xl text-sm font-semibold transition-colors ${locked ? "bg-neutral-100 text-neutral-300 cursor-not-allowed" : "bg-neutral-100 hover:bg-neutral-200 text-neutral-600"}`}
+            >
               Done
             </button>
           </div>
@@ -351,12 +328,13 @@ export default function InterviewPage() {
   const [cvUrl, setCvUrl] = useState(null);
   const [jobId, setJobId] = useState(null);
   const [transcript, setTranscript] = useState(INITIAL_TRANSCRIPT);
-  const [scores] = useState(MOCK_SCORES);
   const [questions] = useState(MOCK_QUESTIONS);
   const [timer, setTimer] = useState(0);
   const [sections, setSections] = useState([]);
   const [sectionStates, setSectionStates] = useState([]);
   const sectionIntervals = useRef([]);
+  const sectionsScrollRef = useRef(null);
+  const sectionCardRefs = useRef([]);
 
   const transcriptRef = useRef([]);
   const timerRef = useRef(0);
@@ -421,6 +399,24 @@ export default function InterviewPage() {
       sectionIntervals.current.forEach((id) => clearInterval(id));
     };
   }, []);
+
+  const activeSectionIndex = sectionStates.findIndex(
+    (st) => st.status === "running" || st.status === "paused"
+  );
+
+  useEffect(() => {
+    if (activeSectionIndex === -1) return;
+    const card = sectionCardRefs.current[activeSectionIndex];
+    const container = sectionsScrollRef.current;
+    if (!card || !container) return;
+    const containerRect = container.getBoundingClientRect();
+    const cardRect = card.getBoundingClientRect();
+    const padding = 24; // px-6
+    container.scrollTo({
+      left: container.scrollLeft + cardRect.left - containerRect.left - padding,
+      behavior: "smooth",
+    });
+  }, [activeSectionIndex]);
 
   function startSection(i) {
     setSectionStates((prev) =>
@@ -1154,37 +1150,27 @@ export default function InterviewPage() {
 
         {/* Right — Assessment + Questions + Actions */}
         <div className={`flex-1 ${flex.col} gap-4 overflow-hidden`}>
-          {/* Live Assessment */}
-          <div className={`${card.base} shrink-0`}>
-            <h2 className="text-base font-semibold text-neutral-800 mb-5">
-              Live Assessment
-            </h2>
-            <div className={`${flex.col} gap-4`}>
-              {scores.map((s) => (
-                <ScoreBar key={s.label} label={s.label} score={s.score} />
-              ))}
-            </div>
-          </div>
-
           {/* Interview Sections */}
           {sections.length > 0 && (
             <div className={`${card.flat} flex flex-col shrink-0 overflow-hidden`}>
               <div className="px-6 pt-4 pb-3 border-b border-neutral-100 shrink-0">
                 <h2 className="text-base font-semibold text-neutral-800">Interview Sections</h2>
               </div>
-              <div className="overflow-x-auto px-6 py-4" style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}>
+              <div ref={sectionsScrollRef} className="overflow-x-auto px-6 py-4" style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}>
                 <div className={`${flex.row} gap-3 items-stretch`}>
                   {sections.map((section, i) => (
-                    <SectionCard
-                      key={i}
-                      section={section}
-                      st={sectionStates[i] ?? { status: "idle", elapsed: 0 }}
-                      color={SECTION_COLORS[i % SECTION_COLORS.length]}
-                      onStart={() => startSection(i)}
-                      onPause={() => pauseSection(i)}
-                      onResume={() => resumeSection(i)}
-                      onDone={() => doneSection(i)}
-                    />
+                    <div key={i} ref={(el) => (sectionCardRefs.current[i] = el)} className="shrink-0">
+                      <SectionCard
+                        section={section}
+                        st={sectionStates[i] ?? { status: "idle", elapsed: 0 }}
+                        color={SECTION_COLORS[i % SECTION_COLORS.length]}
+                        locked={!isMicActive}
+                        onStart={() => startSection(i)}
+                        onPause={() => pauseSection(i)}
+                        onResume={() => resumeSection(i)}
+                        onDone={() => doneSection(i)}
+                      />
+                    </div>
                   ))}
                 </div>
               </div>

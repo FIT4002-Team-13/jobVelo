@@ -122,10 +122,12 @@ async def generate_interview_plan(
     prompt = (
         f"You are preparing an interview plan for {candidate_name} applying for the role of {job_title}.{desc_block}{cv_block}\n\n"
         "Generate 4 to 6 interview sections that a structured interview should cover for this role. "
-        "Tailor sections to probe the candidate's specific background, skills, and any gaps identified above. "
+        "The first section must always be an Introduction lasting exactly 5 minutes. "
+        "Tailor the remaining sections to probe the candidate's specific background, skills, and any gaps identified above. "
         "For each section return: a short name (2-4 words), a one-sentence description of what to explore, "
         f"and a suggested duration in minutes (between 5 and 20).{time_constraint} "
-        'Reply with valid JSON only — an array of objects with keys "name", "description", "suggested_minutes".'
+        'Reply with valid JSON only — an array of objects with keys "name", "description", "suggested_minutes". '
+        'The first object must be {"name": "Introduction", "description": "Welcome the candidate and outline the interview structure.", "suggested_minutes": 5}.'
     )
 
     res = await _get_client().chat.completions.create(

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 
 import Sidebar from '../components/common/Sidebar'
@@ -23,6 +23,8 @@ function InterviewPlanCard({ jobId, candId, jobCand }) {
   const [editingIndex, setEditingIndex] = useState(null)
   const [editDraft, setEditDraft] = useState(null)
   const [addingNew, setAddingNew] = useState(false)
+  const dragSrcIndex = useRef(null)
+  const [dragOverIndex, setDragOverIndex] = useState(null)
   const [newDraft, setNewDraft] = useState({ name: '', description: '', suggested_minutes: 10 })
 
   useEffect(() => {
@@ -110,6 +112,14 @@ function InterviewPlanCard({ jobId, candId, jobCand }) {
   }
 
   function cancelAdd() { setAddingNew(false) }
+
+  function reorderSection(from, to) {
+    const updated = [...sections]
+    const [moved] = updated.splice(from, 1)
+    updated.splice(to, 0, moved)
+    setSections(updated)
+    persist(updated)
+  }
 
   function commitAdd() {
     if (!newDraft.name.trim()) return
@@ -260,8 +270,22 @@ function InterviewPlanCard({ jobId, candId, jobCand }) {
             }
 
             return (
-              <div key={i} className={`${flex.col} gap-2 rounded-2xl border p-4 ${color.bg} ${color.border}`}>
+              <div
+                key={i}
+                draggable
+                onDragStart={() => { dragSrcIndex.current = i }}
+                onDragOver={(e) => { e.preventDefault(); if (dragSrcIndex.current !== i) setDragOverIndex(i) }}
+                onDragLeave={() => setDragOverIndex(null)}
+                onDrop={(e) => { e.preventDefault(); if (dragSrcIndex.current !== null && dragSrcIndex.current !== i) reorderSection(dragSrcIndex.current, i); setDragOverIndex(null) }}
+                onDragEnd={() => { dragSrcIndex.current = null; setDragOverIndex(null) }}
+                className={`${flex.col} gap-2 rounded-2xl border p-4 ${color.bg} ${color.border} cursor-grab active:cursor-grabbing active:opacity-50 transition-opacity ${dragOverIndex === i ? 'ring-2 ring-primary-400 ring-offset-1' : ''}`}
+              >
                 <div className={`${flex.row} items-center gap-2`}>
+                  <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor" className="text-neutral-300 shrink-0">
+                    <circle cx="2" cy="2" r="1"/><circle cx="8" cy="2" r="1"/>
+                    <circle cx="2" cy="5" r="1"/><circle cx="8" cy="5" r="1"/>
+                    <circle cx="2" cy="8" r="1"/><circle cx="8" cy="8" r="1"/>
+                  </svg>
                   <span className={`h-2 w-2 shrink-0 rounded-full ${color.dot}`} />
                   <span className="text-sm font-bold text-neutral-800 leading-tight flex-1">{section.name}</span>
                 </div>
