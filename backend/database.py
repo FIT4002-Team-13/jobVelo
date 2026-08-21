@@ -28,7 +28,12 @@ async def connect_to_mongo() -> None:
             tlsCAFile=certifi.where(),
         )
         mongo.db = mongo.client[settings.mongodb_db]
-    except (ConfigurationError, ServerSelectionTimeoutError, PyMongoError, OSError) as exc:
+    except (
+        ConfigurationError,
+        ServerSelectionTimeoutError,
+        PyMongoError,
+        OSError,
+    ) as exc:
         mongo.client = None
         mongo.db = None
         raise RuntimeError("Unable to connect to MongoDB") from exc

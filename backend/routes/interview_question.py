@@ -15,10 +15,15 @@ from services.openai_service import (
 
 router = APIRouter(prefix="/api/interview-questions", tags=["interview_questions"])
 
-@router.post("/{job_id}", response_model=SuggestedQuestionsList,)
 
-async def suggest_questions(job_id: str, db: AsyncIOMotorDatabase = Depends(get_db),) -> SuggestedQuestionsList:
-
+@router.post(
+    "/{job_id}",
+    response_model=SuggestedQuestionsList,
+)
+async def suggest_questions(
+    job_id: str,
+    db: AsyncIOMotorDatabase = Depends(get_db),
+) -> SuggestedQuestionsList:
     # check if the job ID is a valid object
     if not ObjectId.is_valid(job_id):
         raise HTTPException(
@@ -26,9 +31,7 @@ async def suggest_questions(job_id: str, db: AsyncIOMotorDatabase = Depends(get_
             detail="Invalid job ID",
         )
 
-    job = await db.jobs.find_one(
-        {"_id": ObjectId(job_id)}
-    )
+    job = await db.jobs.find_one({"_id": ObjectId(job_id)})
 
     if job is None:
         raise HTTPException(
@@ -45,7 +48,7 @@ async def suggest_questions(job_id: str, db: AsyncIOMotorDatabase = Depends(get_
         )
 
     except RuntimeError as error:
-        #missing OpenAI API key
+        # missing OpenAI API key
         raise HTTPException(
             status_code=503,
             detail=str(error),
@@ -59,10 +62,11 @@ async def suggest_questions(job_id: str, db: AsyncIOMotorDatabase = Depends(get_
             detail=f"Question generation failed: {error}",
         ) from error
 
+
 @router.post("/{job_id}/similar", response_model=SimilarQuestionResult)
-
-async def create_similar_question(job_id: str, request: SimilarQuestion, db: AsyncIOMotorDatabase = Depends(get_db)):
-
+async def create_similar_question(
+    job_id: str, request: SimilarQuestion, db: AsyncIOMotorDatabase = Depends(get_db)
+):
     if not ObjectId.is_valid(job_id):
         raise HTTPException(
             status_code=400,
@@ -72,18 +76,12 @@ async def create_similar_question(job_id: str, request: SimilarQuestion, db: Asy
     job = await db.jobs.find_one({"_id": ObjectId(job_id)})
 
     if not job:
-        raise HTTPException(
-            status_code=404,
-            detail="Job not found"
-        )
+        raise HTTPException(status_code=404, detail="Job not found")
 
     description = job.get("description", "").strip()
 
     if not description:
-        raise HTTPException(
-            status_code=400,
-            detail="Job description is missing"
-        )
+        raise HTTPException(status_code=400, detail="Job description is missing")
 
     try:
         return await generate_similar_question(

@@ -153,7 +153,8 @@ async def list_applications(
     # and read that interviewer's whole application list.
     interviewer_user = (
         await db.users.find_one({"_id": ObjectId(user_id), "comp_id": comp_id})
-        if ObjectId.is_valid(user_id) else None
+        if ObjectId.is_valid(user_id)
+        else None
     )
     if not interviewer_user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -168,27 +169,21 @@ async def list_applications(
     }
 
     # Find all interview links for this user directly by ID — no name lookup.
-    interview_user_links = await db.interview_users.find(
-        {"user_id": user_id}
-    ).to_list(length=2000)
+    interview_user_links = await db.interview_users.find({"user_id": user_id}).to_list(
+        length=2000
+    )
 
     interview_ids = [
-        link.get("intv_id")
-        for link in interview_user_links
-        if link.get("intv_id")
+        link.get("intv_id") for link in interview_user_links if link.get("intv_id")
     ]
 
-    interview_oids = [
-        ObjectId(iid)
-        for iid in interview_ids
-        if ObjectId.is_valid(iid)
-    ]
+    interview_oids = [ObjectId(iid) for iid in interview_ids if ObjectId.is_valid(iid)]
 
     interviews = []
     if interview_oids:
-        interviews = await db.interviews.find(
-            {"_id": {"$in": interview_oids}}
-        ).to_list(length=2000)
+        interviews = await db.interviews.find({"_id": {"$in": interview_oids}}).to_list(
+            length=2000
+        )
 
     # Build a set of assigned candidate-job pairs.
     assigned_pairs = {
@@ -204,7 +199,8 @@ async def list_applications(
     all_job_candidates = await db.job_candidates.find({}).to_list(length=5000)
 
     matched_job_candidates = [
-        jc for jc in all_job_candidates
+        jc
+        for jc in all_job_candidates
         if (jc.get("cand_id"), jc.get("job_id")) in assigned_pairs
         # Only keep rows whose job is in the caller's company.
         and jc.get("job_id") in company_job_ids
@@ -219,20 +215,15 @@ async def list_applications(
     candidate_oids = [ObjectId(cid) for cid in cand_ids if ObjectId.is_valid(cid)]
     job_oids = [ObjectId(jid) for jid in job_ids if ObjectId.is_valid(jid)]
 
-    candidates = await db.candidates.find(
-        {"_id": {"$in": candidate_oids}}
-    ).to_list(length=2000)
+    candidates = await db.candidates.find({"_id": {"$in": candidate_oids}}).to_list(
+        length=2000
+    )
 
-    jobs = await db.jobs.find(
-        {"_id": {"$in": job_oids}}
-    ).to_list(length=2000)
+    jobs = await db.jobs.find({"_id": {"$in": job_oids}}).to_list(length=2000)
 
     candidate_map = {str(c["_id"]): c for c in candidates}
     job_map = {str(j["_id"]): j for j in jobs}
-    interview_map = {
-        (i.get("cand_id"), i.get("job_id")): i
-        for i in interviews
-    }
+    interview_map = {(i.get("cand_id"), i.get("job_id")): i for i in interviews}
 
     # CV-analysis status per application, so the list's CV cell can link to
     # the analysis report (completed) or show a progress/failure hint
@@ -270,13 +261,19 @@ async def list_applications(
                 "phone": candidate.get("cand_phone") or "",
                 "job_id": str(job["_id"]),
                 "job_title": job.get("title") or "",
-                "status": (interview.get("intv_status") or "not_scheduled").replace("_", " ").upper() if interview else "NOT SCHEDULED",
+                "status": (interview.get("intv_status") or "not_scheduled")
+                .replace("_", " ")
+                .upper()
+                if interview
+                else "NOT SCHEDULED",
                 "cv_url": candidate.get("cand_cv_url"),
                 "cover_letter_url": candidate.get("cand_cover_letter_url"),
                 # None when no analysis exists for this application yet.
                 "cv_analysis_status": analysis_status_map.get(str(jc["_id"])),
                 "score": _safe_avg_score(jc),
-                "interview_datetime": interview.get("intv_date_time") if interview else None,
+                "interview_datetime": interview.get("intv_date_time")
+                if interview
+                else None,
                 "interviewer": interviewer_name,
                 "interviewer_user_id": user_id,
             }
@@ -289,7 +286,6 @@ async def list_applications(
             return datetime.min.replace(tzinfo=timezone.utc)
 
         return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
-
 
     rows.sort(key=_sort_key, reverse=True)
     return rows
@@ -321,8 +317,12 @@ async def update_application(
     old_job_id = application["job_id"]
     cand_id = application["cand_id"]
     for jid in (old_job_id, payload.job_id):
-        if not jid or not ObjectId.is_valid(jid) or not await db.jobs.find_one(
-            {"_id": ObjectId(jid), "comp_id": comp_id}, {"_id": 1}
+        if (
+            not jid
+            or not ObjectId.is_valid(jid)
+            or not await db.jobs.find_one(
+                {"_id": ObjectId(jid), "comp_id": comp_id}, {"_id": 1}
+            )
         ):
             raise HTTPException(status_code=404, detail="Application not found.")
 
@@ -340,10 +340,12 @@ async def update_application(
     )
 
     # 2. Find or create the interview for this candidate/job.
-    interview = await db.interviews.find_one({
-        "cand_id": cand_id,
-        "job_id": old_job_id,
-    })
+    interview = await db.interviews.find_one(
+        {
+            "cand_id": cand_id,
+            "job_id": old_job_id,
+        }
+    )
 
     scheduled_dt = None
     if payload.scheduled_at:
@@ -368,18 +370,20 @@ async def update_application(
         )
         interview = await db.interviews.find_one({"_id": interview["_id"]})
     else:
-        result = await db.interviews.insert_one({
-            "cand_id": cand_id,
-            "job_id": payload.job_id,
-            "intv_date_time": scheduled_dt,
-            "intv_location": None,
-            "intv_transcript": None,
-            "intv_status": intv_status,
-            "intv_candidate_report": None,
-            "intv_interviewer_report": None,
-            "intv_created_at": now,
-            "intv_updated_at": now,
-        })
+        result = await db.interviews.insert_one(
+            {
+                "cand_id": cand_id,
+                "job_id": payload.job_id,
+                "intv_date_time": scheduled_dt,
+                "intv_location": None,
+                "intv_transcript": None,
+                "intv_status": intv_status,
+                "intv_candidate_report": None,
+                "intv_interviewer_report": None,
+                "intv_created_at": now,
+                "intv_updated_at": now,
+            }
+        )
         interview = await db.interviews.find_one({"_id": result.inserted_id})
 
     # 3. Update interview_users link only if an interviewer_user_id was provided.
@@ -393,23 +397,28 @@ async def update_application(
 
         # The interviewer being assigned must belong to the caller's company.
         if not await db.users.find_one(
-            {"_id": ObjectId(payload.interviewer_user_id), "comp_id": comp_id}, {"_id": 1}
+            {"_id": ObjectId(payload.interviewer_user_id), "comp_id": comp_id},
+            {"_id": 1},
         ):
             raise HTTPException(status_code=404, detail="Interviewer not found.")
 
-        existing_link = await db.interview_users.find_one({
-            "intv_id": intv_id_str,
-            "user_id": payload.interviewer_user_id,
-        })
+        existing_link = await db.interview_users.find_one(
+            {
+                "intv_id": intv_id_str,
+                "user_id": payload.interviewer_user_id,
+            }
+        )
 
         if not existing_link:
             await db.interview_users.delete_many({"intv_id": intv_id_str})
-            await db.interview_users.insert_one({
-                "user_id": payload.interviewer_user_id,
-                "intv_id": intv_id_str,
-                "intvuser_created_at": now,
-                "intvuser_updated_at": now,
-            })
+            await db.interview_users.insert_one(
+                {
+                    "user_id": payload.interviewer_user_id,
+                    "intv_id": intv_id_str,
+                    "intvuser_created_at": now,
+                    "intvuser_updated_at": now,
+                }
+            )
 
     return {
         "ok": True,

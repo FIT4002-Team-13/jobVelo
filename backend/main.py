@@ -80,6 +80,7 @@ app.include_router(interview.router)
 app.include_router(user_interview.router)
 app.include_router(applications.router)
 
+
 @app.get("/api/health")
 async def health() -> dict[str, str]:
     return {"status": "ok"}

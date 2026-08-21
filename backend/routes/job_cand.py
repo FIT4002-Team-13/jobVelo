@@ -174,9 +174,9 @@ async def list_job_candidates_flat(comp_id: str | None = None) -> list[dict]:
     job_id_strs = list(jobs_by_id.keys())
 
     # 2. Fetch every link belonging to those jobs.
-    links = await db.job_candidates.find(
-        {"job_id": {"$in": job_id_strs}}
-    ).to_list(length=1000)
+    links = await db.job_candidates.find({"job_id": {"$in": job_id_strs}}).to_list(
+        length=1000
+    )
     if not links:
         return []
 
@@ -206,15 +206,18 @@ async def list_job_candidates_flat(comp_id: str | None = None) -> list[dict]:
     for link in links:
         job = jobs_by_id.get(str(link["job_id"]))
         cand = cands_by_id.get(str(link["cand_id"]))
-        out.append({
-            "jobcand_id":     str(link["_id"]),
-            "job_id":         str(link["job_id"]),
-            "cand_id":        str(link["cand_id"]),
-            "job_title":      (job or {}).get("title", "(missing job)"),
-            "cand_full_name": (cand or {}).get("cand_full_name") or (cand or {}).get("name", "(unknown candidate)"),
-            "status":         link.get("status"),
-            "has_analysis":   str(link["_id"]) in analysed_ids,
-        })
+        out.append(
+            {
+                "jobcand_id": str(link["_id"]),
+                "job_id": str(link["job_id"]),
+                "cand_id": str(link["cand_id"]),
+                "job_title": (job or {}).get("title", "(missing job)"),
+                "cand_full_name": (cand or {}).get("cand_full_name")
+                or (cand or {}).get("name", "(unknown candidate)"),
+                "status": link.get("status"),
+                "has_analysis": str(link["_id"]) in analysed_ids,
+            }
+        )
     return out
 
 

@@ -101,7 +101,7 @@ def _serialise(doc: dict, *, cached: bool = False) -> CvAnalysisOut:
     # Ignore any interview_questions doc entry that doesn't match the
     # enum'd shape (Pydantic would 500 the response on a bad category).
     _valid_questions = []
-    for q in (doc.get("interview_questions") or []):
+    for q in doc.get("interview_questions") or []:
         try:
             _valid_questions.append(CvAnalysisQuestion(**q))
         except Exception:
@@ -119,7 +119,9 @@ def _serialise(doc: dict, *, cached: bool = False) -> CvAnalysisOut:
         position_fit=CvAnalysisPositionFit(**(doc.get("position_fit") or {})),
         key_strengths=[CvAnalysisBullet(**b) for b in (doc.get("key_strengths") or [])],
         improvements=[CvAnalysisBullet(**b) for b in (doc.get("improvements") or [])],
-        inconsistencies=[CvAnalysisBullet(**b) for b in (doc.get("inconsistencies") or [])],
+        inconsistencies=[
+            CvAnalysisBullet(**b) for b in (doc.get("inconsistencies") or [])
+        ],
         interview_questions=_valid_questions,
         cv_path=doc["cv_path"],
         cover_letter_path=doc.get("cover_letter_path"),
@@ -144,16 +146,26 @@ async def _lookup_jobcand_context(jobcand_id: str) -> tuple[dict, dict, dict]:
     # `cand_id` and `job_id` on the link doc are stored as STRINGS (see
     # cand.py's create_candidate_for_job) - we cast to ObjectId here to
     # look up the matching jobs/candidates rows.
-    job_oid = ObjectId(link["job_id"]) if ObjectId.is_valid(link.get("job_id", "")) else None
-    cand_oid = ObjectId(link["cand_id"]) if ObjectId.is_valid(link.get("cand_id", "")) else None
+    job_oid = (
+        ObjectId(link["job_id"]) if ObjectId.is_valid(link.get("job_id", "")) else None
+    )
+    cand_oid = (
+        ObjectId(link["cand_id"])
+        if ObjectId.is_valid(link.get("cand_id", ""))
+        else None
+    )
 
     job = await db.jobs.find_one({"_id": job_oid}) if job_oid else None
     candidate = await db.candidates.find_one({"_id": cand_oid}) if cand_oid else None
 
     if not job:
-        raise HTTPException(status_code=404, detail="Job referenced by this link is missing")
+        raise HTTPException(
+            status_code=404, detail="Job referenced by this link is missing"
+        )
     if not candidate:
-        raise HTTPException(status_code=404, detail="Candidate referenced by this link is missing")
+        raise HTTPException(
+            status_code=404, detail="Candidate referenced by this link is missing"
+        )
 
     return link, job, candidate
 
@@ -199,13 +211,13 @@ async def _run_analysis(
         {"_id": analysis_oid, "status": "processing"},
         {
             "$set": {
-                "position_fit":        result.get("position_fit") or {},
-                "key_strengths":       result.get("key_strengths") or [],
-                "improvements":        result.get("improvements") or [],
-                "inconsistencies":     result.get("inconsistencies") or [],
+                "position_fit": result.get("position_fit") or {},
+                "key_strengths": result.get("key_strengths") or [],
+                "improvements": result.get("improvements") or [],
+                "inconsistencies": result.get("inconsistencies") or [],
                 "interview_questions": result.get("interview_questions") or [],
-                "status":              "completed",
-                "error":               None,
+                "status": "completed",
+                "error": None,
             }
         },
     )
@@ -221,8 +233,8 @@ async def _run_analysis(
 )
 async def analyse(
     background_tasks: BackgroundTasks,
-    jobcand_id:  Annotated[str,        Form(min_length=1)],
-    cv:          Annotated[UploadFile | None, File(description="Candidate CV PDF")] = None,
+    jobcand_id: Annotated[str, Form(min_length=1)],
+    cv: Annotated[UploadFile | None, File(description="Candidate CV PDF")] = None,
     cover_letter: Annotated[UploadFile | None, File()] = None,
 ) -> CvAnalysisOut:
     """See the module docstring for the per-state semantics. The short
@@ -261,9 +273,9 @@ async def analyse(
     # 3. Look up the job + candidate from the link so the LLM gets a real
     #    position title + job description + has a name to anchor against.
     _link, job, candidate = await _lookup_jobcand_context(jobcand_id)
-    position_title  = job.get("title") or "Untitled role"
+    position_title = job.get("title") or "Untitled role"
     job_description = job.get("description") or None
-    candidate_name  = candidate.get("cand_full_name") or candidate.get("name")
+    candidate_name = candidate.get("cand_full_name") or candidate.get("name")
 
     # 4. Read bytes into memory once for both the disk save and the LLM call.
     cv_bytes = await cv.read()
@@ -275,26 +287,28 @@ async def analyse(
     cl_path: str | None = None
     if cover_letter is not None:
         await cover_letter.seek(0)
-        cl_path = await save_upload(cover_letter, subdir="cv_analyses", key=f"{request_id}-cl")
+        cl_path = await save_upload(
+            cover_letter, subdir="cv_analyses", key=f"{request_id}-cl"
+        )
 
     # 5. Insert the doc as "processing". The analysis fields are filled in
     #    by the background task; until then they serialise as empty.
     now = datetime.now(timezone.utc)
     doc: dict = {
-        "jobcand_id":        jobcand_id,
-        "comp_id":           str(candidate.get("comp_id") or job.get("comp_id") or ""),
-        "candidate_name":    candidate_name,
-        "position_title":    position_title,
-        "position_fit":        {},
-        "key_strengths":       [],
-        "improvements":        [],
-        "inconsistencies":     [],
+        "jobcand_id": jobcand_id,
+        "comp_id": str(candidate.get("comp_id") or job.get("comp_id") or ""),
+        "candidate_name": candidate_name,
+        "position_title": position_title,
+        "position_fit": {},
+        "key_strengths": [],
+        "improvements": [],
+        "inconsistencies": [],
         "interview_questions": [],
-        "cv_path":             cv_path,
-        "cover_letter_path":   cl_path,
-        "status":            "processing",
-        "error":             None,
-        "created_at":        now,
+        "cv_path": cv_path,
+        "cover_letter_path": cl_path,
+        "status": "processing",
+        "error": None,
+        "created_at": now,
     }
     try:
         inserted = await db.cv_analyses.insert_one(doc)
@@ -307,7 +321,10 @@ async def analyse(
         winner = await db.cv_analyses.find_one({"jobcand_id": jobcand_id})
         if winner:
             return _serialise(winner, cached=True)
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Concurrent analysis request. Retry.")
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Concurrent analysis request. Retry.",
+        )
     doc["_id"] = inserted.inserted_id
 
     # 6. Point the candidate profile's document links at the freshly stored
@@ -351,7 +368,9 @@ async def get_by_jobcand(jobcand_id: str) -> CvAnalysisOut:
     db = get_db()
     doc = await db.cv_analyses.find_one({"jobcand_id": jobcand_id})
     if not doc:
-        raise HTTPException(status_code=404, detail="No analysis exists for this job-candidate")
+        raise HTTPException(
+            status_code=404, detail="No analysis exists for this job-candidate"
+        )
     return _serialise(doc, cached=True)
 
 

@@ -23,7 +23,13 @@ async def _interview_company_ok(db, intv_id: str, comp_id: ObjectId) -> bool:
     job_id = interview.get("job_id")
     if not job_id or not ObjectId.is_valid(job_id):
         return False
-    return await db.jobs.find_one({"_id": ObjectId(job_id), "comp_id": comp_id}, {"_id": 1}) is not None
+    return (
+        await db.jobs.find_one(
+            {"_id": ObjectId(job_id), "comp_id": comp_id}, {"_id": 1}
+        )
+        is not None
+    )
+
 
 def interview_user_helper(interview_user: dict) -> InterviewUserOut:
     """Convert a raw Mongo interview-user link into the API response model.
@@ -32,7 +38,9 @@ def interview_user_helper(interview_user: dict) -> InterviewUserOut:
     so malformed rows do not 500 the whole endpoint.
     """
 
-    fallback = interview_user.get("created_at") or datetime.min.replace(tzinfo=timezone.utc)
+    fallback = interview_user.get("created_at") or datetime.min.replace(
+        tzinfo=timezone.utc
+    )
 
     return InterviewUserOut(
         intvuser_id=str(interview_user["_id"]),
@@ -41,6 +49,7 @@ def interview_user_helper(interview_user: dict) -> InterviewUserOut:
         intvuser_created_at=interview_user.get("intvuser_created_at") or fallback,
         intvuser_updated_at=interview_user.get("intvuser_updated_at") or fallback,
     )
+
 
 @router.post(
     "",
@@ -94,6 +103,7 @@ async def create_interview_user(
 
     return interview_user_helper(created_link)
 
+
 @router.get(
     "/by-interview/{intv_id}",
     response_model=list[InterviewUserOut],
@@ -108,6 +118,7 @@ async def list_interview_users_by_interview(
         raise HTTPException(status_code=404, detail="Interview not found")
     links = await db.interview_users.find({"intv_id": intv_id}).to_list(length=100)
     return [interview_user_helper(doc) for doc in links]
+
 
 @router.get(
     "/by-user/{user_id}",
@@ -127,6 +138,7 @@ async def list_interview_users_by_user(
     links = await db.interview_users.find({"user_id": user_id}).to_list(length=100)
     return [interview_user_helper(doc) for doc in links]
 
+
 @router.get(
     "/{intvuser_id}",
     response_model=InterviewUserOut,
@@ -145,7 +157,9 @@ async def get_interview_user(
         )
 
     link = await db.interview_users.find_one({"_id": ObjectId(intvuser_id)})
-    if not link or not await _interview_company_ok(db, link.get("intv_id", ""), comp_id):
+    if not link or not await _interview_company_ok(
+        db, link.get("intv_id", ""), comp_id
+    ):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Interview-user link not found.",

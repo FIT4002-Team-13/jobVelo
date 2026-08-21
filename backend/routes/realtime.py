@@ -18,9 +18,9 @@ async def realtime_transcribe(websocket: WebSocket) -> None:
     transcript_queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
 
     async def on_transcript(text: str, is_final: bool) -> None:
-        await transcript_queue.put({"type": "transcript", "text": text, "is_final": is_final})
-
-        
+        await transcript_queue.put(
+            {"type": "transcript", "text": text, "is_final": is_final}
+        )
 
     session = DeepgramSession(on_transcript)
     try:

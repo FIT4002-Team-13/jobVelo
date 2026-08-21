@@ -28,7 +28,7 @@ _KNOWN_SUBDIRS = {"company_logos", "candidate_docs", "cv_analyses"}
 # accidentally allow arbitrary file types through.
 _ALLOWED_EXTS = {
     "company_logos": {".png", ".jpg", ".jpeg", ".webp"},
-    "cv_analyses":   {".pdf"},
+    "cv_analyses": {".pdf"},
     "candidate_docs": {".pdf"},
 }
 
@@ -37,8 +37,8 @@ _ALLOWED_EXTS = {
 # payload size Gemini receives.
 _MAX_BYTES_PER_SUBDIR = {
     "company_logos": 5 * 1024 * 1024,
-    "cv_analyses":   8 * 1024 * 1024,
-    "candidate_docs": 20 * 1024 * 1024, # 20 MB
+    "cv_analyses": 8 * 1024 * 1024,
+    "candidate_docs": 20 * 1024 * 1024,  # 20 MB
 }
 _DEFAULT_MAX_BYTES = 5 * 1024 * 1024
 
@@ -58,7 +58,7 @@ def _ext_from(file: UploadFile) -> str:
     if suffix:
         return suffix
     return {
-        "image/png":  ".png",
+        "image/png": ".png",
         "image/jpeg": ".jpg",
         "image/webp": ".webp",
     }.get((file.content_type or "").lower(), "")

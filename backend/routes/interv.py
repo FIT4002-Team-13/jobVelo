@@ -24,7 +24,12 @@ async def _interview_in_company(db, interview: dict, comp_id: ObjectId) -> bool:
     job_id = interview.get("job_id")
     if not job_id or not ObjectId.is_valid(job_id):
         return False
-    return await db.jobs.find_one({"_id": ObjectId(job_id), "comp_id": comp_id}, {"_id": 1}) is not None
+    return (
+        await db.jobs.find_one(
+            {"_id": ObjectId(job_id), "comp_id": comp_id}, {"_id": 1}
+        )
+        is not None
+    )
 
 
 def interview_helper(interview: dict) -> InterviewOut:
@@ -67,14 +72,26 @@ def _feedback_to_text(title: str, report: dict | None) -> str:
 
     strengths = report.get("strengths") or {}
     strength_items = strengths.get("items") or []
-    strength_justification = strengths.get("justification") or "No justification available."
+    strength_justification = (
+        strengths.get("justification") or "No justification available."
+    )
 
     improvements = report.get("improvements") or {}
     improvement_items = improvements.get("items") or []
-    improvement_justification = improvements.get("justification") or "No justification available."
+    improvement_justification = (
+        improvements.get("justification") or "No justification available."
+    )
 
-    strength_lines = "\n".join(f"- {item}" for item in strength_items) if strength_items else "- None"
-    improvement_lines = "\n".join(f"- {item}" for item in improvement_items) if improvement_items else "- None"
+    strength_lines = (
+        "\n".join(f"- {item}" for item in strength_items)
+        if strength_items
+        else "- None"
+    )
+    improvement_lines = (
+        "\n".join(f"- {item}" for item in improvement_items)
+        if improvement_items
+        else "- None"
+    )
 
     return (
         f"{title}\n\n"
@@ -204,7 +221,9 @@ async def update_interview(
     oid = _validate_oid(intv_id, "interview")
 
     existing_interview = await db.interviews.find_one({"_id": oid})
-    if not existing_interview or not await _interview_in_company(db, existing_interview, comp_id):
+    if not existing_interview or not await _interview_in_company(
+        db, existing_interview, comp_id
+    ):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Interview not found.",
@@ -275,7 +294,9 @@ async def download_interviewer_report(
             detail="Interview not found.",
         )
 
-    text = _feedback_to_text("Interviewer Report", interview.get("intv_interviewer_report"))
+    text = _feedback_to_text(
+        "Interviewer Report", interview.get("intv_interviewer_report")
+    )
 
     return PlainTextResponse(
         content=text,
