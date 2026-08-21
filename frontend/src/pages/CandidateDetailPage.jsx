@@ -410,8 +410,12 @@ function CvViewButton({ cvAnalysis, cvUrl, onViewAnalysis }) {
 }
 
 function CandidateInfoCard({ candidate, job, interview, onStartInterview, interviewer, onEdit, cvAnalysis, onViewCvAnalysis }) {
+  const { user } = useAuth()
   const status = (interview?.intv_status ?? 'not_scheduled').replace(/_/g, ' ').toUpperCase()
-  const canStartInterview = status === 'SCHEDULED'
+  // Starting an interview is interviewer-only - mirrors the backend's
+  // Depends(require_role("interviewer")) on POST /api/interviews. Other
+  // roles simply never see the button rather than hitting a 403.
+  const canStartInterview = status === 'SCHEDULED' && user?.role === 'interviewer'
 
   // Unified palette - mirrors JobDetailPage / DashboardPage / ApplicationsPage
   // so the same status reads identically wherever it appears. Key change:
@@ -713,6 +717,47 @@ export default function CandidateDetailPage() {
 
     load()
   }, [candId, jobId, user?.comp_id, refreshKey])
+
+  // Mirrors JobDetailPage's onConfirmStart: resume an existing in-progress/
+  // scheduled interview rather than creating a duplicate, otherwise create
+  // one and jump straight into the live session.
+  async function onConfirmStart() {
+    try {
+      const existingRes = await authedFetch(
+        `/api/interviews?cand_id=${candId}&job_id=${jobId}`
+      )
+      if (existingRes.ok) {
+        const existing = await existingRes.json()
+        const resumable = existing.find(
+          (i) => i.intv_status === 'in_progress' || i.intv_status === 'scheduled'
+        )
+        if (resumable) {
+          navigate(`/interview/${resumable.intv_id}`)
+          return
+        }
+      }
+
+      const res = await authedFetch('/api/interviews', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          cand_id: candId,
+          job_id: jobId,
+          intv_date_time: new Date().toISOString(),
+          intv_status: 'in_progress',
+        }),
+      })
+      const interviewRecord = await res.json()
+      if (!res.ok) {
+        throw new Error(interviewRecord?.detail || 'Failed to start interview.')
+      }
+      navigate(`/interview/${interviewRecord.intv_id}`)
+    } catch (err) {
+      console.error('Failed to start interview', err)
+      alert(err.message || 'Failed to start interview.')
+      setStartTarget(null)
+    }
+  }
 
   if (loading) {
     return (
