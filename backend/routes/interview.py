@@ -55,7 +55,7 @@ async def generate_plan(payload: PlanRequest) -> list[dict]:
         if isinstance(raw, str):
             try:
                 cv_analysis = json.loads(raw)
-            except Exception:
+            except json.JSONDecodeError:
                 pass
         elif isinstance(raw, dict):
             cv_analysis = raw
