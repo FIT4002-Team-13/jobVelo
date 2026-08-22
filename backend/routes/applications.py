@@ -355,16 +355,25 @@ async def update_application(
     intv_status = "scheduled" if scheduled_dt else "not_scheduled"
 
     if interview:
+        # A finished (or cancelled) interview is immutable apart from the
+        # job link: recomputing its status/datetime here would silently
+        # downgrade "completed" back to "scheduled" whenever the candidate
+        # profile is edited, orphaning the reports and scores.
+        if interview.get("intv_status") in ("completed", "cancelled"):
+            interview_updates = {
+                "job_id": payload.job_id,
+                "intv_updated_at": now,
+            }
+        else:
+            interview_updates = {
+                "job_id": payload.job_id,
+                "intv_date_time": scheduled_dt,
+                "intv_status": intv_status,
+                "intv_updated_at": now,
+            }
         await db.interviews.update_one(
             {"_id": interview["_id"]},
-            {
-                "$set": {
-                    "job_id": payload.job_id,
-                    "intv_date_time": scheduled_dt,
-                    "intv_status": intv_status,
-                    "intv_updated_at": now,
-                }
-            },
+            {"$set": interview_updates},
         )
         interview = await db.interviews.find_one({"_id": interview["_id"]})
     else:
