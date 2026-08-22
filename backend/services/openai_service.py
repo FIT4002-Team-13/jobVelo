@@ -179,6 +179,84 @@ async def summarise(transcript: str) -> str:
     return (res.choices[0].message.content or "").strip()
 
 
+# Prompt for the end-of-interview reports. The JSON shape mirrors
+# models.interview.InterviewFeedback + InterviewScores so the route can
+# validate the output 1:1 without remapping.
+_REPORT_PROMPT = """
+You are reviewing a completed job interview transcript. Produce a single
+JSON object with EXACTLY this shape:
+
+{{
+  "scores": {{
+    "communication":   number,   // 0.0-10.0, one decimal
+    "skill":           number,   // 0.0-10.0, technical/role skill shown
+    "problem_solving": number    // 0.0-10.0
+  }},
+  "candidate_report": {{          // evaluates the CANDIDATE's performance
+    "summary": string,           // 2-3 sentences, plain English
+    "strengths":    {{ "items": [string], "justification": string }},
+    "improvements": {{ "items": [string], "justification": string }}
+  }},
+  "interviewer_report": {{        // evaluates how the INTERVIEWER ran it
+    "summary": string,
+    "strengths":    {{ "items": [string], "justification": string }},
+    "improvements": {{ "items": [string], "justification": string }}
+  }}
+}}
+
+Rules:
+- Output ONLY valid JSON. No prose, no markdown fences.
+- 2-4 items per strengths/improvements list; each item is a short phrase
+  (under 12 words) grounded in something that actually happened in the
+  transcript. `justification` is 1-2 sentences citing evidence.
+- Plain, conversational English. Refer to people as "they"/"them".
+- Score against the target role's expectations; be honest, not generous.
+  A thin or evasive transcript should score low.
+- The interviewer report is coaching feedback on question quality, pacing,
+  follow-ups, and coverage - never about the candidate.
+
+Target role: {job_title}
+Candidate: {candidate_name}
+
+Transcript:
+{transcript}
+""".strip()
+
+
+async def generate_interview_reports(
+    transcript: str,
+    *,
+    job_title: str | None = None,
+    candidate_name: str | None = None,
+) -> dict[str, Any]:
+    """One call, both post-interview reports + the three 0-10 ratings.
+
+    Returns the parsed JSON dict; the route validates it against the
+    Pydantic models and clamps/rejects anything malformed.
+    """
+    res = await _get_client().chat.completions.create(
+        model=settings.openai_analysis_model,
+        messages=[
+            {
+                "role": "system",
+                "content": "You are an experienced hiring panel reviewer. Reply with valid JSON only.",
+            },
+            {
+                "role": "user",
+                "content": _REPORT_PROMPT.format(
+                    job_title=job_title or "the role",
+                    candidate_name=candidate_name or "the candidate",
+                    transcript=transcript,
+                ),
+            },
+        ],
+        response_format={"type": "json_object"},
+        temperature=0.3,
+        max_tokens=1400,
+    )
+    return json.loads(res.choices[0].message.content or "{}")
+
+
 async def score(transcript: str, job_title: str | None = None) -> dict[str, Any]:
     """Return a structured 0-100 score with sub-scores and reasoning."""
     role = job_title or "the role"

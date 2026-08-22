@@ -7,7 +7,16 @@ from fastapi import APIRouter, Depends, HTTPException, status
 
 from database import get_db
 from dependencies import require_role
-from models.interview import InterviewCreate, InterviewOut, InterviewUpdate
+from models.interview import (
+    InterviewCompleteOut,
+    InterviewCompleteRequest,
+    InterviewCreate,
+    InterviewFeedback,
+    InterviewOut,
+    InterviewScores,
+    InterviewUpdate,
+)
+from services.openai_service import generate_interview_reports
 
 router = APIRouter(prefix="/api/interviews", tags=["interviews"])
 
@@ -117,6 +126,163 @@ async def get_interview(intv_id: str) -> InterviewOut:
         )
 
     return interview_helper(interview)
+
+def _transcript_to_text(entries: list[dict]) -> str:
+    """Flatten transcript entries into "[mm:ss] Speaker: text" lines for
+    the LLM. Skips empty lines and in-flight partials defensively."""
+    lines = []
+    for e in entries or []:
+        text = (e.get("text") or "").strip()
+        if not text:
+            continue
+        speaker = e.get("speaker") or "Unknown"
+        timestamp = e.get("timestamp") or ""
+        prefix = f"[{timestamp}] " if timestamp else ""
+        lines.append(f"{prefix}{speaker}: {text}")
+    return "\n".join(lines)
+
+
+def _clamp_score(value) -> float:
+    try:
+        return round(min(10.0, max(0.0, float(value))), 1)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+@router.post(
+    "/{intv_id}/complete",
+    response_model=InterviewCompleteOut,
+    summary="Finish an interview: persist the transcript, generate both LLM reports, and score the candidate.",
+)
+async def complete_interview(
+    intv_id: str,
+    payload: InterviewCompleteRequest,
+    _user: dict = Depends(require_role("interviewer")),
+) -> InterviewCompleteOut:
+    """Called when the interviewer clicks Complete.
+
+    1. Persists the final transcript + duration and marks the interview
+       "completed".
+    2. Runs one LLM pass over the transcript producing the candidate
+       report (summary / strengths / improvements + three 0-10 ratings)
+       and the interviewer coaching report (no ratings).
+    3. Mirrors the ratings onto the job_candidates link (which also flips
+       the application status to EVALUATED, same as the manual scores
+       endpoint).
+
+    Idempotent: re-calling on an interview that already has both reports
+    returns the stored ones without another LLM run.
+    """
+    if not ObjectId.is_valid(intv_id):
+        raise HTTPException(status_code=400, detail="Invalid interview id.")
+
+    db = get_db()
+    interview = await db.interviews.find_one({"_id": ObjectId(intv_id)})
+    if not interview:
+        raise HTTPException(status_code=404, detail="Interview not found.")
+
+    link = await db.job_candidates.find_one(
+        {"cand_id": interview.get("cand_id"), "job_id": interview.get("job_id")}
+    )
+
+    # Re-entry: reports already generated -> serve them, no second LLM run.
+    if interview.get("intv_candidate_report") and interview.get("intv_interviewer_report"):
+        return InterviewCompleteOut(
+            intv_id=intv_id,
+            intv_status="completed",
+            scores=InterviewScores(
+                communication=_clamp_score((link or {}).get("communication_score")),
+                skill=_clamp_score((link or {}).get("skill_score")),
+                problem_solving=_clamp_score((link or {}).get("problem_solving_score")),
+            ),
+            candidate_report=InterviewFeedback(**interview["intv_candidate_report"]),
+            interviewer_report=InterviewFeedback(**interview["intv_interviewer_report"]),
+            cached=True,
+        )
+
+    # Prefer the transcript sent with the click (freshest); fall back to
+    # what the periodic autosave stored.
+    entries = (
+        [e.model_dump() for e in payload.transcript]
+        if payload.transcript is not None
+        else (interview.get("intv_transcript") or [])
+    )
+    transcript_text = _transcript_to_text(entries)
+    if not transcript_text:
+        raise HTTPException(
+            status_code=400,
+            detail="No transcript recorded - nothing to analyse.",
+        )
+
+    # Context for the LLM: role title + candidate name.
+    job = None
+    candidate = None
+    if ObjectId.is_valid(interview.get("job_id") or ""):
+        job = await db.jobs.find_one({"_id": ObjectId(interview["job_id"])})
+    if ObjectId.is_valid(interview.get("cand_id") or ""):
+        candidate = await db.candidates.find_one({"_id": ObjectId(interview["cand_id"])})
+
+    try:
+        result = await generate_interview_reports(
+            transcript_text,
+            job_title=(job or {}).get("title"),
+            candidate_name=(candidate or {}).get("cand_full_name"),
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Report generation failed: {e}",
+        ) from e
+
+    raw_scores = result.get("scores") or {}
+    scores = InterviewScores(
+        communication=_clamp_score(raw_scores.get("communication")),
+        skill=_clamp_score(raw_scores.get("skill")),
+        problem_solving=_clamp_score(raw_scores.get("problem_solving")),
+    )
+    # Pydantic fills any missing sections with safe empties rather than 500-ing.
+    candidate_report = InterviewFeedback(**(result.get("candidate_report") or {}))
+    interviewer_report = InterviewFeedback(**(result.get("interviewer_report") or {}))
+
+    now = datetime.now(timezone.utc)
+    interview_updates: dict = {
+        "intv_status": "completed",
+        "intv_candidate_report": candidate_report.model_dump(),
+        "intv_interviewer_report": interviewer_report.model_dump(),
+        "intv_updated_at": now,
+    }
+    if payload.transcript is not None:
+        interview_updates["intv_transcript"] = entries
+    if payload.duration_seconds is not None:
+        interview_updates["intv_duration_seconds"] = payload.duration_seconds
+    await db.interviews.update_one({"_id": ObjectId(intv_id)}, {"$set": interview_updates})
+
+    # Mirror the ratings onto the application link. Same side-effect as the
+    # manual PATCH /job-candidates/{id}/scores: recording scores flips the
+    # application to EVALUATED.
+    if link:
+        await db.job_candidates.update_one(
+            {"_id": link["_id"]},
+            {
+                "$set": {
+                    "communication_score": scores.communication,
+                    "skill_score": scores.skill,
+                    "problem_solving_score": scores.problem_solving,
+                    "status": "EVALUATED",
+                    "updated_at": now,
+                }
+            },
+        )
+
+    return InterviewCompleteOut(
+        intv_id=intv_id,
+        intv_status="completed",
+        scores=scores,
+        candidate_report=candidate_report,
+        interviewer_report=interviewer_report,
+        cached=False,
+    )
+
 
 @router.patch(
     "/{intv_id}",
