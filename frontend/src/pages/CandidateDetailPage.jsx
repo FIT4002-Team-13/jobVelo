@@ -190,6 +190,34 @@ function BulletList({ items = [] }) {
   )
 }
 
+// One requirement row inside the JOB REQUIREMENTS card - a pass/fail tag
+// next to the requirement text, with the AI's one-line justification below.
+// Mirrors the Suggested Questions panel's "source"-style pattern: a claim
+// tied to concrete evidence, not just a bare bullet.
+function RequirementRow({ requirement, addressed, justification }) {
+  return (
+    <li className="list-none">
+      <div className="flex items-start gap-2">
+        <span
+          className={`mt-0.5 shrink-0 rounded-pill px-2 py-0.5 text-[10px] font-bold uppercase ${
+            addressed
+              ? 'bg-mint-100 text-mint-700'
+              : 'bg-coral-100 text-coral-600'
+          }`}
+        >
+          {addressed ? 'Addressed' : 'Not addressed'}
+        </span>
+        <p className="text-sm font-semibold leading-tight text-neutral-900">
+          {requirement}
+        </p>
+      </div>
+      <p className="mt-1 pl-1 text-xs leading-5 text-neutral-500">
+        {justification}
+      </p>
+    </li>
+  )
+}
+
 function FeedbackPanel({
   interview,
   candidateTableHeight = 230,
@@ -218,6 +246,11 @@ function FeedbackPanel({
   const strengthsJustification = activeReport?.strengths?.justification ?? ''
   const improvementsItems = activeReport?.improvements?.items ?? []
   const improvementsJustification = activeReport?.improvements?.justification ?? ''
+  // Only the candidate report is scored against job requirements - the
+  // interviewer report evaluates question quality/pacing, not requirement
+  // coverage, so this stays empty (and the card hidden) on that tab.
+  const requirementsMapping =
+    activeTab === 'candidate' ? activeReport?.requirements_mapping ?? [] : []
 
   const handleDownload = () => {
     // Only fire the download when the report actually exists on the doc -
@@ -282,7 +315,11 @@ function FeedbackPanel({
       </div>
 
       {hasActiveReport ? (
-        <div className="grid flex-1 grid-cols-3 gap-6">
+        <div
+          className={`grid flex-1 gap-6 ${
+            requirementsMapping.length ? 'grid-cols-4' : 'grid-cols-3'
+          }`}
+        >
           <ReportCard title="SUMMARY" bgClass="bg-neutral-50">
             <p className="text-sm leading-7 text-neutral-900">{summary}</p>
           </ReportCard>
@@ -316,6 +353,25 @@ function FeedbackPanel({
               {improvementsJustification}
             </p>
           </ReportCard>
+
+          {requirementsMapping.length > 0 && (
+            <ReportCard
+              title="JOB REQUIREMENTS"
+              titleColor="text-primary-600"
+              bgClass="bg-primary-50"
+            >
+              <ul className="space-y-3">
+                {requirementsMapping.map((item, index) => (
+                  <RequirementRow
+                    key={`${item.requirement}-${index}`}
+                    requirement={item.requirement}
+                    addressed={item.addressed}
+                    justification={item.justification}
+                  />
+                ))}
+              </ul>
+            </ReportCard>
+          )}
         </div>
       ) : (
         // Per-tab empty state - shows on whichever tab is active when that
