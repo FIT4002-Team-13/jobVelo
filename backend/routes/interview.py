@@ -12,6 +12,7 @@ from models.interview import (
     InterviewCompleteRequest,
     InterviewCreate,
     InterviewFeedback,
+    InterviewFeedbackSection,
     InterviewOut,
     InterviewScores,
     InterviewUpdate,
@@ -142,6 +143,32 @@ def _transcript_to_text(entries: list[dict]) -> str:
     return "\n".join(lines)
 
 
+def _has_non_interviewer_speech(entries: list[dict], interviewer_names: set[str]) -> bool:
+    """True if at least one non-empty transcript line is attributed to
+    someone other than the given interviewer label set (case-insensitive,
+    stripped). False - conservatively - for empty/missing speakers; only an
+    explicit non-interviewer label counts as candidate evidence.
+
+    There's no real speaker diarization anywhere in this system - the
+    frontend stamps whichever of two hardcoded audio channels a chunk
+    arrived on, and the candidate channel silently never connects when
+    there's no separate audio source (solo testing, in-person interviews
+    sharing one mic, or getDisplayMedia falling back to video-only on
+    macOS). When that happens every line - interviewer's and candidate's -
+    ends up labeled with the interviewer's own name. This is used to detect
+    that failure mode so the report doesn't hallucinate a candidate
+    evaluation from text nobody but the interviewer said.
+    """
+    for e in entries or []:
+        text = (e.get("text") or "").strip()
+        if not text:
+            continue
+        speaker = (e.get("speaker") or "").strip()
+        if speaker and speaker.casefold() not in interviewer_names:
+            return True
+    return False
+
+
 def _clamp_score(value) -> float:
     try:
         return round(min(10.0, max(0.0, float(value))), 1)
@@ -177,6 +204,22 @@ def _cv_analysis_to_text(doc: dict) -> str:
     if questions:
         lines.append("Suggested questions to probe: " + " | ".join(questions))
     return "\n".join(lines)
+
+
+async def _get_interviewer_name(db, intv_id: str) -> str | None:
+    """Look up the interviewer's display name via interview_users -> users.
+
+    Mirrors the frontend's own fallback (`user?.full_name || "Interviewer"`
+    in InterviewPage.jsx) so the two agree on identity. Only considers the
+    first linked interviewer - panel interviews with multiple interviewers
+    using distinct transcript labels aren't handled here.
+    """
+    intv_user = await db.interview_users.find_one({"intv_id": intv_id})
+    if intv_user and ObjectId.is_valid(intv_user.get("user_id") or ""):
+        u = await db.users.find_one({"_id": ObjectId(intv_user["user_id"])})
+        if u:
+            return u.get("full_name") or u.get("username")
+    return None
 
 
 @router.post(
@@ -263,6 +306,18 @@ async def complete_interview(
         if analysis and (analysis.get("status") or "completed") == "completed":
             cv_context = _cv_analysis_to_text(analysis) or None
 
+    # Diarization guard: detect transcripts where every line is attributed
+    # to the interviewer (the candidate's audio channel never connected -
+    # see _has_non_interviewer_speech). When that's the case the candidate
+    # report below is overridden with an honest "no data" result instead of
+    # letting the LLM infer candidate behaviour from the interviewer's own
+    # speech.
+    interviewer_name = await _get_interviewer_name(db, intv_id)
+    interviewer_label = interviewer_name or "Interviewer"
+    interviewer_match_names = {"interviewer", interviewer_label.strip().casefold()}
+    candidate_label = (candidate or {}).get("cand_full_name") or "Candidate"
+    candidate_speech_detected = _has_non_interviewer_speech(entries, interviewer_match_names)
+
     try:
         result = await generate_interview_reports(
             transcript_text,
@@ -271,6 +326,9 @@ async def complete_interview(
             candidate_name=(candidate or {}).get("cand_full_name"),
             cv_analysis_context=cv_context,
             duration_seconds=payload.duration_seconds or interview.get("intv_duration_seconds"),
+            interviewer_speaker_label=interviewer_label,
+            candidate_speaker_label=candidate_label,
+            candidate_speech_detected=candidate_speech_detected,
         )
     except Exception as e:
         raise HTTPException(
@@ -288,6 +346,25 @@ async def complete_interview(
     candidate_report = InterviewFeedback(**(result.get("candidate_report") or {}))
     interviewer_report = InterviewFeedback(**(result.get("interviewer_report") or {}))
 
+    # Hard override: no LLM-authored candidate_report/scores without
+    # evidence. Runs unconditionally on the parsed result - it's an
+    # authoritative replacement, not a fallback for malformed output, so it
+    # can't be defeated by the model ignoring the prompt's instructions.
+    if not candidate_speech_detected:
+        scores = InterviewScores(communication=0.0, skill=0.0, problem_solving=0.0)
+        candidate_report = InterviewFeedback(
+            summary=(
+                "No distinguishable candidate speech was found in this transcript. "
+                f"Every line is attributed to the interviewer ({interviewer_label}), "
+                "which happens when the candidate's audio channel never connects "
+                "(solo testing, in-person interviews, or a screen-share that only "
+                "captured video). This report cannot evaluate the candidate and "
+                "was not generated by AI."
+            ),
+            strengths=InterviewFeedbackSection(items=[], justification=None),
+            improvements=InterviewFeedbackSection(items=[], justification=None),
+        )
+
     now = datetime.now(timezone.utc)
     interview_updates: dict = {
         "intv_status": "completed",
@@ -303,8 +380,11 @@ async def complete_interview(
 
     # Mirror the ratings onto the application link. Same side-effect as the
     # manual PATCH /job-candidates/{id}/scores: recording scores flips the
-    # application to EVALUATED.
-    if link:
+    # application to EVALUATED. Skipped when no candidate speech was found -
+    # writing 0.0 scores would be indistinguishable from a genuinely bad
+    # evaluation, and flipping to EVALUATED would hide this candidate from
+    # any "needs evaluation" queue when nothing was actually evaluated.
+    if link and candidate_speech_detected:
         await db.job_candidates.update_one(
             {"_id": link["_id"]},
             {
@@ -374,12 +454,7 @@ async def _report_pdf_response(intv_id: str, kind: str, user: dict) -> Response:
         else None
     )
 
-    interviewer_name = None
-    intv_user = await db.interview_users.find_one({"intv_id": intv_id})
-    if intv_user and ObjectId.is_valid(intv_user.get("user_id") or ""):
-        u = await db.users.find_one({"_id": ObjectId(intv_user["user_id"])})
-        if u:
-            interviewer_name = u.get("full_name") or u.get("username")
+    interviewer_name = await _get_interviewer_name(db, intv_id)
 
     pdf_bytes = build_interview_report_pdf(
         kind=kind,
