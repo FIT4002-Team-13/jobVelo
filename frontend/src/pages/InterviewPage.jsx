@@ -294,7 +294,7 @@ function InterviewReportModal({
 
   return (
     <div className={modal.overlay}>
-      <div className={`${modal.panel} max-w-xl max-h-[92vh] overflow-y-auto`}>
+      <div className={`${modal.panel} scrollbar-primary max-w-xl max-h-[92vh] overflow-y-auto`}>
         {phase === "generating" && (
           <div className={`${flex.colCenter} gap-3 py-16 text-center`}>
             <svg
@@ -826,7 +826,7 @@ export default function InterviewPage() {
   useEffect(() => {
     const interval = setInterval(() => {
       if (!isCompleted && transcriptRef.current.length) {
-        fetch(`/api/interviews/${id}`, {
+        authedFetch(`/api/interviews/${id}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -860,7 +860,7 @@ export default function InterviewPage() {
         localStorage.removeItem(`transcript-${id}`);
       }
     }
-    fetch(`/api/interviews/${id}`)
+    authedFetch(`/api/interviews/${id}`)
       .then((r) => r.json())
       .then((data) => {
         const serverTranscript = Array.isArray(data.intv_transcript)
@@ -888,16 +888,19 @@ export default function InterviewPage() {
           }
         }
 
+        // These two endpoints are tenant-scoped (JWT required) - a bare
+        // fetch() got a silent 401 here, which left the header name/role
+        // blank and the report popup without the candidate's name.
         if (data.job_id) {
           setJobId(data.job_id);
-          fetch(`/api/jobs/${data.job_id}`)
+          authedFetch(`/api/jobs/${data.job_id}`)
             .then((r) => r.json())
             .then((job) => { if (job.title) setCandidateRole(job.title); })
             .catch(() => {});
         }
         if (data.cand_id) {
           setCandId(data.cand_id);
-          fetch(`/api/candidates/${data.cand_id}`)
+          authedFetch(`/api/candidates/${data.cand_id}`)
             .then((r) => r.json())
             .then((cand) => {
               if (cand.cand_full_name) setCandidateName(cand.cand_full_name);
@@ -909,7 +912,11 @@ export default function InterviewPage() {
   }, [id]);
 
   useEffect(() => {
-    if (!jobId || questionsRequestedJobRef.current === jobId) {
+    // Never (re)generate suggestions for a finished interview - reopening a
+    // completed transcript was silently firing a fresh OpenAI run per visit.
+    // isCompleted lands in the same state batch as jobId, so this effect
+    // sees the final value on first run.
+    if (!jobId || isCompleted || questionsRequestedJobRef.current === jobId) {
       return;
     }
 
@@ -954,7 +961,7 @@ export default function InterviewPage() {
         setQuestionsError(error.message || "Unable to generate questions");
       })
       .finally(() => {setQuestionsLoading(false);});
-  }, [jobId]);
+  }, [jobId, isCompleted]);
 
   async function generateMoreLike(question) {
     if (!jobId || similarQuestionId) {
