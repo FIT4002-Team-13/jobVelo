@@ -149,6 +149,36 @@ def _clamp_score(value) -> float:
         return 0.0
 
 
+def _cv_analysis_to_text(doc: dict) -> str:
+    """Condense a cv_analyses doc into a compact plain-text block for the
+    report prompt: fit scores + bullet titles + suggested questions. The
+    detail sentences are dropped - titles carry the hypotheses, and the
+    transcript is the evidence."""
+    lines: list[str] = []
+    fit = doc.get("position_fit") or {}
+    if fit:
+        lines.append(
+            "CV fit scores (0-10): "
+            f"relevant experience {fit.get('relevant_experience', '?')}, "
+            f"technical {fit.get('technical_fit', '?')}, "
+            f"soft skills {fit.get('soft_skills', '?')}"
+        )
+    for label, key in (
+        ("Strengths on paper", "key_strengths"),
+        ("Flagged concerns", "improvements"),
+        ("Inconsistencies", "inconsistencies"),
+    ):
+        titles = [b.get("title") for b in (doc.get(key) or []) if b.get("title")]
+        if titles:
+            lines.append(f"{label}: " + "; ".join(titles))
+    questions = [
+        q.get("question") for q in (doc.get("interview_questions") or []) if q.get("question")
+    ]
+    if questions:
+        lines.append("Suggested questions to probe: " + " | ".join(questions))
+    return "\n".join(lines)
+
+
 @router.post(
     "/{intv_id}/complete",
     response_model=InterviewCompleteOut,
@@ -214,7 +244,9 @@ async def complete_interview(
             detail="No transcript recorded - nothing to analyse.",
         )
 
-    # Context for the LLM: role title + candidate name.
+    # Context for the LLM: role title + JD (scoring yardstick), candidate
+    # name, the pre-interview CV analysis (hypotheses to verify), and the
+    # interview duration (confidence calibration).
     job = None
     candidate = None
     if ObjectId.is_valid(interview.get("job_id") or ""):
@@ -222,11 +254,23 @@ async def complete_interview(
     if ObjectId.is_valid(interview.get("cand_id") or ""):
         candidate = await db.candidates.find_one({"_id": ObjectId(interview["cand_id"])})
 
+    cv_context = None
+    if link:
+        analysis = await db.cv_analyses.find_one({"jobcand_id": str(link["_id"])})
+        # Only a finished analysis is useful context; processing/failed docs
+        # carry empty sections. Docs from before the status field are
+        # complete by construction.
+        if analysis and (analysis.get("status") or "completed") == "completed":
+            cv_context = _cv_analysis_to_text(analysis) or None
+
     try:
         result = await generate_interview_reports(
             transcript_text,
             job_title=(job or {}).get("title"),
+            job_description=(job or {}).get("description"),
             candidate_name=(candidate or {}).get("cand_full_name"),
+            cv_analysis_context=cv_context,
+            duration_seconds=payload.duration_seconds or interview.get("intv_duration_seconds"),
         )
     except Exception as e:
         raise HTTPException(
