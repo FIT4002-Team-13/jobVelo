@@ -25,6 +25,19 @@ class InterviewFeedbackSection(BaseModel):
     justification: str | None = None
 
 
+class RequirementMapping(BaseModel):
+    """One job requirement matched against the candidate's answers.
+
+    There's no structured requirements list on a job (just a free-text
+    `description`), so `requirement` is itself LLM-extracted from that
+    description/title at report-generation time - see US28.
+    """
+
+    requirement: str
+    addressed: bool
+    justification: str
+
+
 class InterviewFeedback(BaseModel):
     """
     Create/update payload for an interview feedback report.
@@ -33,6 +46,9 @@ class InterviewFeedback(BaseModel):
     summary: str | None = None
     strengths: InterviewFeedbackSection = Field(default_factory=InterviewFeedbackSection)
     improvements: InterviewFeedbackSection = Field(default_factory=InterviewFeedbackSection)
+    # Only meaningful on the candidate report - stays empty on the
+    # interviewer report, which isn't evaluated against job requirements.
+    requirements_mapping: list[RequirementMapping] = Field(default_factory=list)
 
 
 class InterviewScores(BaseModel):
