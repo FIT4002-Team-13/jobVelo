@@ -6,7 +6,7 @@ import StartInterviewModal from '../components/job-candidate/StartInterviewModal
 import EditCandidateForm from '../components/candidate/EditCandidateForm'
 import { card, flex, page } from '../styles/layout'
 import { useAuth } from '../lib/AuthContext.jsx'
-import { api, authedFetch } from '../lib/api.js'
+import { api, authedFetch, downloadFileWithAuth } from '../lib/api.js'
 
 function formatDate(iso) {
   if (!iso) return '--'
@@ -791,8 +791,8 @@ export default function CandidateDetailPage() {
               jobCand={jobCand}
               interview={interview}
               onViewTranscription={() => {
-                if (!interview?.intv_transcript) return
-                console.log('Open transcript view')
+                if (!interview?.intv_transcript || !interview?.intv_id) return
+                navigate(`/interview/${interview.intv_id}`)
               }}
             />
           </div>
@@ -804,11 +804,15 @@ export default function CandidateDetailPage() {
           candidateTableHeight={230}
           onDownloadCandidateReport={() => {
             if (!interview?.intv_id) return
-            window.open(`/api/interviews/${interview.intv_id}/candidate-report`, '_blank')
+            // No filename arg: the server's Content-Disposition carries
+            // "<kind>-report-<candidate>-<interview datetime>.pdf".
+            downloadFileWithAuth(`/api/interviews/${interview.intv_id}/candidate-report`)
+              .catch((err) => window.alert(err.message || 'Failed to download the report.'))
           }}
           onDownloadInterviewerReport={() => {
             if (!interview?.intv_id) return
-            window.open(`/api/interviews/${interview.intv_id}/interviewer-report`, '_blank')
+            downloadFileWithAuth(`/api/interviews/${interview.intv_id}/interviewer-report`)
+              .catch((err) => window.alert(err.message || 'Failed to download the report.'))
           }}
         />
       </main>

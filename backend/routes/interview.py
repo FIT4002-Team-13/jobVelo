@@ -3,10 +3,10 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from bson import ObjectId
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 
 from database import get_db
-from dependencies import require_role
+from dependencies import get_current_user, require_role
 from models.interview import (
     InterviewCompleteOut,
     InterviewCompleteRequest,
@@ -326,6 +326,110 @@ async def complete_interview(
         interviewer_report=interviewer_report,
         cached=False,
     )
+
+
+async def _report_pdf_response(intv_id: str, kind: str, user: dict) -> Response:
+    """Shared implementation for the two report-download endpoints.
+
+    Auth: any logged-in user of the interview's company (walked via the
+    job's comp_id). 404 (not 403) outside the tenant so ids can't be probed.
+    """
+    from services.report_pdf import build_interview_report_pdf
+
+    if not ObjectId.is_valid(intv_id):
+        raise HTTPException(status_code=400, detail="Invalid interview id.")
+
+    db = get_db()
+    interview = await db.interviews.find_one({"_id": ObjectId(intv_id)})
+    if not interview:
+        raise HTTPException(status_code=404, detail="Interview not found.")
+
+    job = None
+    if ObjectId.is_valid(interview.get("job_id") or ""):
+        job = await db.jobs.find_one({"_id": ObjectId(interview["job_id"])})
+    if not job or str(job.get("comp_id") or "") != str(user.get("comp_id") or ""):
+        raise HTTPException(status_code=404, detail="Interview not found.")
+
+    report = interview.get(f"intv_{kind}_report")
+    if not report:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No {kind} report has been generated for this interview yet.",
+        )
+
+    candidate = None
+    if ObjectId.is_valid(interview.get("cand_id") or ""):
+        candidate = await db.candidates.find_one({"_id": ObjectId(interview["cand_id"])})
+
+    link = await db.job_candidates.find_one(
+        {"cand_id": interview.get("cand_id"), "job_id": interview.get("job_id")}
+    )
+    scores = (
+        {
+            "communication": (link or {}).get("communication_score"),
+            "skill": (link or {}).get("skill_score"),
+            "problem_solving": (link or {}).get("problem_solving_score"),
+        }
+        if kind == "candidate"
+        else None
+    )
+
+    interviewer_name = None
+    intv_user = await db.interview_users.find_one({"intv_id": intv_id})
+    if intv_user and ObjectId.is_valid(intv_user.get("user_id") or ""):
+        u = await db.users.find_one({"_id": ObjectId(intv_user["user_id"])})
+        if u:
+            interviewer_name = u.get("full_name") or u.get("username")
+
+    pdf_bytes = build_interview_report_pdf(
+        kind=kind,
+        report=report,
+        candidate_name=(candidate or {}).get("cand_full_name"),
+        job_title=job.get("title"),
+        interviewer_name=interviewer_name,
+        interview_datetime=interview.get("intv_date_time"),
+        duration_seconds=interview.get("intv_duration_seconds"),
+        status=interview.get("intv_status"),
+        scores=scores,
+        transcript=interview.get("intv_transcript") or [],
+    )
+
+    safe_name = "".join(
+        c if c.isalnum() or c in "-_" else "-"
+        for c in ((candidate or {}).get("cand_full_name") or "interview")
+    ).strip("-").lower() or "interview"
+    # Stamp with the interview's datetime (fallback: today) so a folder of
+    # downloads sorts naturally and repeat interviews don't overwrite.
+    when = interview.get("intv_date_time")
+    stamp = (when or datetime.now(timezone.utc)).strftime("%Y-%m-%d-%H%M")
+    filename = f"{kind}-report-{safe_name}-{stamp}.pdf"
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.get(
+    "/{intv_id}/candidate-report",
+    summary="Download the candidate report as a PDF.",
+)
+async def download_candidate_report(
+    intv_id: str,
+    user: dict = Depends(get_current_user),
+) -> Response:
+    return await _report_pdf_response(intv_id, "candidate", user)
+
+
+@router.get(
+    "/{intv_id}/interviewer-report",
+    summary="Download the interviewer report as a PDF.",
+)
+async def download_interviewer_report(
+    intv_id: str,
+    user: dict = Depends(get_current_user),
+) -> Response:
+    return await _report_pdf_response(intv_id, "interviewer", user)
 
 
 @router.patch(
