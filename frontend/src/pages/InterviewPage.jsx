@@ -1362,7 +1362,8 @@ export default function InterviewPage() {
           onClose={() => setReportState({ phase: "idle" })}
           onDone={() =>
             navigate(
-              candId && jobId ? `/candidates/${candId}/${jobId}` : `/jobs/${jobId}`
+              candId && jobId ? `/candidates/${candId}/${jobId}` : `/jobs/${jobId}`,
+              { replace: true }
             )
           }
           onRetry={() => completeInterview()}

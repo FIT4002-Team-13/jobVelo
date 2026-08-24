@@ -744,7 +744,7 @@ export default function CandidateDetailPage() {
         <div className="mb-6 flex items-start justify-between">
           <div>
             <button
-              onClick={() => navigate(-1)}
+              onClick={() => navigate('/candidates')}
               className={`${flex.row} mb-3 gap-2 rounded-lg border border-neutral-200 bg-neutral-0 px-3 py-1.5 text-sm font-semibold text-neutral-600 transition-colors hover:border-primary-200 hover:bg-primary-500/10 hover:text-primary-600`}
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -792,7 +792,7 @@ export default function CandidateDetailPage() {
               interview={interview}
               onViewTranscription={() => {
                 if (!interview?.intv_transcript || !interview?.intv_id) return
-                navigate(`/interview/${interview.intv_id}`)
+                navigate(`/interview/${interview.intv_id}`, { replace: true })
               }}
             />
           </div>
@@ -825,7 +825,7 @@ export default function CandidateDetailPage() {
           onConfirm={() => {
             setStartTarget(null)
             if (interview?.intv_id) {
-              navigate(`/interview/${interview.intv_id}`)
+              navigate(`/interview/${interview.intv_id}`, { replace: true })
             }
           }}
         />
