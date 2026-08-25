@@ -19,6 +19,7 @@ from routes import (
     dashboard,
     files,
     interview,
+    interview_question,
     invitations,
     job_cand,
     jobs,
@@ -74,6 +75,8 @@ app.include_router(realtime.router)
 app.include_router(users.router)
 app.include_router(cv_analysis.router)
 app.include_router(companies.router)
+app.include_router(interview_question.router)
+
 app.include_router(interview.router)
 app.include_router(user_interview.router)
 app.include_router(applications.router)

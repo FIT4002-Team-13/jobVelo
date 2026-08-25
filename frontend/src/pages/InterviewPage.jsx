@@ -36,22 +36,7 @@ const MOCK_SCORES = [
   { label: "Problem Solving", score: 7.0 },
 ];
 
-const MOCK_QUESTIONS = [
-  {
-    id: 1,
-    category: "Tech",
-    categoryColor: "bg-mint-100 text-mint-700",
-    text: "How would you design an end-to-end audio pipeline that preserves fidelity from recording to playback?",
-    why: "Evaluates whether the candidate truly understands end-to-end audio fidelity by looking for knowledge of sampling rate.",
-  },
-  {
-    id: 2,
-    category: "General",
-    categoryColor: "bg-sky-100 text-sky-700",
-    text: "How would you design an end-to-end audio pipeline that preserves fidelity from recording to playback?",
-    why: "Evaluates whether the candidate truly understands end-to-end audio fidelity by looking for knowledge of sampling rate.",
-  },
-];
+
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -68,6 +53,21 @@ function avatarColor(name = "") {
   let hash = 0;
   for (const c of name) hash = (hash * 31 + c.charCodeAt(0)) & 0xffffffff;
   return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
+}
+
+function normaliseQuestion(question, index = 0) {
+  const isTechnical = question.category === "technical";
+
+  return {
+    id: `${Date.now()}-${index}-${Math.random()}`,
+    category: isTechnical ? "Technical" : "Behavioural",
+    categoryValue: isTechnical ? "technical" : "behavioural",
+    categoryColor: isTechnical
+      ? "bg-mint-100 text-mint-700"
+      : "bg-sky-100 text-sky-700",
+    text: question.question,
+    why: question.reason,
+  };
 }
 
 function formatTimer(seconds) {
@@ -160,16 +160,16 @@ function ScoreBar({ label, score }) {
   );
 }
 
-function QuestionCard({ q }) {
+function QuestionCard({ q, onMoreLike, onIgnore, isGeneratingSimilar }) {
   const [whyOpen, setWhyOpen] = useState(false);
   return (
     <div
-      className={`${flex.col} gap-3 bg-neutral-0 border border-neutral-200 rounded-2xl p-4 min-w-[260px] max-w-[280px] shrink-0`}
+      className={`${flex.col} gap-3 bg-neutral-0 border border-neutral-200 rounded-2xl p-4 w-[280px] h-[345px] shrink-0 overflow-y-auto scrollbar-hide`}
     >
       <div className={`${flex.rowBetween}`}>
         <span className={`${badge.sm} ${q.categoryColor}`}>{q.category}</span>
         <div className={`${flex.row} gap-2 text-neutral-400`}>
-          <button className="hover:text-mint-500 transition-colors">
+          <button className="hover:text-mint-500 transition-colors py-1">
             <svg
               width="14"
               height="14"
@@ -201,15 +201,16 @@ function QuestionCard({ q }) {
           </button>
         </div>
       </div>
-      <p className="text-sm text-neutral-700 leading-snug flex-1">{q.text}</p>
-      <div className={`${flex.col} gap-2`}>
+      <p className="text-sm text-neutral-700 leading-snug">{q.text}</p>
+      <div className={`${flex.col} gap-1.5`}>
         <button
-          className={`${button.danger} w-full py-2 text-sm font-semibold rounded-xl`}
+          onClick={() => onIgnore?.(q)}
+          className={`${button.danger} w-full py-1 text-xs font-semibold rounded-lg`}
         >
           Ignore
         </button>
-        <button className="w-full py-2 text-sm font-semibold text-neutral-600 bg-neutral-100 hover:bg-neutral-200 rounded-xl transition-colors">
-          More like this
+        <button onClick={() => onMoreLike(q)} disabled={isGeneratingSimilar} className="w-full py-1 text-xs font-semibold text-neutral-600 bg-neutral-100 hover:bg-neutral-200 disabled:opacity-60 disabled:cursor-not-allowed rounded-lg transition-colors">
+          {isGeneratingSimilar ? "Generating..." : "More like this"}
         </button>
       </div>
       <button
@@ -246,7 +247,10 @@ export default function InterviewPage() {
   const navigate = useNavigate();
 
   const [transcriptVisible, setTranscriptVisible] = useState(true);
-  const [status, setStatus] = useState("Ready to start screen share");
+  // Status text used to render under the timer — the header no longer
+  // shows it, but we still call setStatus in various places (screen-share
+  // lifecycle, ws events, complete) so log/dev tooling can trace state.
+  const [, setStatus] = useState("Ready to start screen share");
   const [isScreenSharing, setIsScreenSharing] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
   const [isCompleted, setIsCompleted] = useState(false);
@@ -258,7 +262,10 @@ export default function InterviewPage() {
   const [jobId, setJobId] = useState(null);
   const [transcript, setTranscript] = useState(INITIAL_TRANSCRIPT);
   const [scores] = useState(MOCK_SCORES);
-  const [questions] = useState(MOCK_QUESTIONS);
+  const [questions, setQuestions] = useState([]);
+  const [questionsLoading, setQuestionsLoading] = useState(false);
+  const [questionsError, setQuestionsError] = useState("");
+  const [similarQuestionId, setSimilarQuestionId] = useState(null);
   const [timer, setTimer] = useState(0);
 
   const transcriptRef = useRef([]);
@@ -278,9 +285,15 @@ export default function InterviewPage() {
   const isPausedRef = useRef(false);
   const videoRef = useRef(null);
   const transcriptContainerRef = useRef(null);
+  const questionsRequestedJobRef = useRef(null);
+  const questionsRef = useRef([]);
+  const pendingCategoriesRef = useRef([]);
+
+  useEffect(() => {
+    questionsRef.current = questions;
+  }, [questions]);
 
   const [isCompleting, setIsCompleting] = useState(false);
-  const [completeError, setCompleteError] = useState("");
   const [evaluation, setEvaluation] = useState(null);
 
   useEffect(() => {
@@ -664,6 +677,198 @@ export default function InterviewPage() {
       });
   }, [id]);
 
+  useEffect(() => {
+    if (!jobId || questionsRequestedJobRef.current === jobId) {
+      return;
+    }
+
+    questionsRequestedJobRef.current = jobId;
+    setQuestionsLoading(true);
+    setQuestionsError("");
+
+    fetch(`/api/interview-questions/${jobId}`, {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+      },
+    })
+      .then(async (response) => {
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data.detail || "Question generation failed");
+        }
+
+        return data;
+      })
+      .then((data) => {
+        // Interleave so the list alternates behavioural / technical / behavioural / ...
+        // If one category runs out, the rest of the other category is appended at the end.
+        const behavioural = data.questions.filter((q) => q.category === "behavioural");
+        const technical = data.questions.filter((q) => q.category === "technical");
+        const interleaved = [];
+        const maxLen = Math.max(behavioural.length, technical.length);
+        for (let i = 0; i < maxLen; i += 1) {
+          if (behavioural[i]) interleaved.push(behavioural[i]);
+          if (technical[i]) interleaved.push(technical[i]);
+        }
+        setQuestions(
+          interleaved.map((question, index) =>
+            normaliseQuestion(question, index)
+          )
+        );
+      })
+      .catch((error) => {
+        console.error("Question generation failed", error);
+        setQuestionsError(error.message || "Unable to generate questions");
+      })
+      .finally(() => {setQuestionsLoading(false);});
+  }, [jobId]);
+
+  async function generateMoreLike(question) {
+    if (!jobId || similarQuestionId) {
+      return;
+    }
+
+    setSimilarQuestionId(question.id);
+    setQuestionsError("");
+
+    try {
+      const response = await fetch(
+        `/api/interview-questions/${jobId}/similar`,
+        {
+          method: "POST",
+          headers: {
+            Accept: "application/json",
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            original_question: question.text,
+            category: question.categoryValue,
+          }),
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          data.detail || "Similar question generation failed"
+        );
+      }
+
+      const similarQuestion = normaliseQuestion(data);
+
+      setQuestions((current) => {
+        const questionIndex = current.findIndex(
+          (item) => item.id === question.id
+        );
+
+        const insertAt =
+          questionIndex === -1
+            ? current.length
+            : questionIndex + 1;
+
+        return [
+          ...current.slice(0, insertAt),
+          similarQuestion,
+          ...current.slice(insertAt),
+        ];
+      });
+    } catch (error) {
+      console.error("Similar question generation failed", error);
+      setQuestionsError(
+        error.message || "Unable to generate a similar question"
+      );
+    } finally {
+      setSimilarQuestionId(null);
+    }
+  }
+
+  // Minimum 2 questions, ignore only generate new questions when theres less than 2. 
+  const BASE_QUESTION_COUNT = 2;
+
+  async function ignoreQuestion(question) {
+    if (!jobId) return;
+
+    // Read + update from the ref so a second click in the same tick sees
+    // the freshest list (React state hasn't re-rendered yet).
+    const remaining = questionsRef.current.filter((q) => q.id !== question.id);
+    questionsRef.current = remaining;
+    setQuestions(remaining);
+    setQuestionsError("");
+
+    if (remaining.length >= BASE_QUESTION_COUNT) return;
+
+    const behInList = remaining.filter(
+      (q) => q.categoryValue === "behavioural"
+    ).length;
+    const techInList = remaining.filter(
+      (q) => q.categoryValue === "technical"
+    ).length;
+    const behPending = pendingCategoriesRef.current.filter(
+      (c) => c === "behavioural"
+    ).length;
+    const techPending = pendingCategoriesRef.current.filter(
+      (c) => c === "technical"
+    ).length;
+    const neededCategory =
+      behInList + behPending <= techInList + techPending
+        ? "behavioural"
+        : "technical";
+
+    pendingCategoriesRef.current = [
+      ...pendingCategoriesRef.current,
+      neededCategory,
+    ];
+
+    try {
+      const response = await fetch(
+        `/api/interview-questions/${jobId}/similar`,
+        {
+          method: "POST",
+          headers: {
+            Accept: "application/json",
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            original_question: question.text,
+            category: neededCategory,
+          }),
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          data.detail || "Replacement question generation failed"
+        );
+      }
+
+      const replacement = normaliseQuestion(data);
+      setQuestions((current) => {
+        const next = [...current, replacement];
+        questionsRef.current = next;
+        return next;
+      });
+    } catch (error) {
+      console.error("Ignore replacement failed", error);
+      setQuestionsError(
+        error.message || "Unable to generate a replacement question"
+      );
+    } finally {
+      const idx = pendingCategoriesRef.current.indexOf(neededCategory);
+      if (idx !== -1) {
+        pendingCategoriesRef.current = [
+          ...pendingCategoriesRef.current.slice(0, idx),
+          ...pendingCategoriesRef.current.slice(idx + 1),
+        ];
+      }
+    }
+  }
+
+
   async function completeInterview() {
     if (isCompleted || isCompleting) {
       return;
@@ -671,14 +876,8 @@ export default function InterviewPage() {
 
     const finalTranscript = transcript.filter((entry) => entry.text.trim() && !entry.id.startsWith("partial-"));
 
-    if (finalTranscript.length === 0) {
-      setCompleteError("A completed transcript entry is required.");
-      return;
-    }
-
     try {
       setIsCompleting(true);
-      setCompleteError("");
 
       const result = await api.completeInterview(id, finalTranscript);
 
@@ -692,9 +891,7 @@ export default function InterviewPage() {
       console.log(result);
       setIsCompleted(true);
       setStatus("Interview completed");
-      localStorage.removeItem(`transcript-${id}`);
-    } catch (error) {
-      setCompleteError(error.message || "Failed to complete the interview.");
+      localStorage.removeItem(`transcript-${id}`); 
     } finally {
       setIsCompleting(false);
     }
@@ -732,7 +929,7 @@ export default function InterviewPage() {
           </div>
 
           {/* Actions */}
-          <div className={`${flex.row} gap-4`}>
+          <div className={`${flex.row} gap-4 items-center`}>
             <button
               className={button.primary}
               onClick={() => cvUrl && window.open(cvUrl, "_blank")}
@@ -751,14 +948,11 @@ export default function InterviewPage() {
             >
               {isScreenSharing ? "Stop screen share" : "Share screen"}
             </button>
-            <div className={`${flex.col} gap-2 text-right`}>
-              <div
-                className={`${flex.row} gap-2 text-neutral-700 font-semibold text-lg`}
-              >
-                <span>{formatTimer(timer)}</span>
-                <span className="w-3 h-3 rounded-pill bg-coral-500 animate-pulse" />
-              </div>
-              <span className="text-xs text-neutral-500">{status}</span>
+            <div
+              className={`${flex.row} gap-2 items-center text-neutral-700 font-semibold text-xl`}
+            >
+              <span>{formatTimer(timer)}</span>
+              <span className="w-3 h-3 rounded-pill bg-coral-500 animate-pulse" />
             </div>
           </div>
         </div>
@@ -823,11 +1017,11 @@ export default function InterviewPage() {
         {/* Right — Assessment + Questions + Actions */}
         <div className={`flex-1 ${flex.col} gap-4 overflow-hidden`}>
           {/* Live Assessment */}
-          <div className={`${card.base} shrink-0`}>
-            <h2 className="text-base font-semibold text-neutral-800 mb-5">
+          <div className={`${card.base} shrink-0 !py-3`}>
+            <h2 className="text-base font-semibold text-neutral-800 mb-2">
               Live Assessment
             </h2>
-            <div className={`${flex.col} gap-4`}>
+            <div className={`${flex.col} gap-1.5`}>
               {scores.map((s) => (
                 <ScoreBar key={s.label} label={s.label} score={s.score} />
               ))}
@@ -836,19 +1030,39 @@ export default function InterviewPage() {
 
           {/* Suggested Questions */}
           <div className={`${card.flat} flex flex-col flex-1 overflow-hidden`}>
-            <div className="px-6 pt-5 pb-4 border-b border-neutral-100 shrink-0">
+            <div className="px-6 pt-3 pb-1 border-b border-neutral-100 shrink-0">
               <h2 className="text-base font-semibold text-neutral-800">
                 Suggested Questions
               </h2>
             </div>
             <div
-              className={`flex-1 overflow-x-auto overflow-y-hidden px-6 py-4`}
+              className={`flex-1 overflow-x-auto overflow-y-hidden px-6 py-3`}
             >
-              <div className={`${flex.row} gap-4 h-full items-start`}>
-                {questions.map((q) => (
-                  <QuestionCard key={q.id} q={q} />
-                ))}
-              </div>
+              {questionsLoading ? (
+                <div className={`${flex.rowCenter} h-full`}>
+                  <p className="text-sm text-neutral-400">Generating questions...</p>
+                </div>
+              ) : questionsError && questions.length === 0 ? (
+                <div className={`${flex.rowCenter} h-full`}>
+                  <p className="text-sm text-coral-500 text-center">{questionsError}</p>
+                </div>
+              ) : questions.length === 0 ? (
+                <div className={`${flex.rowCenter} h-full`}>
+                  <p className="text-sm text-neutral-400">No suggested questions available.</p>
+                </div>
+              ) : (
+                <div className={`${flex.row} gap-4 h-full items-start`}>
+                  {questions.map((q) => (
+                    <QuestionCard
+                      key={q.id}
+                      q={q}
+                      onMoreLike={generateMoreLike}
+                      onIgnore={ignoreQuestion}
+                      isGeneratingSimilar={similarQuestionId === q.id}
+                    />
+                  ))}
+                </div>
+              )}
             </div>
           </div>
 
@@ -857,7 +1071,7 @@ export default function InterviewPage() {
             <button
               onClick={() => !isCompleted && togglePause()}
               disabled={isCompleted}
-              className={`flex-1 py-4 text-base font-semibold rounded-2xl transition-colors ${
+              className={`flex-1 py-2 text-sm font-semibold rounded-xl transition-colors ${
                 isCompleted
                   ? "bg-neutral-300 text-neutral-500 cursor-not-allowed"
                   : isPaused
@@ -870,7 +1084,7 @@ export default function InterviewPage() {
             <button
               onClick={() => completeInterview()}
               disabled={isCompleted || isCompleting}
-              className={`flex-1 py-4 text-base font-semibold rounded-2xl transition-colors ${
+              className={`flex-1 py-4 text-base font-semibold rounded-xl transition-colors ${
                 isCompleted || isCompleting
                   ? "bg-neutral-300 text-neutral-500 cursor-not-allowed"
                   : "text-white bg-sky-300 hover:bg-sky-400"
@@ -878,16 +1092,11 @@ export default function InterviewPage() {
             >
               {isCompleting ? "Generating score..." : "Complete"}
             </button>
-            {completeError && (
-              <p className="text-sm text-coral-500">
-                {completeError}
-              </p>
-            )}
           </div>
         </div>
       </div>
       {evaluation && (
-        <CompleteInterviewModal
+        <CompleteInterviewPopup
           candidateName={candidateName}
           jobTitle={candidateRole}
           evaluation={evaluation}

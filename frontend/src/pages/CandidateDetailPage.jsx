@@ -426,8 +426,12 @@ function CvViewButton({ cvAnalysis, cvUrl, onViewAnalysis }) {
 }
 
 function CandidateInfoCard({ candidate, job, interview, onStartInterview, interviewer, onEdit, cvAnalysis, onViewCvAnalysis }) {
+  const { user } = useAuth()
   const status = (interview?.intv_status ?? 'not_scheduled').replace(/_/g, ' ').toUpperCase()
-  const canStartInterview = status === 'SCHEDULED'
+  // Starting an interview is interviewer-only - mirrors the backend's
+  // Depends(require_role("interviewer")) on POST /api/interviews. Other
+  // roles simply never see the button rather than hitting a 403.
+  const canStartInterview = status === 'SCHEDULED' && user?.role === 'interviewer'
 
   // Unified palette - mirrors JobDetailPage / DashboardPage / ApplicationsPage
   // so the same status reads identically wherever it appears. Key change:
