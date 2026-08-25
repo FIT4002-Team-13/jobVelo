@@ -80,3 +80,6 @@ class InterviewOut(BaseModel):
     intv_interviewer_report: str | None = None
     intv_created_at: datetime
     intv_updated_at: datetime
+
+class InterviewCompleteRequest(BaseModel):
+    transcript: list[TranscriptEntry] = Field(..., min_length=1)

@@ -3,10 +3,14 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from bson import ObjectId
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, status, Depends
 
 from database import get_db
-from models.interview import InterviewCreate, InterviewOut, InterviewUpdate
+from models.interview import InterviewCreate, InterviewOut, InterviewUpdate, InterviewCompleteRequest
+
+from dependencies import get_current_comp_id
+from models.job_candidate import JobCandidateEvaluationOut
+from services.openai_service import rate_candidate_skills
 
 router = APIRouter(prefix="/api/interviews", tags=["interviews"])
 
@@ -110,6 +114,84 @@ async def get_interview(intv_id: str) -> InterviewOut:
         )
 
     return interview_helper(interview)
+
+@router.post("/{intv_id}/complete", response_model=JobCandidateEvaluationOut, summary="Complete an interview and generate final ratings.")
+async def complete_interview(intv_id: str, payload: InterviewCompleteRequest, comp_id: ObjectId = Depends(get_current_comp_id)) -> JobCandidateEvaluationOut:
+    db = get_db()
+
+    if not ObjectId.is_valid(intv_id):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid interview id.")
+
+    interview_oid = ObjectId(intv_id)
+
+    interview = await db.interviews.find_one({"_id": interview_oid})
+
+    if not interview:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Interview not found.")
+
+    cand_id = str(interview["cand_id"])
+    job_id = str(interview["job_id"])
+
+    if not ObjectId.is_valid(cand_id):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Interview has an invalid candidate id.",)
+
+    if not ObjectId.is_valid(job_id):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Interview has an invalid job id.")
+
+    candidate = await db.candidates.find_one(
+        {
+            "_id": ObjectId(cand_id),
+            "comp_id": comp_id,
+        }
+    )
+
+    job = await db.jobs.find_one(
+        {
+            "_id": ObjectId(job_id),
+            "comp_id": comp_id,
+        }
+    )
+
+    job_candidate = await db.job_candidates.find_one(
+        {
+            "cand_id": cand_id,
+            "job_id": job_id,
+        }
+    )
+
+    if not candidate or not job or not job_candidate:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="interview evaluation data not found.")
+
+    try:
+        ratings = await rate_candidate_skills(transcript=payload.transcript, job_title=job.get("title"), job_description=job.get("description"), candidate_name=candidate.get("cand_full_name"))
+    except ValueError as error:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(error)) from error
+    except RuntimeError as error:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="OpenAI is not configured.") from error
+    now = datetime.now(timezone.utc)
+
+    await db.job_candidates.update_one(
+        {"_id": job_candidate["_id"]},
+        {
+            "$set": {
+                "ratings": ratings.model_dump(),
+                "status": "EVALUATED",
+                "updated_at": now,
+            }
+        },
+    )
+
+    await db.interviews.update_one(
+        {"_id": interview_oid},
+        {
+            "$set": {
+                "intv_status": "completed",
+                "intv_updated_at": now,
+            }
+        },
+    )
+
+    return JobCandidateEvaluationOut(ratings=ratings, status="EVALUATED")
 
 @router.patch(
     "/{intv_id}",

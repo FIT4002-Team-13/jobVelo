@@ -147,4 +147,7 @@ export const api = {
   updateCompany: (comp_id, payload) => request(`/companies/${comp_id}`,  { method: 'PUT', body: payload, auth: true }),
   updateCompanyLogo: (comp_id, formData) => request(`/companies/${comp_id}/logo`, { method: 'PATCH', body: formData, auth: true }),
 
+  //--cv-analysis------------------------------------------------------------------------------------
+  completeInterview: (interviewId, transcript) => request(`/interviews/${encodeURIComponent(interviewId)}/complete`, {method: 'POST', body: { transcript }, auth: true}),
+
 }

@@ -36,6 +36,7 @@ async def lifespan(app: FastAPI):
         await seed_mock_data()
     except Exception:
         app.state.mongo_available = False
+        raise
     else:
         app.state.mongo_available = True
     yield

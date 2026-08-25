@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { flex, card, button, badge } from "../styles/layout";
 import { useAuth } from "../lib/AuthContext.jsx";
+import CompleteInterviewPopup from "../components/interview/CompleteInterviewPopup.jsx";
+import { api, authedFetch } from "../lib/api.js";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -276,6 +278,10 @@ export default function InterviewPage() {
   const isPausedRef = useRef(false);
   const videoRef = useRef(null);
   const transcriptContainerRef = useRef(null);
+
+  const [isCompleting, setIsCompleting] = useState(false);
+  const [completeError, setCompleteError] = useState("");
+  const [evaluation, setEvaluation] = useState(null);
 
   useEffect(() => {
     const element = transcriptContainerRef.current;
@@ -577,7 +583,7 @@ export default function InterviewPage() {
   useEffect(() => {
     const interval = setInterval(() => {
       if (!isCompleted && transcriptRef.current.length) {
-        fetch(`/api/interviews/${id}`, {
+        authedFetch(`/api/interviews/${id}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -611,7 +617,7 @@ export default function InterviewPage() {
         localStorage.removeItem(`transcript-${id}`);
       }
     }
-    fetch(`/api/interviews/${id}`)
+    authedFetch(`/api/interviews/${id}`)
       .then((r) => r.json())
       .then((data) => {
         const serverTranscript = Array.isArray(data.intv_transcript)
@@ -641,13 +647,13 @@ export default function InterviewPage() {
 
         if (data.job_id) {
           setJobId(data.job_id);
-          fetch(`/api/jobs/${data.job_id}`)
+          authedFetch(`/api/jobs/${data.job_id}`)
             .then((r) => r.json())
             .then((job) => { if (job.title) setCandidateRole(job.title); })
             .catch(() => {});
         }
         if (data.cand_id) {
-          fetch(`/api/candidates/${data.cand_id}`)
+          authedFetch(`/api/candidates/${data.cand_id}`)
             .then((r) => r.json())
             .then((cand) => {
               if (cand.cand_full_name) setCandidateName(cand.cand_full_name);
@@ -659,23 +665,39 @@ export default function InterviewPage() {
   }, [id]);
 
   async function completeInterview() {
-    if (isCompleted) {
+    if (isCompleted || isCompleting) {
       return;
     }
 
-    await fetch(`/api/interviews/${id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        intv_transcript: transcript,
-        intv_status: "completed",
-        intv_duration_seconds: timer,
-      }),
-    });
-    setIsCompleted(true);
-    setStatus("Interview completed");
-    localStorage.removeItem(`transcript-${id}`);
-    navigate(`/jobs/${jobId}`);
+    const finalTranscript = transcript.filter((entry) => entry.text.trim() && !entry.id.startsWith("partial-"));
+
+    if (finalTranscript.length === 0) {
+      setCompleteError("A completed transcript entry is required.");
+      return;
+    }
+
+    try {
+      setIsCompleting(true);
+      setCompleteError("");
+
+      const result = await api.completeInterview(id, finalTranscript);
+
+      await authedFetch(`/api/interviews/${id}`, {
+        method: "PATCH",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({intv_transcript: finalTranscript, intv_duration_seconds: timer})
+      });
+
+      setEvaluation(result);
+      console.log(result);
+      setIsCompleted(true);
+      setStatus("Interview completed");
+      localStorage.removeItem(`transcript-${id}`);
+    } catch (error) {
+      setCompleteError(error.message || "Failed to complete the interview.");
+    } finally {
+      setIsCompleting(false);
+    }
   }
 
   return (
@@ -847,18 +869,31 @@ export default function InterviewPage() {
             </button>
             <button
               onClick={() => completeInterview()}
-              disabled={isCompleted}
+              disabled={isCompleted || isCompleting}
               className={`flex-1 py-4 text-base font-semibold rounded-2xl transition-colors ${
-                isCompleted
+                isCompleted || isCompleting
                   ? "bg-neutral-300 text-neutral-500 cursor-not-allowed"
                   : "text-white bg-sky-300 hover:bg-sky-400"
               }`}
             >
-              Complete
+              {isCompleting ? "Generating score..." : "Complete"}
             </button>
+            {completeError && (
+              <p className="text-sm text-coral-500">
+                {completeError}
+              </p>
+            )}
           </div>
         </div>
       </div>
+      {evaluation && (
+        <CompleteInterviewModal
+          candidateName={candidateName}
+          jobTitle={candidateRole}
+          evaluation={evaluation}
+          onDone={() => navigate(`/jobs/${jobId}`)}
+        />
+      )}
     </div>
   );
 }
