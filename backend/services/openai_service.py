@@ -17,10 +17,14 @@ from typing import Any
 from openai import AsyncOpenAI
 
 from config import settings
-from models.interview_question import SimilarQuestionResult, SuggestedQuestionsList
-
 from models.interview import TranscriptEntry
-from models.job_candidate import (CandidateRatings, RatingEvidence, SkillName, SkillRating)
+from models.interview_question import SimilarQuestionResult, SuggestedQuestionsList
+from models.job_candidate import (
+    CandidateRatings,
+    RatingEvidence,
+    SkillName,
+    SkillRating,
+)
 
 _client: AsyncOpenAI | None = None
 

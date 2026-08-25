@@ -6,12 +6,18 @@ from bson import ObjectId
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from database import get_db
-from dependencies import require_role
-from models.interview import InterviewCreate, InterviewOut, InterviewUpdate
-from models.interview import InterviewCreate, InterviewOut, InterviewUpdate, InterviewCompleteRequest
-
-from dependencies import get_current_comp_id
-from models.job_candidate import JobCandidateEvaluationOut, SkillRating,CandidateRatings
+from dependencies import get_current_comp_id, require_role
+from models.interview import (
+    InterviewCompleteRequest,
+    InterviewCreate,
+    InterviewOut,
+    InterviewUpdate,
+)
+from models.job_candidate import (
+    CandidateRatings,
+    JobCandidateEvaluationOut,
+    SkillRating,
+)
 from services.openai_service import rate_candidate_skills
 
 router = APIRouter(prefix="/api/interviews", tags=["interviews"])
