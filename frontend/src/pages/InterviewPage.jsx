@@ -1084,7 +1084,7 @@ export default function InterviewPage() {
             <button
               onClick={() => completeInterview()}
               disabled={isCompleted || isCompleting}
-              className={`flex-1 py-4 text-base font-semibold rounded-xl transition-colors ${
+              className={`flex-1 py-2 text-sm font-semibold rounded-xl transition-colors ${
                 isCompleted || isCompleting
                   ? "bg-neutral-300 text-neutral-500 cursor-not-allowed"
                   : "text-white bg-sky-300 hover:bg-sky-400"

@@ -8,6 +8,8 @@ import { card, flex, page } from '../styles/layout'
 import { useAuth } from '../lib/AuthContext.jsx'
 import { api, authedFetch } from '../lib/api.js'
 
+import ScoreEvidencePopup from "../components/candidate/ScoreEvidencePopup";
+
 function formatDate(iso) {
   if (!iso) return '--'
   const [y, m, d] = iso.split('-')
@@ -77,7 +79,7 @@ function ScoreBarRow({ label, value, colorClass }) {
   )
 }
 
-function CandidateScorePanel({ jobCand, interview, onViewTranscription, cvAnalysis}) {
+function CandidateScorePanel({ jobCand, interview, onViewEvidence, onViewTranscription, cvAnalysis}) {
   
   const ratings = jobCand?.ratings;
   const hasInterviewRatings = Boolean(ratings);
@@ -167,7 +169,18 @@ function CandidateScorePanel({ jobCand, interview, onViewTranscription, cvAnalys
         <p className="text-sm font-medium text-neutral-800">RANK</p>
         <p className="text-sm font-semibold text-neutral-800">{rank}</p>
       </div>
-
+      <button
+        type="button"
+        onClick={onViewEvidence}
+        disabled={!hasInterviewRatings}
+        className={`mt-4 w-full rounded-[18px] px-4 py-1.5 text-sm font-semibold transition-colors ${
+          hasInterviewRatings
+            ? "bg-primary-500 text-white hover:bg-primary-600"
+            : "cursor-not-allowed bg-neutral-300 text-neutral-500"
+        }`}
+      >
+        View Score and Evidence
+      </button>
       <button
         type="button"
         onClick={onViewTranscription}
@@ -608,6 +621,7 @@ export default function CandidateDetailPage() {
   const [showEditModal, setShowEditModal] = useState(false)
   const [refreshKey, setRefreshKey] = useState(0)
   const [cvAnalysis, setCvAnalysis] = useState(null)
+  const [showScoreEvidence, setShowScoreEvidence] = useState(false);
 
   // Load the CV analysis for this application and poll while it's still
   // processing, so the "View" button flips from spinner to available the
@@ -806,6 +820,7 @@ export default function CandidateDetailPage() {
               jobCand={jobCand}
               cvAnalysis={cvAnalysis}
               interview={interview}
+              onViewEvidence={() => setShowScoreEvidence(true)}
               onViewTranscription={() => {
                 if (!interview?.intv_transcript?.length) return;
 
@@ -865,6 +880,11 @@ export default function CandidateDetailPage() {
             setShowEditModal(false)
             setRefreshKey((k) => k + 1)
           }}
+        />
+      )}{showScoreEvidence && (
+        <ScoreEvidencePopup
+          ratings={jobCand?.ratings}
+          onClose={() => setShowScoreEvidence(false)}
         />
       )}
     </div>

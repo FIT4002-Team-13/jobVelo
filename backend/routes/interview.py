@@ -11,7 +11,7 @@ from models.interview import InterviewCreate, InterviewOut, InterviewUpdate
 from models.interview import InterviewCreate, InterviewOut, InterviewUpdate, InterviewCompleteRequest
 
 from dependencies import get_current_comp_id
-from models.job_candidate import JobCandidateEvaluationOut
+from models.job_candidate import JobCandidateEvaluationOut, SkillRating,CandidateRatings
 from services.openai_service import rate_candidate_skills
 
 router = APIRouter(prefix="/api/interviews", tags=["interviews"])
@@ -170,12 +170,44 @@ async def complete_interview(intv_id: str, payload: InterviewCompleteRequest, co
     if not candidate or not job or not job_candidate:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="interview evaluation data not found.")
 
-    try:
-        ratings = await rate_candidate_skills(transcript=payload.transcript, job_title=job.get("title"), job_description=job.get("description"), candidate_name=candidate.get("cand_full_name"))
-    except ValueError as error:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(error)) from error
-    except RuntimeError as error:
-        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="OpenAI is not configured.") from error
+    final_entries = [entry
+        for entry in payload.transcript
+        if entry.text.strip()
+        and not entry.id.startswith("partial-")
+    ]
+
+    now = datetime.now(timezone.utc)
+
+    if not final_entries:
+        ratings = CandidateRatings(
+            technical_skills=SkillRating(
+                skill="Technical Skills",
+                score=0,
+                explanation=("No transcript was available to evaluate the candidate's technical skills."),
+                evidence=[],
+            ),
+            communication=SkillRating(
+                skill="Communication",
+                score=0,
+                explanation=("No transcript was available to evaluate the candidate's communication."),
+                evidence=[],
+            ),
+            problem_solving=SkillRating(
+                skill="Problem Solving",
+                score=0,
+                explanation=("No transcript was available to evaluate the candidate's problem-solving ability."),
+                evidence=[],
+            ),
+        )
+
+    else:
+        try:
+            ratings = await rate_candidate_skills(transcript=final_entries, job_title=job.get("title"), job_description=job.get("description"), candidate_name=candidate.get("cand_full_name"))
+        except ValueError as error:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,detail=str(error)) from error
+        except RuntimeError as error:
+            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="OpenAI is not configured.") from error
+
     now = datetime.now(timezone.utc)
 
     await db.job_candidates.update_one(

@@ -23,7 +23,8 @@ class RatingEvidence(BaseModel):
 
 class SkillRating(BaseModel):
     skill: SkillName
-    score: float = Field(..., ge=1, le=10)
+    score: float = Field(..., ge=0, le=10)
+    explanation: str | None = Field(default=None, max_length=200)
     evidence: list[RatingEvidence] = Field(default_factory=list, max_length=3)
 
 class CandidateRatings(BaseModel):

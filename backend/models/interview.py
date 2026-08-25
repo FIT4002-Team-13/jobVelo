@@ -82,4 +82,4 @@ class InterviewOut(BaseModel):
     intv_updated_at: datetime
 
 class InterviewCompleteRequest(BaseModel):
-    transcript: list[TranscriptEntry] = Field(..., min_length=1)
+    transcript: list[TranscriptEntry] = Field(default_factory=list)
