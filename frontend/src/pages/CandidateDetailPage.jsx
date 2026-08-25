@@ -84,6 +84,7 @@ function CandidateScorePanel({ jobCand, interview, onViewTranscription, cvAnalys
   const interviewScores = hasInterviewRatings? [ratings.communication?.score, ratings.technical_skills?.score, ratings.problem_solving?.score].filter((score) => typeof score === "number" && Number.isFinite(score)) : [];
   const interviewOverallScore = interviewScores.length > 0? interviewScores.reduce((total, score) => total + score, 0) / interviewScores.length : null;
   const hasCvAnalysis = cvAnalysis?.status === "completed";
+  const hasTranscript = Array.isArray(interview?.intv_transcript) && interview.intv_transcript.length > 0;
   const cvScores = hasCvAnalysis? [cvAnalysis.position_fit?.relevant_experience, cvAnalysis.position_fit?.technical_fit, cvAnalysis.position_fit?.soft_skills].filter((score) => typeof score === "number" && Number.isFinite(score)) : [];
   const cvOverallScore = cvScores.length > 0 ? cvScores.reduce((total, score) => total + score, 0) / cvScores.length : null;
   const finalScoreValue = hasInterviewRatings ? interviewOverallScore : cvOverallScore;
@@ -170,7 +171,7 @@ function CandidateScorePanel({ jobCand, interview, onViewTranscription, cvAnalys
       <button
         type="button"
         onClick={onViewTranscription}
-        disabled={!interview?.intv_transcript}
+        disabled={!hasTranscript}
         className={`mt-4 w-full rounded-[18px] px-4 py-1.5 text-sm font-semibold text-white transition-colors ${
           interview?.intv_transcript
             ? 'bg-primary-500 hover:bg-primary-600'
@@ -806,8 +807,9 @@ export default function CandidateDetailPage() {
               cvAnalysis={cvAnalysis}
               interview={interview}
               onViewTranscription={() => {
-                if (!interview?.intv_transcript) return
-                console.log('Open transcript view')
+                if (!interview?.intv_transcript?.length) return;
+
+                console.log("Open transcript view");
               }}
             />
           </div>
