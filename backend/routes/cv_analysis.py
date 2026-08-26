@@ -32,6 +32,7 @@ from bson import ObjectId
 from fastapi import (
     APIRouter,
     BackgroundTasks,
+    Depends,
     File,
     Form,
     HTTPException,
@@ -42,6 +43,7 @@ from fastapi import (
 from pymongo.errors import DuplicateKeyError
 
 from database import get_db
+from dependencies import get_current_comp_id
 from models.cv_analysis import (
     CvAnalysisBullet,
     CvAnalysisOut,
@@ -126,6 +128,21 @@ def _serialise(doc: dict, *, cached: bool = False) -> CvAnalysisOut:
         created_at=doc["created_at"],
         cached=cached,
     )
+
+
+async def _assert_jobcand_in_company(db, jobcand_id: str, comp_id: ObjectId) -> None:
+    """Tenant guard: 404 unless the job-candidate link's job belongs to the
+    caller's company (404 rather than 403 so link ids can't be probed)."""
+    if not ObjectId.is_valid(jobcand_id):
+        raise HTTPException(status_code=400, detail="Invalid jobcand_id")
+    link = await db.job_candidates.find_one({"_id": ObjectId(jobcand_id)}, {"job_id": 1})
+    job_id = (link or {}).get("job_id")
+    if (
+        not job_id
+        or not ObjectId.is_valid(job_id)
+        or not await db.jobs.find_one({"_id": ObjectId(job_id), "comp_id": comp_id}, {"_id": 1})
+    ):
+        raise HTTPException(status_code=404, detail="Job-candidate link not found")
 
 
 async def _lookup_jobcand_context(jobcand_id: str) -> tuple[dict, dict, dict]:
@@ -224,11 +241,13 @@ async def analyse(
     jobcand_id:  Annotated[str,        Form(min_length=1)],
     cv:          Annotated[UploadFile | None, File(description="Candidate CV PDF")] = None,
     cover_letter: Annotated[UploadFile | None, File()] = None,
+    comp_id: ObjectId = Depends(get_current_comp_id),
 ) -> CvAnalysisOut:
     """See the module docstring for the per-state semantics. The short
     version: no file → read; new file → (re)start; in-flight → no-op.
     """
     db = get_db()
+    await _assert_jobcand_in_company(db, jobcand_id, comp_id)
 
     has_new_cv = cv is not None and bool(cv.filename)
 
@@ -344,11 +363,15 @@ async def analyse(
     response_model=CvAnalysisOut,
     summary="Fetch the existing analysis for a job-candidate link.",
 )
-async def get_by_jobcand(jobcand_id: str) -> CvAnalysisOut:
+async def get_by_jobcand(
+    jobcand_id: str,
+    comp_id: ObjectId = Depends(get_current_comp_id),
+) -> CvAnalysisOut:
     """Pure read. Returns 404 when no analysis has been generated yet -
     the frontend uses this to decide whether to show the upload form or
     the result page directly."""
     db = get_db()
+    await _assert_jobcand_in_company(db, jobcand_id, comp_id)
     doc = await db.cv_analyses.find_one({"jobcand_id": jobcand_id})
     if not doc:
         raise HTTPException(status_code=404, detail="No analysis exists for this job-candidate")
@@ -364,16 +387,29 @@ async def get_by_jobcand(jobcand_id: str) -> CvAnalysisOut:
     response_class=Response,
     summary="Delete an analysis record. The user can then upload a different CV.",
 )
-async def delete_analysis(analysis_id: str):
+async def delete_analysis(
+    analysis_id: str,
+    comp_id: ObjectId = Depends(get_current_comp_id),
+):
     """Removes the analysis doc AND the PDFs it owns. The job-candidate
     link itself is untouched - this is just clearing the analysis."""
     if not ObjectId.is_valid(analysis_id):
         raise HTTPException(status_code=400, detail="Invalid analysis id")
 
     db = get_db()
-    doc = await db.cv_analyses.find_one_and_delete({"_id": ObjectId(analysis_id)})
+    doc = await db.cv_analyses.find_one({"_id": ObjectId(analysis_id)})
     if not doc:
         raise HTTPException(status_code=404, detail="Analysis not found")
+
+    # Tenant guard: walk the link -> job -> comp chain; for orphaned docs
+    # (link already deleted) fall back to the comp_id stamped on the doc.
+    try:
+        await _assert_jobcand_in_company(db, doc.get("jobcand_id") or "", comp_id)
+    except HTTPException:
+        if str(doc.get("comp_id") or "") != str(comp_id):
+            raise HTTPException(status_code=404, detail="Analysis not found")
+
+    await db.cv_analyses.delete_one({"_id": doc["_id"]})
 
     # Best-effort cleanup. We don't fail the request if a file is already
     # gone - the DB row is the source of truth.

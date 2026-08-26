@@ -200,15 +200,23 @@ async def list_applications(
     if not assigned_pairs:
         return []
 
-    # Pull all job-candidate links, then keep only assigned ones.
-    all_job_candidates = await db.job_candidates.find({}).to_list(length=5000)
-
-    matched_job_candidates = [
-        jc for jc in all_job_candidates
-        if (jc.get("cand_id"), jc.get("job_id")) in assigned_pairs
-        # Only keep rows whose job is in the caller's company.
-        and jc.get("job_id") in company_job_ids
+    # Fetch ONLY the links for the (cand, job) pairs this user is assigned
+    # to. The previous find({}) scanned every tenant's links and silently
+    # truncated at 5000 rows platform-wide - past that, application rows
+    # vanished from the list. The (cand_id, job_id) pair is unique-indexed,
+    # so this returns at most one doc per pair.
+    pair_filters = [
+        {"cand_id": cand_id, "job_id": job_id}
+        for (cand_id, job_id) in assigned_pairs
+        # Only pairs whose job is in the caller's company.
+        if job_id in company_job_ids
     ]
+    if not pair_filters:
+        return []
+
+    matched_job_candidates = await db.job_candidates.find(
+        {"$or": pair_filters}
+    ).to_list(length=len(pair_filters))
 
     if not matched_job_candidates:
         return []

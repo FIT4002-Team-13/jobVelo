@@ -924,7 +924,7 @@ export default function InterviewPage() {
     setQuestionsLoading(true);
     setQuestionsError("");
 
-    fetch(`/api/interview-questions/${jobId}`, {
+    authedFetch(`/api/interview-questions/${jobId}`, {
       method: "POST",
       headers: {
         Accept: "application/json",
@@ -972,7 +972,7 @@ export default function InterviewPage() {
     setQuestionsError("");
 
     try {
-      const response = await fetch(
+      const response = await authedFetch(
         `/api/interview-questions/${jobId}/similar`,
         {
           method: "POST",
@@ -1061,7 +1061,7 @@ export default function InterviewPage() {
     ];
 
     try {
-      const response = await fetch(
+      const response = await authedFetch(
         `/api/interview-questions/${jobId}/similar`,
         {
           method: "POST",

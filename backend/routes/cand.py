@@ -149,16 +149,31 @@ async def create_candidate_for_job(
     now = datetime.now(timezone.utc)
     comp_oid = comp_id  # JWT-derived
 
+    # 0. The target job must exist AND belong to the caller's company -
+    #    otherwise links could be attached to another tenant's job (or to a
+    #    garbage id, orphaning the link from day one).
+    if not ObjectId.is_valid(payload.job_id) or not await db.jobs.find_one(
+        {"_id": ObjectId(payload.job_id), "comp_id": comp_oid}, {"_id": 1}
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Job not found.",
+        )
+
     candidate = None
 
-    # 1. If a candidate id is supplied, prefer that exact candidate.
+    # 1. If a candidate id is supplied, prefer that exact candidate - but
+    #    only within the caller's company (an unscoped lookup here let one
+    #    company read and update another company's candidate).
     if payload.cand_id:
         if not ObjectId.is_valid(payload.cand_id):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Invalid candidate id.",
             )
-        candidate = await db.candidates.find_one({"_id": ObjectId(payload.cand_id)})
+        candidate = await db.candidates.find_one(
+            {"_id": ObjectId(payload.cand_id), "comp_id": comp_oid}
+        )
 
     # 2. Fall back to matching by email within the same company.
     if not candidate:
