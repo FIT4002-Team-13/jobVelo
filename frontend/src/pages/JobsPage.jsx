@@ -101,25 +101,6 @@ function EmptyAvatar() {
 
 function JobCard({ job, onEdit, onDelete }) {
   const navigate = useNavigate()
-  const [interviewState, setInterviewState] = useState({ loading: true, completed: false })
-
-  useEffect(() => {
-    let active = true
-    async function load() {
-      try {
-        const res = await authedFetch(`/api/interviews?job_id=${job.id}`)
-        if (!res.ok) throw new Error('Failed to load interviews')
-        const interviews = await res.json()
-        if (!active) return
-        const completed = interviews.some((item) => item.intv_status === 'completed')
-        setInterviewState({ loading: false, completed })
-      } catch {
-        if (active) setInterviewState({ loading: false, completed: false })
-      }
-    }
-    load()
-    return () => { active = false }
-  }, [job.id])
 
   // Show up to 3 avatars; anything beyond collapses into a grey "+N" chip.
   const visibleAvatars = job.interviewers?.slice(0, 3) ?? []
@@ -129,14 +110,9 @@ function JobCard({ job, onEdit, onDelete }) {
   // fully-populated ones. Each "missing" value renders as a muted italic
   // placeholder (status pill = neutral chip, numbers = 0) instead of an
   // empty string that would collapse the line and ruin the grid rhythm.
-  // Display-status override: once any candidate on this job has completed
-  // an interview, a "Pending" pill would be misleading - show In Progress.
-  // A job explicitly marked Completed keeps its label.
-  const storedStatus   = job.status        || null
-  const status =
-    interviewState.completed && storedStatus !== "Completed"
-      ? "In Progress"
-      : storedStatus
+  // The display status (completed-interview override included) is computed
+  // once by the page so the filter menu and this pill can never disagree.
+  const status         = job.display_status || null
   const description    = job.description?.trim()
   const interviewers   = job.interviewers?.length ?? 0
   const filled         = job.candidates_filled ?? 0
@@ -278,13 +254,40 @@ export default function JobsPage() {
   const [statusFilters, setStatusFilters] = useState([])        // empty = all
   const [formModal, setFormModal]   = useState(null)
   const [deleteTarget, setDeleteTarget] = useState(null)
+  // Jobs (by id) that have at least one completed interview - drives the
+  // "In Progress" display override on cards AND the status filter, so a
+  // card labelled In Progress actually matches the In Progress filter.
+  const [completedJobIds, setCompletedJobIds] = useState(() => new Set())
 
   useEffect(() => {
+    // Guard both the HTTP status and the payload shape: on an expired token
+    // the API returns {detail: ...}, and storing that into array state used
+    // to white-screen the page at `.filter is not a function`.
     authedFetch('/api/jobs')
-      .then(r => r.json())
-      .then(setJobs)
+      .then(async r => {
+        if (!r.ok) throw new Error('Failed to load jobs.')
+        const data = await r.json()
+        if (!Array.isArray(data)) throw new Error('Failed to load jobs.')
+        setJobs(data)
+      })
       .catch(() => setError('Failed to load jobs.'))
       .finally(() => setLoading(false))
+
+    // One company-wide interviews fetch instead of one per card (the old
+    // per-card version was 50 requests for 50 jobs). Best-effort: if it
+    // fails, cards simply show their stored status without the override.
+    authedFetch('/api/interviews')
+      .then(async r => {
+        if (!r.ok) return
+        const interviews = await r.json()
+        if (!Array.isArray(interviews)) return
+        setCompletedJobIds(new Set(
+          interviews
+            .filter(i => i.intv_status === 'completed')
+            .map(i => i.job_id)
+        ))
+      })
+      .catch(() => {})
   }, [])
 
   function handleSaved(saved) {
@@ -300,11 +303,23 @@ export default function JobsPage() {
     setDeleteTarget(null)
   }
 
+  // Stamp each job with the status the card will actually display: a job
+  // with a completed interview shows "In Progress" unless it's explicitly
+  // marked Completed. Filtering runs on this same value so the pill and
+  // the filter menu can never disagree.
+  const jobsWithStatus = jobs.map(j => ({
+    ...j,
+    display_status:
+      completedJobIds.has(j.id) && j.status !== 'Completed'
+        ? 'In Progress'
+        : j.status || null,
+  }))
+
   // search → filter by status → sort. Each stage is independent so order
   // doesn't actually matter, but read top-down it matches user mental model.
-  const filtered = jobs
-    .filter(j => j.title.toLowerCase().includes(search.toLowerCase()))
-    .filter(j => statusFilters.length === 0 || statusFilters.includes(j.status))
+  const filtered = jobsWithStatus
+    .filter(j => (j.title ?? '').toLowerCase().includes(search.toLowerCase()))
+    .filter(j => statusFilters.length === 0 || statusFilters.includes(j.display_status))
   const sorter = makeSorter(sortKey, { nameField: 'title', dateField: 'job_created_at' })
   const display = sorter ? [...filtered].sort(sorter) : filtered
 

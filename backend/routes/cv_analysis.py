@@ -24,6 +24,7 @@ Endpoints:
 
 from __future__ import annotations
 
+import asyncio
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Annotated
@@ -195,14 +196,27 @@ async def _run_analysis(
     """
     db = get_db()
     try:
-        result = await analyse_cv(
-            cv_bytes=cv_bytes,
-            cv_mime_type=cv_mime_type,
-            cover_letter_bytes=cover_letter_bytes,
-            cover_letter_mime_type=cover_letter_mime_type,
-            position_title=position_title,
-            job_description=job_description,
+        # Hard cap well inside the UI's 10-minute stale-processing guard -
+        # without it a hung Gemini call could outlive that guard, flip the
+        # doc to "completed" AFTER the UI already reported "failed", and
+        # race a re-upload.
+        result = await asyncio.wait_for(
+            analyse_cv(
+                cv_bytes=cv_bytes,
+                cv_mime_type=cv_mime_type,
+                cover_letter_bytes=cover_letter_bytes,
+                cover_letter_mime_type=cover_letter_mime_type,
+                position_title=position_title,
+                job_description=job_description,
+            ),
+            timeout=300,
         )
+    except asyncio.TimeoutError:
+        await db.cv_analyses.update_one(
+            {"_id": analysis_oid, "status": "processing"},
+            {"$set": {"status": "failed", "error": "Analysis timed out after 5 minutes. Re-upload the CV to retry."}},
+        )
+        return
     except Exception as e:  # RuntimeError from the service, or anything else
         await db.cv_analyses.update_one(
             {"_id": analysis_oid, "status": "processing"},

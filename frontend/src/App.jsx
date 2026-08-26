@@ -74,11 +74,13 @@ export default function App() {
               </RequireAuth>
             }
           />
-          <Route 
-            path="/profile" 
+          <Route
+            path="/profile"
             element={
-              <Profile />
-            } 
+              <RequireAuth>
+                <Profile />
+              </RequireAuth>
+            }
           />
           {/* CV analysis report, keyed by the job-candidate link. Deep-
               linkable: the page fetches the analysis by :jobcandId, so the
@@ -99,8 +101,22 @@ export default function App() {
               </RequireAuth>
             }
           />
-          <Route path="/candidates/:candId/:jobId" element={<CandidateDetailPage />} />
-          <Route path="/candidates" element={<ApplicationsPage />} />
+          <Route
+            path="/candidates/:candId/:jobId"
+            element={
+              <RequireAuth>
+                <CandidateDetailPage />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/candidates"
+            element={
+              <RequireAuth>
+                <ApplicationsPage />
+              </RequireAuth>
+            }
+          />
         </Routes>
       </BrowserRouter>
     </AuthProvider>

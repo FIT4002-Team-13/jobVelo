@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from bson import ObjectId
 from fastapi import APIRouter, Depends, HTTPException, Response, status
@@ -164,9 +164,17 @@ async def get_interview(
     interview = await _get_interview_in_company(db, intv_id, comp_id)
     return interview_helper(interview)
 
+# Cap what we send to the LLM: far below the model's context window, but
+# enough for hours of conversation. Past the budget the OLDEST turns are
+# dropped - the recent portion carries the most signal for scoring.
+_TRANSCRIPT_CHAR_BUDGET = 60_000
+
+
 def _transcript_to_text(entries: list[dict]) -> str:
     """Flatten transcript entries into "[mm:ss] Speaker: text" lines for
-    the LLM. Skips empty lines and in-flight partials defensively."""
+    the LLM. Skips empty lines and in-flight partials defensively, and
+    truncates oldest-first past the char budget so an extremely long
+    interview can still be completed instead of 502-ing forever."""
     lines = []
     for e in entries or []:
         text = (e.get("text") or "").strip()
@@ -176,7 +184,23 @@ def _transcript_to_text(entries: list[dict]) -> str:
         timestamp = e.get("timestamp") or ""
         prefix = f"[{timestamp}] " if timestamp else ""
         lines.append(f"{prefix}{speaker}: {text}")
-    return "\n".join(lines)
+
+    full = "\n".join(lines)
+    if len(full) <= _TRANSCRIPT_CHAR_BUDGET:
+        return full
+
+    kept: list[str] = []
+    total = 0
+    for line in reversed(lines):
+        total += len(line) + 1
+        if total > _TRANSCRIPT_CHAR_BUDGET:
+            break
+        kept.append(line)
+    kept.reverse()
+    return (
+        "[earlier transcript truncated - showing the most recent portion]\n"
+        + "\n".join(kept)
+    )
 
 
 def _has_non_interviewer_speech(entries: list[dict], interviewer_names: set[str]) -> bool:
@@ -295,13 +319,24 @@ async def complete_interview(
 
     # Re-entry: reports already generated -> serve them, no second LLM run.
     if interview.get("intv_candidate_report") and interview.get("intv_interviewer_report"):
+        stored = [
+            (link or {}).get("communication_score"),
+            (link or {}).get("skill_score"),
+            (link or {}).get("problem_solving_score"),
+        ]
         return InterviewCompleteOut(
             intv_id=intv_id,
             intv_status="completed",
-            scores=InterviewScores(
-                communication=_clamp_score((link or {}).get("communication_score")),
-                skill=_clamp_score((link or {}).get("skill_score")),
-                problem_solving=_clamp_score((link or {}).get("problem_solving_score")),
+            # Only echo scores that actually exist on the link - a missing
+            # link must not fabricate a 0.0/0.0/0.0 result.
+            scores=(
+                InterviewScores(
+                    communication=_clamp_score(stored[0]),
+                    skill=_clamp_score(stored[1]),
+                    problem_solving=_clamp_score(stored[2]),
+                )
+                if all(v is not None for v in stored)
+                else None
             ),
             candidate_report=InterviewFeedback(**interview["intv_candidate_report"]),
             interviewer_report=InterviewFeedback(**interview["intv_interviewer_report"]),
@@ -353,6 +388,27 @@ async def complete_interview(
     candidate_label = (candidate or {}).get("cand_full_name") or "Candidate"
     candidate_speech_detected = _has_non_interviewer_speech(entries, interviewer_match_names)
 
+    # Concurrency guard: atomically claim generation so a double-click (or
+    # an impatient retry) can't fire two parallel LLM runs whose results
+    # then race each other into the database. A claim older than 5 minutes
+    # is considered stale (server died mid-run) and can be re-taken.
+    claim_now = datetime.now(timezone.utc)
+    claim = await db.interviews.find_one_and_update(
+        {
+            "_id": interview["_id"],
+            "$or": [
+                {"intv_report_state": {"$ne": "generating"}},
+                {"intv_report_claimed_at": {"$lt": claim_now - timedelta(minutes=5)}},
+            ],
+        },
+        {"$set": {"intv_report_state": "generating", "intv_report_claimed_at": claim_now}},
+    )
+    if claim is None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Report generation is already in progress - try again in a moment.",
+        )
+
     try:
         result = await generate_interview_reports(
             transcript_text,
@@ -365,21 +421,51 @@ async def complete_interview(
             candidate_speaker_label=candidate_label,
             candidate_speech_detected=candidate_speech_detected,
         )
+
+        # Validate BEFORE persisting anything. A refusal / empty JSON / a
+        # mis-typed section (e.g. "strengths": "good") must fail the request
+        # (releasing the claim so retry works) - the old code stored blank
+        # reports + 0.0 scores, and the truthy-empty reports then satisfied
+        # the cached check forever with no retry path.
+        raw_scores = result.get("scores")
+        if not isinstance(raw_scores, dict) or not all(
+            key in raw_scores for key in ("communication", "skill", "problem_solving")
+        ):
+            raise ValueError("model response is missing the scores section")
+
+        candidate_report = InterviewFeedback(**(result.get("candidate_report") or {}))
+        interviewer_report = InterviewFeedback(**(result.get("interviewer_report") or {}))
+
+        if not (
+            interviewer_report.summary
+            or interviewer_report.strengths.items
+            or interviewer_report.improvements.items
+        ):
+            raise ValueError("model returned an empty interviewer report")
+        # The candidate report only needs content when there was candidate
+        # speech - otherwise the honest no-data override below replaces it.
+        if candidate_speech_detected and not (
+            candidate_report.summary
+            or candidate_report.strengths.items
+            or candidate_report.improvements.items
+        ):
+            raise ValueError("model returned an empty candidate report")
     except Exception as e:
+        # Release the claim so the interviewer can retry immediately.
+        await db.interviews.update_one(
+            {"_id": interview["_id"]},
+            {"$unset": {"intv_report_state": "", "intv_report_claimed_at": ""}},
+        )
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail=f"Report generation failed: {e}",
         ) from e
 
-    raw_scores = result.get("scores") or {}
     scores = InterviewScores(
         communication=_clamp_score(raw_scores.get("communication")),
         skill=_clamp_score(raw_scores.get("skill")),
         problem_solving=_clamp_score(raw_scores.get("problem_solving")),
     )
-    # Pydantic fills any missing sections with safe empties rather than 500-ing.
-    candidate_report = InterviewFeedback(**(result.get("candidate_report") or {}))
-    interviewer_report = InterviewFeedback(**(result.get("interviewer_report") or {}))
 
     # Hard override: no LLM-authored candidate_report/scores without
     # evidence. Runs unconditionally on the parsed result - it's an
@@ -411,7 +497,14 @@ async def complete_interview(
         interview_updates["intv_transcript"] = entries
     if payload.duration_seconds is not None:
         interview_updates["intv_duration_seconds"] = payload.duration_seconds
-    await db.interviews.update_one({"_id": ObjectId(intv_id)}, {"$set": interview_updates})
+    await db.interviews.update_one(
+        {"_id": ObjectId(intv_id)},
+        {
+            "$set": interview_updates,
+            # Success: release the generation claim.
+            "$unset": {"intv_report_state": "", "intv_report_claimed_at": ""},
+        },
+    )
 
     # Mirror the ratings onto the application link. Same side-effect as the
     # manual PATCH /job-candidates/{id}/scores: recording scores flips the

@@ -281,6 +281,20 @@ async def create_candidate_for_job(
             {"cand_id": cand_id_str, "job_id": payload.job_id}
         )
 
+        # A finished (or cancelled) interview is immutable: re-submitting the
+        # add-candidate popup must not flip it back to scheduled, orphaning
+        # its reports/scores, nor replace its interviewer links. Same guard
+        # as applications.update_application.
+        if existing_interview and existing_interview.get("intv_status") in (
+            "completed",
+            "cancelled",
+        ):
+            return {
+                "message": message,
+                "candidate": candidate_helper(candidate).model_dump(),
+                "job_candidate": job_candidate_helper(job_candidate),
+            }
+
         if existing_interview:
             intv_id = str(existing_interview["_id"])
             await db.interviews.update_one(

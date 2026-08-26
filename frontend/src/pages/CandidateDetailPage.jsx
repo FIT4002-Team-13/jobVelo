@@ -455,22 +455,39 @@ function CandidateInfoCard({ candidate, job, interview, onStartInterview, interv
               here in the header as a solid CTA (only when the interview is
               actually scheduled) instead of being tucked into the DATE row. */}
           {canStartInterview && (
+            // Same vertical metrics + pill shape as the Edit button and the
+            // status chip beside it (px-4 py-0.5 text-sm rounded-pill), so
+            // the three header controls read as one row of equal-height
+            // pills - only the solid fill marks this one as the CTA.
             <button
               type="button"
               onClick={onStartInterview}
-              className="inline-flex items-center gap-2 rounded-xl bg-primary-500 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-primary-600"
+              className="inline-flex items-center gap-1.5 rounded-pill bg-primary-500 px-4 py-0.5 text-sm font-semibold text-white transition-colors hover:bg-primary-600"
             >
-              <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor">
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor">
                 <polygon points="5 3 19 12 5 21 5 3" />
               </svg>
               Start Interview
             </button>
           )}
 
+          {/* Editing is locked once the interview is finished - mirrors the
+              backend guard that keeps completed/cancelled interviews
+              immutable (reports, scores, and schedule stay as evaluated). */}
           <button
             type="button"
+            disabled={status === 'COMPLETED' || status === 'CANCELLED'}
             onClick={onEdit}
-            className="rounded-pill border border-neutral-200 hover:bg-neutral-50 bg-white px-4 py-0.5 text-sm font-semibold text-neutral-500"
+            title={
+              status === 'COMPLETED' || status === 'CANCELLED'
+                ? 'This interview is finished - the application can no longer be edited.'
+                : undefined
+            }
+            className={`rounded-pill border px-4 py-0.5 text-sm font-semibold ${
+              status === 'COMPLETED' || status === 'CANCELLED'
+                ? 'cursor-not-allowed border-neutral-100 bg-neutral-50 text-neutral-300'
+                : 'border-neutral-200 bg-white text-neutral-500 hover:bg-neutral-50'
+            }`}
           >
             Edit
           </button>

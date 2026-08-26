@@ -46,18 +46,22 @@ class InterviewScores(BaseModel):
 
 class InterviewCompleteRequest(BaseModel):
     """Payload for POST /{intv_id}/complete. The transcript is optional -
-    when omitted the server uses whatever the periodic autosave stored."""
+    when omitted the server uses whatever the periodic autosave stored.
+    Bounded so a hostile/buggy client can't post an arbitrarily large body."""
 
-    transcript: list[TranscriptEntry] | None = None
+    transcript: list[TranscriptEntry] | None = Field(default=None, max_length=5000)
     duration_seconds: int | None = Field(default=None, ge=0)
 
 
 class InterviewCompleteOut(BaseModel):
-    """Everything the post-interview report popup renders."""
+    """Everything the post-interview report popup renders.
+
+    `scores` is None on a cached re-read whose job_candidates link no longer
+    holds the mirrored ratings - better absent than fabricated 0.0s."""
 
     intv_id: str
     intv_status: InterviewStatus
-    scores: InterviewScores
+    scores: InterviewScores | None = None
     candidate_report: InterviewFeedback
     interviewer_report: InterviewFeedback
     # True when the reports came from a previous completion (no new LLM run).

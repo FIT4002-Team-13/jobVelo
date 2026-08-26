@@ -29,7 +29,15 @@ def _get_client() -> AsyncOpenAI:
     if _client is None:
         if not settings.openai_api_key:
             raise RuntimeError("OPENAI_API_KEY not configured")
-        _client = AsyncOpenAI(api_key=settings.openai_api_key)
+        # Explicit timeout: the SDK default is 600s, which left users staring
+        # at a spinner (and re-clicking, racing a second run) whenever the
+        # provider hung. 90s is generous for our largest call (the interview
+        # report); one retry keeps transient blips survivable.
+        _client = AsyncOpenAI(
+            api_key=settings.openai_api_key,
+            timeout=90.0,
+            max_retries=1,
+        )
     return _client
 
 
@@ -123,6 +131,8 @@ async def generate_similar_question(job_title: str, job_description: str, origin
 
     openai_client = AsyncOpenAI(
         api_key=settings.openai_api_key,
+        timeout=60.0,
+        max_retries=1,
     )
 
     completion = await openai_client.chat.completions.parse(

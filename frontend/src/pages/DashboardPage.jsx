@@ -20,7 +20,9 @@ const CANDIDATE_FILTER_OPTIONS = [
   { value: '',              label: 'All'           },
   { value: 'NOT SCHEDULED', label: 'Not Scheduled' },
   { value: 'SCHEDULED',     label: 'Scheduled'     },
-  { value: 'EVALUATED',     label: 'Evaluated'     },
+  { value: 'IN PROGRESS',   label: 'In Progress'   },
+  { value: 'COMPLETED',     label: 'Completed'     },
+  { value: 'CANCELLED',     label: 'Cancelled'     },
 ]
 
 // Solid-fill status pills - kept in sync with JobsPage + JobDetailPage.
@@ -39,6 +41,7 @@ const CANDIDATE_STATUS_STYLES = {
   SCHEDULED:       'bg-primary-100 text-primary-600',
   'IN PROGRESS':   'bg-sky-100 text-sky-600',
   COMPLETED:       'bg-mint-100 text-mint-700',
+  CANCELLED:       'bg-coral-100 text-coral-700',
   EVALUATED:       'bg-mint-100 text-mint-700',
   HIRED:           'bg-mint-500 text-white',
   REJECTED:        'bg-coral-100 text-coral-700',
@@ -142,6 +145,10 @@ export default function DashboardPage() {
   const [candidates, setCandidates] = useState([])
   const [loading,    setLoading]    = useState(true)
   const [error,      setError]      = useState(null)
+  // Jobs (by id) with at least one completed interview - drives the same
+  // "In Progress" display override JobsPage uses, so the pill here never
+  // disagrees with the one on the Jobs page.
+  const [completedJobIds, setCompletedJobIds] = useState(() => new Set())
 
   // Search + sort + filter state, one set per panel.
   const [jobSearch,        setJobSearch]        = useState('')
@@ -161,9 +168,19 @@ export default function DashboardPage() {
   // enough at dashboard sizes that useMemo is overkill.
   const jobSorter = makeSorter(jobSortKey, { nameField: 'title', dateField: 'job_created_at' })
   const jobNeedle = jobSearch.trim().toLowerCase()
-  const visibleJobs = jobs
+  // Stamp each job with the status the row will actually display (the
+  // completed-interview override included) and filter on that same value,
+  // mirroring JobsPage so the pill and the filter can never disagree.
+  const jobsWithStatus = jobs.map(j => ({
+    ...j,
+    display_status:
+      completedJobIds.has(j.id ?? j._id) && j.status !== 'Completed'
+        ? 'In Progress'
+        : j.status,
+  }))
+  const visibleJobs = jobsWithStatus
     .filter(j => !jobNeedle || (j.title ?? '').toLowerCase().includes(jobNeedle))
-    .filter(j => !jobFilter || j.status === jobFilter)
+    .filter(j => !jobFilter || j.display_status === jobFilter)
   const sortedJobs = jobSorter ? [...visibleJobs].sort(jobSorter) : visibleJobs
 
   const candSorter = makeSorter(candSortKey, { nameField: 'cand_full_name', dateField: 'cand_created_at' })
@@ -208,14 +225,32 @@ export default function DashboardPage() {
         // shows the SAME rows as the /candidates page (one per application
         // where the current user is the interviewer, scoped to the
         // company server-side).
-        const [sumRes, jobsRes, appsRes] = await Promise.all([
+        const [sumRes, jobsRes, appsRes, intvRes] = await Promise.all([
           authedFetch('/api/dashboard/summary'),
           authedFetch('/api/jobs'),
           authedFetch(`/api/applications?user_id=${encodeURIComponent(meData.userid)}`),
+          authedFetch('/api/interviews'),
         ])
         setMe(meData)
-        setSummary(await sumRes.json())
-        setJobs(await jobsRes.json())
+
+        // Guard both HTTP status and payload shape before storing into
+        // state: on an expired token these come back as {detail: ...},
+        // and storing that into array state white-screens the page at
+        // `.filter is not a function`.
+        setSummary(sumRes.ok ? await sumRes.json().catch(() => null) : null)
+        const jobsData = jobsRes.ok ? await jobsRes.json().catch(() => []) : []
+        setJobs(Array.isArray(jobsData) ? jobsData : [])
+
+        // Best-effort: if the interviews fetch fails, rows simply show
+        // their stored status without the completed-override.
+        const intvData = intvRes.ok ? await intvRes.json().catch(() => []) : []
+        if (Array.isArray(intvData)) {
+          setCompletedJobIds(new Set(
+            intvData
+              .filter(i => i.intv_status === 'completed')
+              .map(i => i.job_id)
+          ))
+        }
 
         // Map the application rows into the shape the panel renders
         // (cand_full_name / cand_email / cand_status / cand_created_at).
@@ -333,8 +368,8 @@ export default function DashboardPage() {
                         Candidates: {job.candidates_filled ?? 0}/{job.candidates_total ?? 0}
                       </p>
                     </div>
-                    <span className={`text-xs font-bold px-3 py-1 rounded-pill ${STATUS_STYLES[job.status] ?? 'bg-neutral-100 text-neutral-500'}`}>
-                      {job.status}
+                    <span className={`text-xs font-bold px-3 py-1 rounded-pill ${STATUS_STYLES[job.display_status] ?? 'bg-neutral-100 text-neutral-500'}`}>
+                      {job.display_status}
                     </span>
                   </Link>
                 ))
