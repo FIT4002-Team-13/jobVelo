@@ -306,8 +306,8 @@ export default function InterviewPage() {
   const [isMicMuted, setIsMicMuted] = useState(true);
   const [isPaused, setIsPaused] = useState(false);
   const [isCompleted, setIsCompleted] = useState(false);
-  const [interviewerSource, setInterviewerSource] = useState(null);
-  const interviewerSourceRef = useRef(null);
+  // const [interviewerSource, setInterviewerSource] = useState(null);
+  // const interviewerSourceRef = useRef(null);
 
   const { user } = useAuth();
   const [candidateName, setCandidateName] = useState("");
@@ -403,18 +403,18 @@ export default function InterviewPage() {
     isMicMutedRef.current = isMicMuted;
   }, [isMicMuted]);
 
-  useEffect(() => {
-    interviewerSourceRef.current = interviewerSource;
-    if (interviewerSource) {
-      setStatus("Listening…");
-    }
-  }, [interviewerSource]);
+  // useEffect(() => {
+  //   interviewerSourceRef.current = interviewerSource;
+  //   if (interviewerSource) {
+  //     setStatus("Listening…");
+  //   }
+  // }, [interviewerSource]);
 
-  function chooseInterviewerSource(nextSource) {
-    interviewerSourceRef.current = nextSource;
-    setInterviewerSource(nextSource);
-    setStatus("Listening…");
-  }
+  // function chooseInterviewerSource(nextSource) {
+  //   interviewerSourceRef.current = nextSource;
+  //   setInterviewerSource(nextSource);
+  //   setStatus("Listening…");
+  // }
 
   async function ensureMicAccess() {
     if (micStreamRef.current && audioContextRef.current) {
@@ -423,7 +423,8 @@ export default function InterviewPage() {
 
     const interviewerLabel = user?.full_name || "Interviewer";
     if (!wsRef.current) {
-      wsRef.current = createTranscriptionSocket("B", interviewerLabel, partialEntryRef);
+      wsRef.current = createTranscriptionSocket(interviewerLabel, partialEntryRef);
+      // wsRef.current = createTranscriptionSocket("B", interviewerLabel, partialEntryRef);
     }
 
     const micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -447,8 +448,8 @@ export default function InterviewPage() {
     micSource.connect(micProcessor);
     micProcessor.connect(audioContext.destination);
   }
-
-  function createTranscriptionSocket(sourceKey, speakerLabel, partialRef) {
+  // function createTranscriptionSocket(sourceKey, speakerLabel, partialRef) {
+  function createTranscriptionSocket(speaker, partialRef) {
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     const socket = new WebSocket(
       `${protocol}//${window.location.host}/api/realtime/transcribe`
@@ -460,13 +461,13 @@ export default function InterviewPage() {
       try {
         const data = JSON.parse(event.data);
         if (data.type === "transcript" && typeof data.text === "string") {
-          const activeSource = interviewerSourceRef.current;
-          if (!activeSource) {
-            setStatus("Set interviewer source before writing transcript");
-            return;
-          }
-          const isInterviewer = sourceKey === activeSource;
-          const speaker = isInterviewer ? "Interviewer" : "Candidate";
+          // const activeSource = interviewerSourceRef.current;
+          // if (!activeSource) {
+          //   setStatus("Set interviewer source before writing transcript");
+          //   return;
+          // }
+          // const isInterviewer = sourceKey === activeSource;
+          // const speaker = isInterviewer ? "Interviewer" : "Candidate";
           appendTranscript(data.text, Boolean(data.is_final), speaker, partialRef);
         }
       } catch (err) {
@@ -505,7 +506,7 @@ export default function InterviewPage() {
       // Display audio processor → separate WebSocket (Candidate)
       // macOS getDisplayMedia returns video-only by default — skip if no audio tracks.
       if (displayStream.getAudioTracks().length > 0) {
-        wsDisplayRef.current = createTranscriptionSocket("A", candidateLabel, displayPartialEntryRef);
+        wsDisplayRef.current = createTranscriptionSocket(candidateLabel, displayPartialEntryRef);
 
         const displaySource = audioContext.createMediaStreamSource(displayStream);
         const displayProcessor = audioContext.createScriptProcessor(4096, 1, 1);
@@ -793,38 +794,11 @@ export default function InterviewPage() {
     navigate(`/jobs/${jobId}`);
   }
 
-  const showSourceSetup = !isCompleted && !interviewerSource;
+  // const showSourceSetup = !isCompleted && !interviewerSource;
 
   return (
     <div className="h-screen flex flex-col bg-neutral-50 font-sans overflow-hidden">
       {/* ── Header ─────────────────────────────────────────────────────────── */}
-      {showSourceSetup && (
-        <div className="bg-amber-100 border-b border-amber-200 px-6 py-3 shrink-0">
-          <div className="flex items-center justify-between gap-4">
-            <div>
-              <p className="text-sm font-semibold text-amber-900">Interview source setup required</p>
-              <p className="text-xs text-amber-800">
-                Choose which audio source is the interviewer before transcript writing starts.
-              </p>
-            </div>
-            <div className="flex gap-2">
-              <button
-                className="px-3 py-1.5 rounded-xl bg-amber-600 text-white text-xs font-semibold hover:bg-amber-700 transition-colors"
-                onClick={() => chooseInterviewerSource("A")}
-              >
-                Screenshare Audio = Interviewer
-              </button>
-              <button
-                className="px-3 py-1.5 rounded-xl bg-white text-amber-800 border border-amber-300 text-xs font-semibold hover:bg-amber-50 transition-colors"
-                onClick={() => chooseInterviewerSource("B")}
-              >
-                Microphone Audio = Interviewer
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       <header className="bg-neutral-0 border-b border-neutral-200 px-10 py-4 shrink-0">
         <div className={`${flex.rowBetween}`}>
           {/* Candidate + interviewer info */}
@@ -855,14 +829,6 @@ export default function InterviewPage() {
 
           {/* Actions */}
           <div className={`${flex.row} gap-4`}>
-            {showSourceSetup && (
-              <button
-                className={`${button.outline} opacity-80`}
-                onClick={() => chooseInterviewerSource("A")}
-              >
-                Set interviewer source
-              </button>
-            )}
             <button
               className={button.primary}
               onClick={() => cvUrl && window.open(cvUrl, "_blank")}
@@ -935,13 +901,6 @@ export default function InterviewPage() {
               {transcriptVisible ? "Hide" : "Show"}
             </button>
           </div>
-          {showSourceSetup && (
-            <div className="px-6 py-6">
-              <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-                Transcript writing is blocked until you choose whether source A (screen share) or source B (mic) is the interviewer.
-              </div>
-            </div>
-          )}
           {transcriptVisible && (
             <div
               className="flex-1 overflow-y-auto px-6 py-3 scrollbar-primary scroll-auto"
