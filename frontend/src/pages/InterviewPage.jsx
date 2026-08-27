@@ -916,7 +916,7 @@ export default function InterviewPage() {
                     key={entry.id}
                     entry={entry}
                     highlights={highlights}
-                    showSpeaker={!isCompleted}
+                    showSpeaker
                   />
                 ))
               )}
