@@ -5,11 +5,29 @@ import logging
 from typing import Any
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from pydantic import BaseModel, Field
 
 from services.deepgram_service import DeepgramSession
+from services.openai_service import detect_interruption
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+
+class InterruptionCheck(BaseModel):
+    candidate_text: str = Field(min_length=1, max_length=2000)
+    interviewer_text: str = Field(min_length=1, max_length=1000)
+
+
+@router.post("/api/realtime/interruption")
+async def check_interruption(payload: InterruptionCheck) -> dict[str, bool]:
+    """Confirm a possible overlap with the interview's OpenAI model."""
+    return {
+        "interrupted": await detect_interruption(
+            payload.candidate_text,
+            payload.interviewer_text,
+        )
+    }
 
 
 @router.websocket("/api/realtime/transcribe")
@@ -18,9 +36,9 @@ async def realtime_transcribe(websocket: WebSocket) -> None:
     transcript_queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
 
     async def on_transcript(text: str, is_final: bool) -> None:
-        await transcript_queue.put({"type": "transcript", "text": text, "is_final": is_final})
-
-        
+        await transcript_queue.put(
+            {"type": "transcript", "text": text, "is_final": is_final}
+        )
 
     session = DeepgramSession(on_transcript)
     try:

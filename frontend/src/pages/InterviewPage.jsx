@@ -34,6 +34,9 @@ const MOCK_SCORES = [
   { label: "Problem Solving", score: 7.0 },
 ];
 
+const INTERRUPTION_THRESHOLD = 3;
+const INTERRUPTION_WINDOW_MS = 5 * 60 * 1000;
+
 
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -265,6 +268,8 @@ export default function InterviewPage() {
   const [questionsError, setQuestionsError] = useState("");
   const [similarQuestionId, setSimilarQuestionId] = useState(null);
   const [timer, setTimer] = useState(0);
+  const [interruptionAlertVisible, setInterruptionAlertVisible] = useState(false);
+  const [interruptionCount, setInterruptionCount] = useState(0);
 
   const transcriptRef = useRef([]);
   const timerRef = useRef(0);
@@ -286,6 +291,12 @@ export default function InterviewPage() {
   const questionsRequestedJobRef = useRef(null);
   const questionsRef = useRef([]);
   const pendingCategoriesRef = useRef([]);
+  const speechStateRef = useRef({
+    candidate: { active: false, text: "" },
+    interviewer: { active: false, text: "" },
+    reportedForCandidateTurn: false,
+  });
+  const interruptionTimesRef = useRef([]);
 
   useEffect(() => {
     questionsRef.current = questions;
@@ -298,7 +309,48 @@ export default function InterviewPage() {
     }
   }, [transcript]);
 
-  function appendTranscript(text, isFinal, speaker, partialRef) {
+  async function confirmInterruption(candidateText, interviewerText) {
+    try {
+      const response = await fetch("/api/realtime/interruption", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          candidate_text: candidateText,
+          interviewer_text: interviewerText,
+        }),
+      });
+      if (!response.ok) return;
+
+      const data = await response.json();
+      if (!data.interrupted) return;
+
+      const cutoff = Date.now() - INTERRUPTION_WINDOW_MS;
+      const recent = interruptionTimesRef.current.filter((time) => time >= cutoff);
+      recent.push(Date.now());
+      interruptionTimesRef.current = recent;
+      setInterruptionCount(recent.length);
+      if (recent.length >= INTERRUPTION_THRESHOLD) {
+        setInterruptionAlertVisible(true);
+      }
+    } catch (error) {
+      console.warn("Interruption check failed", error);
+    }
+  }
+
+  function appendTranscript(text, isFinal, speaker, partialRef, speakerType) {
+    const speechState = speechStateRef.current[speakerType];
+    speechState.text = text;
+    speechState.active = true;
+
+    if (
+      speakerType === "interviewer" &&
+      speechStateRef.current.candidate.active &&
+      !speechStateRef.current.reportedForCandidateTurn
+    ) {
+      speechStateRef.current.reportedForCandidateTurn = true;
+      void confirmInterruption(speechStateRef.current.candidate.text, text);
+    }
+
     const timestamp = formatTimer(
       Math.floor((Date.now() - startTimeRef.current) / 1000)
     );
@@ -317,6 +369,11 @@ export default function InterviewPage() {
         localStorage.setItem(`transcript-${id}`, JSON.stringify(updated));
         return updated;
       });
+      speechState.active = false;
+      speechState.text = "";
+      if (speakerType === "candidate") {
+        speechStateRef.current.reportedForCandidateTurn = false;
+      }
     } else {
       if (!partialRef.current) {
         partialRef.current = `partial-${entryCounterRef.current++}`;
@@ -348,7 +405,7 @@ export default function InterviewPage() {
     isPausedRef.current = isPaused;
   }, [isPaused]);
 
-  function createTranscriptionSocket(speaker, partialRef) {
+  function createTranscriptionSocket(speaker, partialRef, speakerType) {
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     const socket = new WebSocket(
       `${protocol}//${window.location.host}/api/realtime/transcribe`
@@ -360,7 +417,13 @@ export default function InterviewPage() {
       try {
         const data = JSON.parse(event.data);
         if (data.type === "transcript" && typeof data.text === "string") {
-          appendTranscript(data.text, Boolean(data.is_final), speaker, partialRef);
+          appendTranscript(
+            data.text,
+            Boolean(data.is_final),
+            speaker,
+            partialRef,
+            speakerType,
+          );
         }
       } catch (err) {
         console.error("Failed to parse transcription event", err);
@@ -378,7 +441,11 @@ export default function InterviewPage() {
 
     try {
       // Mic socket — always created
-      wsRef.current = createTranscriptionSocket(interviewerLabel, partialEntryRef);
+      wsRef.current = createTranscriptionSocket(
+        interviewerLabel,
+        partialEntryRef,
+        "interviewer",
+      );
       setStatus("Requesting screen access...");
 
       const displayStream = await navigator.mediaDevices.getDisplayMedia({
@@ -419,7 +486,11 @@ export default function InterviewPage() {
       // Display audio processor → separate WebSocket (Candidate)
       // macOS getDisplayMedia returns video-only by default — skip if no audio tracks.
       if (displayStream.getAudioTracks().length > 0) {
-        wsDisplayRef.current = createTranscriptionSocket(candidateLabel, displayPartialEntryRef);
+        wsDisplayRef.current = createTranscriptionSocket(
+          candidateLabel,
+          displayPartialEntryRef,
+          "candidate",
+        );
 
         const displaySource = audioContext.createMediaStreamSource(displayStream);
         const displayProcessor = audioContext.createScriptProcessor(4096, 1, 1);
@@ -1007,11 +1078,38 @@ export default function InterviewPage() {
             <h2 className="text-base font-semibold text-neutral-800 mb-2">
               Live Assessment
             </h2>
-            <div className={`${flex.col} gap-1.5`}>
-              {scores.map((s) => (
-                <ScoreBar key={s.label} label={s.label} score={s.score} />
-              ))}
-            </div>
+            {interruptionAlertVisible ? (
+              <div className="border border-coral-200 bg-coral-50 px-3 py-3 rounded-lg" role="alert">
+                <p className="text-sm font-semibold text-coral-800">
+                  You have interrupted the candidate {interruptionCount} times recently.
+                </p>
+                <p className="text-xs text-coral-700 mt-1">
+                  Consider allowing more response time.
+                </p>
+                <div className="flex gap-2 mt-3">
+                  <button
+                    type="button"
+                    onClick={() => setInterruptionAlertVisible(false)}
+                    className="text-xs font-semibold text-coral-800 bg-coral-100 hover:bg-coral-200 rounded px-2 py-1"
+                  >
+                    Acknowledge
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setInterruptionAlertVisible(false)}
+                    className="text-xs text-coral-700 hover:text-coral-900 px-2 py-1"
+                  >
+                    Dismiss
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className={`${flex.col} gap-1.5`}>
+                {scores.map((s) => (
+                  <ScoreBar key={s.label} label={s.label} score={s.score} />
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Suggested Questions */}

@@ -68,7 +68,43 @@ async def generate_next_question(
     )
     return (res.choices[0].message.content or "").strip()
 
-async def generate_interview_questions(job_title: str, job_description: str) -> SuggestedQuestionsList:
+
+async def detect_interruption(candidate_text: str, interviewer_text: str) -> bool:
+    """Use OpenAI to confirm that interviewer speech interrupted a response."""
+    res = await _get_client().chat.completions.create(
+        model=settings.openai_question_model,
+        messages=[
+            {
+                "role": "system",
+                "content": (
+                    "You detect interview interruptions. Return true only when the interviewer "
+                    "started speaking while the candidate was still delivering an answer. "
+                    "Return valid JSON with exactly one boolean key: interrupted."
+                ),
+            },
+            {
+                "role": "user",
+                "content": (
+                    f"Candidate response in progress: {candidate_text}\n"
+                    f"Interviewer speech that overlapped it: {interviewer_text}"
+                ),
+            },
+        ],
+        response_format={"type": "json_object"},
+        temperature=0,
+        max_tokens=20,
+    )
+    try:
+        return bool(
+            json.loads(res.choices[0].message.content or "{}").get("interrupted")
+        )
+    except (TypeError, json.JSONDecodeError):
+        return False
+
+
+async def generate_interview_questions(
+    job_title: str, job_description: str
+) -> SuggestedQuestionsList:
     """Generate alist of interview questions based on the job title and description."""
 
     prompt = f"""
@@ -116,8 +152,10 @@ async def generate_interview_questions(job_title: str, job_description: str) -> 
 
     return result
 
-async def generate_similar_question(job_title: str, job_description: str, original_question: str, category: str) -> SimilarQuestionResult:
 
+async def generate_similar_question(
+    job_title: str, job_description: str, original_question: str, category: str
+) -> SimilarQuestionResult:
     if not settings.openai_api_key:
         raise RuntimeError("OPENAI_API_KEY not configured")
 
@@ -163,6 +201,7 @@ async def generate_similar_question(job_title: str, job_description: str, origin
 
     return result
 
+
 async def summarise(transcript: str) -> str:
     res = await _get_client().chat.completions.create(
         model=settings.openai_analysis_model,
@@ -185,7 +224,10 @@ async def score(transcript: str, job_title: str | None = None) -> dict[str, Any]
     res = await _get_client().chat.completions.create(
         model=settings.openai_analysis_model,
         messages=[
-            {"role": "system", "content": "You score interview candidates. Reply with valid JSON only."},
+            {
+                "role": "system",
+                "content": "You score interview candidates. Reply with valid JSON only.",
+            },
             {
                 "role": "user",
                 "content": (
