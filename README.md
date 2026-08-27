@@ -49,7 +49,7 @@ These feed `tailwind.config.js`, so every utility class (`bg-primary-500`, `text
 ```bash
 cd backend
 python -m venv .venv
-. .venv/Scripts/activate     # Windows
+.venv\Scripts\activate     # Windows
 # source .venv/bin/activate  # macOS/Linux
 pip install -r requirements.txt
 cp .env.example .env         # fill in MONGODB_URI + API keys

@@ -542,11 +542,13 @@ function CandidatesTable({
   candidates,
   tab,
   setTab,
+  user,
   onStartInterview,
   onDelete,
   onOpenInterview,
   onOpenCandidate,
 }) {
+  const isInterviewer = user?.role === "interviewer";
   const [search, setSearch] = useState("");
   // SortMenu is only consulted while the SCHEDULES tab is active. The
   // RANKINGS tab is itself a sort ("highest score first") so letting the
@@ -741,9 +743,11 @@ function CandidatesTable({
                 );
                 // Actions: Start Interview is only meaningful for SCHEDULED rows
                 // (so it stays greyed-out on the RANKINGS tab where everything is
-                // typically EVALUATED). Delete is always available - removing a
+                // typically EVALUATED), and is interviewer-only - mirrors the
+                // backend's Depends(require_role("interviewer")) on
+                // POST /api/interviews. Delete is always available - removing a
                 // mis-added candidate from a job shouldn't depend on their state.
-                const canStart = c.status === "SCHEDULED";
+                const canStart = c.status === "SCHEDULED" && isInterviewer;
                 const hasCompletedInterview = Boolean(c.intv_completed);
                 const actionsCell = (
                   <td className="px-4 py-3">
@@ -756,6 +760,7 @@ function CandidatesTable({
                           event.stopPropagation();
                           if (canStart && !hasCompletedInterview) onStartInterview?.(c);
                         }}
+                        title={!isInterviewer ? "Only interviewers can start interviews" : undefined}
                         className={`${
                           flex.row
                         } gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors whitespace-nowrap ${
@@ -918,6 +923,7 @@ function CandidatesTable({
 export default function JobDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { user } = useAuth();
 
   const [job, setJob] = useState(null);
   const [candidates, setCandidates] = useState([]);
@@ -1000,6 +1006,11 @@ export default function JobDetailPage() {
       }),
     });
     const interview = await res.json();
+    if (!res.ok) {
+      alert(interview?.detail || "Failed to start interview.");
+      setStartTarget(null);
+      return;
+    }
     navigate(`/interview/${interview.intv_id}`);
   }
 
@@ -1224,6 +1235,7 @@ export default function JobDetailPage() {
             candidates={candidates}
             tab={tab}
             setTab={setTab}
+            user={user}
             onStartInterview={(c) => setStartTarget(c)}
             onDelete={(c) => setDeleteTarget(c)}
             onOpenInterview={(intvId) => navigate(`/interview/${intvId}`)}
