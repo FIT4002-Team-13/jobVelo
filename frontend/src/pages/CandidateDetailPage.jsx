@@ -63,6 +63,9 @@ function InterviewPlanCard({ jobId, candId, jobCand }) {
       }
       const data = await res.json()
       const plan = Array.isArray(data) ? data : []
+      if (plan.length === 0) {
+        throw new Error('No sections were returned. Please try again.')
+      }
       setSections(plan)
       setState('done')
       persist(plan)

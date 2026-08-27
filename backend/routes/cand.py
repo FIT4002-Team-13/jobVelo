@@ -263,15 +263,15 @@ async def create_candidate_for_job(
 
         message = "Candidate created and linked to job successfully."
 
-    # 6. Create interview + interviewer link whenever an interviewer is assigned.
-    if payload.interviewer_user_id:
-        scheduled_dt = None
-        if payload.scheduled_at:
-            try:
-                scheduled_dt = datetime.fromisoformat(payload.scheduled_at)
-            except ValueError:
-                pass
+    # 6. Create interview + interviewer link whenever a date or interviewer is assigned.
+    scheduled_dt = None
+    if payload.scheduled_at:
+        try:
+            scheduled_dt = datetime.fromisoformat(payload.scheduled_at)
+        except ValueError:
+            pass
 
+    if scheduled_dt or payload.interviewer_user_id:
         intv_status = "scheduled" if scheduled_dt else "not_scheduled"
 
         existing_interview = await db.interviews.find_one(
@@ -307,15 +307,16 @@ async def create_candidate_for_job(
             )
             intv_id = str(intv_result.inserted_id)
 
-        await db.interview_users.delete_many({"intv_id": intv_id})
-        await db.interview_users.insert_one(
-            {
-                "user_id": payload.interviewer_user_id,
-                "intv_id": intv_id,
-                "intvuser_created_at": now,
-                "intvuser_updated_at": now,
-            }
-        )
+        if payload.interviewer_user_id:
+            await db.interview_users.delete_many({"intv_id": intv_id})
+            await db.interview_users.insert_one(
+                {
+                    "user_id": payload.interviewer_user_id,
+                    "intv_id": intv_id,
+                    "intvuser_created_at": now,
+                    "intvuser_updated_at": now,
+                }
+            )
 
     return {
         "message": message,

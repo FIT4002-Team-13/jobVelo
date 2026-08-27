@@ -95,6 +95,10 @@ export default function EditCandidateForm({
 }) {
   const { user } = useAuth()
 
+  const initialScheduledAt = initialData?.interview_datetime
+    ? initialData.interview_datetime.slice(0, 16)
+    : ''
+
   const [formState, setFormState] = useState({
     cand_id: initialData?.cand_id || '',
     application_id: initialData?.application_id || '',
@@ -104,9 +108,7 @@ export default function EditCandidateForm({
     job_id: initialData?.job_id || '',
     interviewer: initialData?.interviewer || '',
     interviewer_user_id: initialData?.interviewer_user_id || '',
-    scheduled_at: initialData?.interview_datetime
-    ? initialData.interview_datetime.slice(0, 16)   // "2025-06-01T10:00"
-    : '',
+    scheduled_at: initialScheduledAt,
   })
 
   const [cvFile, setCvFile] = useState(null)
@@ -160,7 +162,8 @@ export default function EditCandidateForm({
     if (!formState.job_id) {
       return setError('Please select a job position.')
     }
-    if (formState.scheduled_at && !isFutureDateTime(formState.scheduled_at)) {
+    const dateChanged = formState.scheduled_at !== initialScheduledAt
+    if (dateChanged && formState.scheduled_at && !isFutureDateTime(formState.scheduled_at)) {
       return setError('Scheduled date/time must be in the future.')
     }
 

@@ -49,6 +49,13 @@ async def generate_plan(payload: PlanRequest) -> list[dict]:
         cand.get("cand_full_name", "the candidate") if cand else "the candidate"
     )
 
+    # Re-use an existing plan from job_candidates so the interview page shows
+    # the same sections the interviewer already reviewed/edited on the candidate page.
+    if not payload.total_minutes and job_cand:
+        existing = job_cand.get("plan_sections")
+        if isinstance(existing, list) and existing:
+            return existing
+
     cv_analysis: dict | None = None
     if job_cand:
         raw = job_cand.get("cv_analysis")
@@ -70,6 +77,11 @@ async def generate_plan(payload: PlanRequest) -> list[dict]:
         )
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"AI generation failed: {exc}")
+
+    if not sections:
+        raise HTTPException(
+            status_code=502, detail="AI returned an empty plan. Please try again."
+        )
 
     return sections
 

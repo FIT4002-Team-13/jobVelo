@@ -67,6 +67,11 @@ function formatTimer(seconds) {
   return `${m}:${s}`;
 }
 
+function parseTimestamp(ts = "") {
+  const [m, s] = ts.split(":").map(Number);
+  return (m || 0) * 60 + (s || 0);
+}
+
 function convertFloat32ToInt16(buffer) {
   const output = new DataView(new ArrayBuffer(buffer.length * 2));
   for (let i = 0; i < buffer.length; i += 1) {
@@ -327,6 +332,7 @@ export default function InterviewPage() {
   const [candidateRole, setCandidateRole] = useState("");
   const [cvUrl, setCvUrl] = useState(null);
   const [jobId, setJobId] = useState(null);
+  const [candId, setCandId] = useState(null);
   const [transcript, setTranscript] = useState(INITIAL_TRANSCRIPT);
   const [questions, setQuestions] = useState([]);
   const [questionsLoading, setQuestionsLoading] = useState(false);
@@ -339,8 +345,12 @@ export default function InterviewPage() {
   const sectionsScrollRef = useRef(null);
   const sectionCardRefs = useRef([]);
 
+  const [highlightedEntryIdx, setHighlightedEntryIdx] = useState(null);
+  const transcriptEntryRefs = useRef([]);
+
   const transcriptRef = useRef([]);
   const timerRef = useRef(0);
+  const autoStartedRef = useRef(false);
   const wsRef = useRef(null);
   const wsDisplayRef = useRef(null);
   const audioContextRef = useRef(null);
@@ -429,6 +439,18 @@ export default function InterviewPage() {
   }, [activeSectionIndex]);
 
   function startSection(i) {
+    const startAt = timerRef.current;
+    setSections((prev) => {
+      const updated = prev.map((s, j) =>
+        j === i && s.start_at == null ? { ...s, start_at: startAt } : s
+      );
+      fetch(`/api/interviews/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ intv_sections: updated }),
+      }).catch(() => {});
+      return updated;
+    });
     setSectionStates((prev) =>
       prev.map((st, j) => {
         if (j === i) return { ...st, status: "running" };
@@ -952,6 +974,10 @@ export default function InterviewPage() {
           if (data.intv_duration_seconds) {
             startTimeRef.current = Date.now() - data.intv_duration_seconds * 1000;
           }
+          if (!autoStartedRef.current) {
+            autoStartedRef.current = true;
+            startMicOnly().catch(() => {});
+          }
         }
 
         if (data.job_id) {
@@ -962,6 +988,7 @@ export default function InterviewPage() {
             .catch(() => {});
         }
         if (data.cand_id) {
+          setCandId(data.cand_id);
           fetch(`/api/candidates/${data.cand_id}`)
             .then((r) => r.json())
             .then((cand) => {
@@ -975,6 +1002,7 @@ export default function InterviewPage() {
             setSections(data.intv_sections);
             setSectionStates(data.intv_sections.map(() => ({ status: "idle", elapsed: 0 })));
             sectionIntervals.current = new Array(data.intv_sections.length).fill(null);
+            if (!completed) startSection(0);
           } else {
             fetch("/api/interviews/generate-plan", {
               method: "POST",
@@ -987,6 +1015,7 @@ export default function InterviewPage() {
                   setSections(plan);
                   setSectionStates(plan.map(() => ({ status: "idle", elapsed: 0 })));
                   sectionIntervals.current = new Array(plan.length).fill(null);
+                  if (!completed) startSection(0);
                   fetch(`/api/interviews/${id}`, {
                     method: "PATCH",
                     headers: { "Content-Type": "application/json" },
@@ -1191,6 +1220,28 @@ export default function InterviewPage() {
     }
   }
 
+  function jumpToSection(sectionIndex) {
+    const section = sections[sectionIndex];
+    const startSeconds =
+      section?.start_at != null
+        ? section.start_at
+        : sections
+            .slice(0, sectionIndex)
+            .reduce((sum, s) => sum + (s.suggested_minutes || 0) * 60, 0);
+
+    let targetIdx = transcript.findIndex(
+      (entry) => parseTimestamp(entry.timestamp) >= startSeconds
+    );
+    if (targetIdx === -1) targetIdx = transcript.length - 1;
+    if (targetIdx < 0) return;
+
+    const el = transcriptEntryRefs.current[targetIdx];
+    if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+
+    setHighlightedEntryIdx(targetIdx);
+    setTimeout(() => setHighlightedEntryIdx(null), 2000);
+  }
+
   async function completeInterview() {
     if (isCompleted) {
       return;
@@ -1251,35 +1302,22 @@ export default function InterviewPage() {
             >
               View Resume
             </button>
-            <button
-              className={`${button.outline} ${
-                isMicActive
-                  ? "bg-coral-100 text-coral-800 hover:bg-coral-200"
-                  : ""
-              } ${isCompleted ? "opacity-60 cursor-not-allowed" : ""}`}
-              onClick={() => {
-                if (isCompleted) return;
-                if (isMicActive) void stopScreenShare();
-                else void startMicOnly();
-              }}
-              disabled={isCompleted}
-            >
-              {isMicActive ? "Stop Recording" : "Start Recording"}
-            </button>
-            <button
-              className={`${button.outline} ${
-                isScreenSharing
-                  ? "bg-sky-100 text-sky-800 hover:bg-sky-200"
-                  : !isMicActive || isCompleted
-                  ? "opacity-50 cursor-not-allowed"
-                  : ""
-              }`}
-              onClick={() => !isCompleted && isMicActive && void toggleScreenShare()}
-              disabled={isCompleted || !isMicActive}
-              title={!isMicActive ? "Start recording first" : isScreenSharing ? "Stop sharing screen" : "Share screen to capture computer audio"}
-            >
-              {isScreenSharing ? "Stop screen share" : "Share screen"}
-            </button>
+            {!isCompleted && (
+              <button
+                className={`${button.outline} ${
+                  isScreenSharing
+                    ? "bg-sky-100 text-sky-800 hover:bg-sky-200"
+                    : !isMicActive
+                    ? "opacity-50 cursor-not-allowed"
+                    : ""
+                }`}
+                onClick={() => isMicActive && void toggleScreenShare()}
+                disabled={!isMicActive}
+                title={!isMicActive ? "Waiting for microphone…" : isScreenSharing ? "Stop sharing screen" : "Share screen to capture computer audio"}
+              >
+                {isScreenSharing ? "Stop screen share" : "Share screen"}
+              </button>
+            )}
             <div
               className={`${flex.row} gap-2 items-center text-neutral-700 font-semibold text-xl`}
             >
@@ -1325,8 +1363,14 @@ export default function InterviewPage() {
                   Transcription will appear here once the interview starts.
                 </p>
               ) : (
-                transcript.map((entry) => (
-                  <TranscriptEntry key={entry.id} entry={entry} />
+                transcript.map((entry, i) => (
+                  <div
+                    key={entry.id}
+                    ref={(el) => (transcriptEntryRefs.current[i] = el)}
+                    className={`rounded-lg transition-colors duration-700 ${highlightedEntryIdx === i ? "bg-yellow-50 ring-1 ring-yellow-300" : ""}`}
+                  >
+                    <TranscriptEntry entry={entry} />
+                  </div>
                 ))
               )}
             </div>
@@ -1354,24 +1398,55 @@ export default function InterviewPage() {
               <div className="px-6 pt-4 pb-3 border-b border-neutral-100 shrink-0">
                 <h2 className="text-base font-semibold text-neutral-800">Interview Sections</h2>
               </div>
-              <div ref={sectionsScrollRef} className="overflow-x-auto px-6 py-4" style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}>
-                <div className={`${flex.row} gap-3 items-stretch`}>
-                  {sections.map((section, i) => (
-                    <div key={i} ref={(el) => (sectionCardRefs.current[i] = el)} className="shrink-0">
-                      <SectionCard
-                        section={section}
-                        st={sectionStates[i] ?? { status: "idle", elapsed: 0 }}
-                        color={SECTION_COLORS[i % SECTION_COLORS.length]}
-                        locked={!isMicActive}
-                        onStart={() => startSection(i)}
-                        onPause={() => pauseSection(i)}
-                        onResume={() => resumeSection(i)}
-                        onDone={() => doneSection(i)}
-                      />
-                    </div>
-                  ))}
+
+              {isCompleted ? (
+                <div className="px-4 py-3 flex flex-col gap-0.5">
+                  {sections.map((section, i) => {
+                    const hasReal = section.start_at != null;
+                    const startSec = hasReal
+                      ? section.start_at
+                      : sections.slice(0, i).reduce((sum, s) => sum + (s.suggested_minutes || 0) * 60, 0);
+                    const color = SECTION_COLORS[i % SECTION_COLORS.length];
+                    return (
+                      <button
+                        key={i}
+                        onClick={() => jumpToSection(i)}
+                        className="flex items-center gap-3 px-3 py-2 rounded-xl text-left transition-colors hover:bg-neutral-50 group"
+                      >
+                        <span className={`text-xs font-mono px-2 py-0.5 rounded-full shrink-0 ${color.badge}`}>
+                          {hasReal ? "" : "~"}{formatTimer(startSec)}
+                        </span>
+                        <span className="text-sm font-semibold text-neutral-800 group-hover:text-primary-600 transition-colors shrink-0">
+                          {section.name}
+                        </span>
+                        <span className="text-xs text-neutral-400 truncate">{section.description}</span>
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-neutral-300 group-hover:text-primary-400 shrink-0 transition-colors">
+                          <polyline points="9 18 15 12 9 6" />
+                        </svg>
+                      </button>
+                    );
+                  })}
                 </div>
-              </div>
+              ) : (
+                <div ref={sectionsScrollRef} className="overflow-x-auto px-6 py-4" style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}>
+                  <div className={`${flex.row} gap-3 items-stretch`}>
+                    {sections.map((section, i) => (
+                      <div key={i} ref={(el) => (sectionCardRefs.current[i] = el)} className="shrink-0">
+                        <SectionCard
+                          section={section}
+                          st={sectionStates[i] ?? { status: "idle", elapsed: 0 }}
+                          color={SECTION_COLORS[i % SECTION_COLORS.length]}
+                          locked={!isMicActive}
+                          onStart={() => startSection(i)}
+                          onPause={() => pauseSection(i)}
+                          onResume={() => resumeSection(i)}
+                          onDone={() => doneSection(i)}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -1413,32 +1488,43 @@ export default function InterviewPage() {
             </div>
           </div>
 
-          {/* Pause / Complete */}
+          {/* Pause / Complete — or navigation buttons when interview is done */}
           <div className={`${flex.row} gap-4 shrink-0`}>
-            <button
-              onClick={() => !isCompleted && togglePause()}
-              disabled={isCompleted}
-              className={`flex-1 py-2 text-sm font-semibold rounded-xl transition-colors ${
-                isCompleted
-                  ? "bg-neutral-300 text-neutral-500 cursor-not-allowed"
-                  : isPaused
-                  ? "bg-mint-400 hover:bg-mint-500 text-white"
-                  : "bg-coral-400 hover:bg-coral-500 text-white"
-              }`}
-            >
-              {isPaused ? "Unpause" : "Pause"}
-            </button>
-            <button
-              onClick={() => completeInterview()}
-              disabled={isCompleted}
-              className={`flex-1 py-2 text-sm font-semibold rounded-xl transition-colors ${
-                isCompleted
-                  ? "bg-neutral-300 text-neutral-500 cursor-not-allowed"
-                  : "text-white bg-sky-300 hover:bg-sky-400"
-              }`}
-            >
-              Complete
-            </button>
+            {isCompleted ? (
+              <>
+                <button
+                  onClick={() => jobId && navigate(`/jobs/${jobId}`)}
+                  className="flex-1 py-2 text-sm font-semibold rounded-xl transition-colors bg-neutral-100 hover:bg-neutral-200 text-neutral-700"
+                >
+                  Return to Job
+                </button>
+                <button
+                  onClick={() => candId && jobId && navigate(`/candidates/${candId}/${jobId}`)}
+                  className="flex-1 py-2 text-sm font-semibold rounded-xl transition-colors text-white bg-primary-500 hover:bg-primary-600"
+                >
+                  Return to Candidate
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  onClick={togglePause}
+                  className={`flex-1 py-2 text-sm font-semibold rounded-xl transition-colors ${
+                    isPaused
+                      ? "bg-mint-400 hover:bg-mint-500 text-white"
+                      : "bg-coral-400 hover:bg-coral-500 text-white"
+                  }`}
+                >
+                  {isPaused ? "Unpause" : "Pause"}
+                </button>
+                <button
+                  onClick={completeInterview}
+                  className="flex-1 py-2 text-sm font-semibold rounded-xl transition-colors text-white bg-sky-300 hover:bg-sky-400"
+                >
+                  Complete
+                </button>
+              </>
+            )}
           </div>
         </div>
       </div>

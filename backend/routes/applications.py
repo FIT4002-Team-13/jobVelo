@@ -354,22 +354,31 @@ async def update_application(
         except ValueError:
             raise HTTPException(status_code=400, detail="Invalid scheduled_at.")
 
-    intv_status = "scheduled" if scheduled_dt else "not_scheduled"
-
     if interview:
+        existing_status = interview.get("intv_status", "not_scheduled")
+        interview_set: dict = {
+            "job_id": payload.job_id,
+            "intv_updated_at": now,
+        }
+        # Never overwrite the date/status on an interview that has already
+        # progressed past scheduling — editing candidate details (name,
+        # interviewer, etc.) must not reset an in-progress or completed
+        # interview back to not_scheduled and wipe the recorded date.
+        # We only touch date/status when:
+        #   - the interview hasn't started yet (not_scheduled / scheduled), AND
+        #   - a new date is being set, OR the user is explicitly clearing one.
+        if existing_status in ("not_scheduled", "scheduled"):
+            interview_set["intv_date_time"] = scheduled_dt
+            interview_set["intv_status"] = (
+                "scheduled" if scheduled_dt else "not_scheduled"
+            )
         await db.interviews.update_one(
             {"_id": interview["_id"]},
-            {
-                "$set": {
-                    "job_id": payload.job_id,
-                    "intv_date_time": scheduled_dt,
-                    "intv_status": intv_status,
-                    "intv_updated_at": now,
-                }
-            },
+            {"$set": interview_set},
         )
         interview = await db.interviews.find_one({"_id": interview["_id"]})
     else:
+        intv_status = "scheduled" if scheduled_dt else "not_scheduled"
         result = await db.interviews.insert_one(
             {
                 "cand_id": cand_id,

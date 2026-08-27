@@ -696,7 +696,7 @@ async def add_candidate_to_job(
         }
     )
 
-    # 5. Create interview document whenever an interviewer is assigned.
+    # 5. Create interview document whenever a date or interviewer is provided.
     scheduled_dt = None
     if payload.scheduled_at:
         try:
@@ -704,7 +704,7 @@ async def add_candidate_to_job(
         except ValueError:
             pass
 
-    if payload.interviewer_user_id:
+    if scheduled_dt or payload.interviewer_user_id:
         intv_status = "scheduled" if scheduled_dt else "not_scheduled"
         interview_result = await db.interviews.insert_one(
             {
@@ -722,14 +722,15 @@ async def add_candidate_to_job(
         )
 
         # 6. Link interviewer via interview_users.
-        await db.interview_users.insert_one(
-            {
-                "user_id": payload.interviewer_user_id,
-                "intv_id": str(interview_result.inserted_id),
-                "intvuser_created_at": now,
-                "intvuser_updated_at": now,
-            }
-        )
+        if payload.interviewer_user_id:
+            await db.interview_users.insert_one(
+                {
+                    "user_id": payload.interviewer_user_id,
+                    "intv_id": str(interview_result.inserted_id),
+                    "intvuser_created_at": now,
+                    "intvuser_updated_at": now,
+                }
+            )
 
     # Touch job timestamp so listings re-order correctly.
     updated_job = await db.jobs.find_one_and_update(
