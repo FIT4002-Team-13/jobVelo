@@ -119,22 +119,61 @@ function downsampleBuffer(buffer, inputSampleRate, outputSampleRate = 16000) {
 
 // ── Sub-components ────────────────────────────────────────────────────────────
 
-function TranscriptEntry({ entry }) {
+function TranscriptEntry({ entry, onNoteChange }) {
+  const [editing, setEditing] = useState(false);
+  const hasNote = !!entry.comment;
+
   return (
-    <div className={`${flex.row} gap-3 py-2 group`}>
-      <div
-        className={`w-8 h-8 rounded-pill ${
-          flex.rowCenter
-        } text-white text-xs font-bold shrink-0 ${avatarColor(entry.speaker)}`}
-      >
-        {initials(entry.speaker)}
+    <div className={`${flex.col} py-2`}>
+      <div className={`${flex.row} gap-3`}>
+        <div
+          className={`w-8 h-8 rounded-pill ${
+            flex.rowCenter
+          } text-white text-xs font-bold shrink-0 ${avatarColor(entry.speaker)}`}
+        >
+          {initials(entry.speaker)}
+        </div>
+        <div className={`${flex.col} gap-0.5 flex-1 min-w-0`}>
+          <span className="text-xs text-neutral-400">{entry.timestamp}</span>
+          <span className="text-sm text-neutral-700 leading-snug">
+            {entry.text}
+          </span>
+        </div>
+        <button
+          type="button"
+          onClick={() => setEditing((o) => !o)}
+          title={hasNote ? 'Edit note' : 'Add note'}
+          className={`shrink-0 self-start mt-1 p-1 rounded transition-colors hover:text-primary-500 ${
+            editing || hasNote ? 'text-primary-500' : 'text-neutral-400'
+          }`}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+          </svg>
+        </button>
       </div>
-      <div className={`${flex.col} gap-0.5 flex-1 min-w-0`}>
-        <span className="text-xs text-neutral-400">{entry.timestamp}</span>
-        <span className="text-sm text-neutral-700 leading-snug">
-          {entry.text}
-        </span>
-      </div>
+
+      {/* Always show saved note text without needing a click */}
+      {hasNote && !editing && (
+        <div className="ml-11 mt-1.5 rounded-lg bg-primary-50 border border-primary-100 px-3 py-2">
+          <p className="text-xs text-primary-700 leading-relaxed whitespace-pre-wrap">{entry.comment}</p>
+        </div>
+      )}
+
+      {/* Textarea only shown when actively editing */}
+      {editing && (
+        <div className="ml-11 mt-1.5">
+          <textarea
+            autoFocus
+            value={entry.comment ?? ''}
+            onChange={(e) => onNoteChange(entry.id, e.target.value)}
+            placeholder="Add a note…"
+            rows={2}
+            className="w-full text-xs text-neutral-700 bg-neutral-50 border border-neutral-200 rounded-lg px-3 py-2 resize-none focus:outline-none focus:border-primary-300 placeholder-neutral-400"
+          />
+        </div>
+      )}
     </div>
   );
 }
@@ -612,6 +651,27 @@ export default function InterviewPage() {
     entryCounterRef.current = maxId + 1;
   }
 
+  function handleNoteChange(entryId, text) {
+    setTranscript((prev) => {
+      const updated = prev.map((e) =>
+        e.id === entryId ? { ...e, comment: text || undefined } : e
+      );
+      localStorage.setItem(`transcript-${id}`, JSON.stringify(updated));
+
+      // When the interview is already completed the 30-second interval won't
+      // run, so patch the backend directly whenever a note changes.
+      if (isCompleted) {
+        fetch(`/api/interviews/${id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ intv_transcript: updated }),
+        });
+      }
+
+      return updated;
+    });
+  }
+
   useEffect(() => {
     let hasLocal = false;
     const local = localStorage.getItem(`transcript-${id}`);
@@ -980,7 +1040,7 @@ export default function InterviewPage() {
                 </p>
               ) : (
                 transcript.map((entry) => (
-                  <TranscriptEntry key={entry.id} entry={entry} />
+                  <TranscriptEntry key={entry.id} entry={entry} onNoteChange={handleNoteChange} />
                 ))
               )}
             </div>
