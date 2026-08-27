@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { flex, card, button, badge } from "../styles/layout";
 import { useAuth } from "../lib/AuthContext.jsx";
+import { authedFetch } from "../lib/api.js";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -124,7 +125,7 @@ function TranscriptEntry({ entry, onNoteChange }) {
   const hasNote = !!entry.comment;
 
   return (
-    <div className={`${flex.col} py-2`}>
+    <div className={`${flex.col} py-2 group`}>
       <div className={`${flex.row} gap-3`}>
         <div
           className={`w-8 h-8 rounded-pill ${
@@ -143,7 +144,7 @@ function TranscriptEntry({ entry, onNoteChange }) {
           type="button"
           onClick={() => setEditing((o) => !o)}
           title={hasNote ? 'Edit note' : 'Add note'}
-          className={`shrink-0 self-start mt-1 p-1 rounded transition-colors hover:text-primary-500 ${
+          className={`shrink-0 self-start mt-1 p-1 rounded transition-all opacity-0 group-hover:opacity-100 focus:opacity-100 hover:text-primary-500 ${
             editing || hasNote ? 'text-primary-500' : 'text-neutral-400'
           }`}
         >
@@ -163,15 +164,32 @@ function TranscriptEntry({ entry, onNoteChange }) {
 
       {/* Textarea only shown when actively editing */}
       {editing && (
-        <div className="ml-11 mt-1.5">
+        <div className="ml-11 mt-1.5 relative">
           <textarea
             autoFocus
             value={entry.comment ?? ''}
             onChange={(e) => onNoteChange(entry.id, e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                setEditing(false);
+              }
+            }}
             placeholder="Add a note…"
             rows={2}
-            className="w-full text-xs text-neutral-700 bg-neutral-50 border border-neutral-200 rounded-lg px-3 py-2 resize-none focus:outline-none focus:border-primary-300 placeholder-neutral-400"
+            className="w-full text-xs text-neutral-700 bg-neutral-50 border border-neutral-200 rounded-lg px-3 py-2 pr-9 resize-none focus:outline-none focus:border-primary-300 placeholder-neutral-400"
           />
+          <button
+            type="button"
+            onClick={() => setEditing(false)}
+            title="Save note"
+            aria-label="Save note"
+            className="absolute right-2 bottom-2 p-1 text-primary-500 hover:text-primary-600 transition-colors"
+          >
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="m5 12 4 4L19 6" />
+            </svg>
+          </button>
         </div>
       )}
     </div>
@@ -304,6 +322,7 @@ export default function InterviewPage() {
   const [questionsError, setQuestionsError] = useState("");
   const [similarQuestionId, setSimilarQuestionId] = useState(null);
   const [timer, setTimer] = useState(0);
+  const [hasNewTranscriptUpdates, setHasNewTranscriptUpdates] = useState(false);
 
   const transcriptRef = useRef([]);
   const timerRef = useRef(0);
@@ -330,13 +349,6 @@ export default function InterviewPage() {
     questionsRef.current = questions;
   }, [questions]);
 
-  useEffect(() => {
-    const element = transcriptContainerRef.current;
-    if (element) {
-      element.scrollTop = element.scrollHeight;
-    }
-  }, [transcript]);
-
   function appendTranscript(text, isFinal, speaker, partialRef) {
     const timestamp = formatTimer(
       Math.floor((Date.now() - startTimeRef.current) / 1000)
@@ -356,6 +368,7 @@ export default function InterviewPage() {
         localStorage.setItem(`transcript-${id}`, JSON.stringify(updated));
         return updated;
       });
+      setHasNewTranscriptUpdates(true);
     } else {
       if (!partialRef.current) {
         partialRef.current = `partial-${entryCounterRef.current++}`;
@@ -685,7 +698,7 @@ export default function InterviewPage() {
         localStorage.removeItem(`transcript-${id}`);
       }
     }
-    fetch(`/api/interviews/${id}`)
+    authedFetch(`/api/interviews/${id}`)
       .then((r) => r.json())
       .then((data) => {
         const serverTranscript = Array.isArray(data.intv_transcript)
@@ -715,13 +728,13 @@ export default function InterviewPage() {
 
         if (data.job_id) {
           setJobId(data.job_id);
-          fetch(`/api/jobs/${data.job_id}`)
+          authedFetch(`/api/jobs/${data.job_id}`)
             .then((r) => r.json())
             .then((job) => { if (job.title) setCandidateRole(job.title); })
             .catch(() => {});
         }
         if (data.cand_id) {
-          fetch(`/api/candidates/${data.cand_id}`)
+          authedFetch(`/api/candidates/${data.cand_id}`)
             .then((r) => r.json())
             .then((cand) => {
               if (cand.cand_full_name) setCandidateName(cand.cand_full_name);
@@ -943,6 +956,14 @@ export default function InterviewPage() {
     navigate(`/jobs/${jobId}`);
   }
 
+  function showLatestTranscript() {
+    transcriptContainerRef.current?.scrollTo({
+      top: transcriptContainerRef.current.scrollHeight,
+      behavior: "smooth",
+    });
+    setHasNewTranscriptUpdates(false);
+  }
+
   return (
     <div className="h-screen flex flex-col bg-neutral-50 font-sans overflow-hidden">
       {/* ── Header ─────────────────────────────────────────────────────────── */}
@@ -1010,7 +1031,9 @@ export default function InterviewPage() {
       >
         {/* Left — Live Transcription */}
         <div
-          className={`${card.base} flex flex-col w-[48%] overflow-hidden p-0`}
+          className={`${card.base} flex flex-col ${
+            isCompleted ? "w-full" : "w-[48%]"
+          } overflow-hidden p-0`}
         >
           <div
             className={`${flex.rowBetween} px-6 pt-5 pb-4 border-b border-neutral-100 shrink-0`}
@@ -1018,16 +1041,32 @@ export default function InterviewPage() {
             <span className="text-base font-semibold text-neutral-800">
               Live Transcription
             </span>
-            <button
-              onClick={() => setTranscriptVisible((v) => !v)}
-              className={`text-sm ${
-                transcriptVisible
-                  ? "text-neutral-400 hover:text-neutral-600"
-                  : "text-primary-500 hover:text-primary-600"
-              } transition-colors`}
-            >
-              {transcriptVisible ? "Hide" : "Show"}
-            </button>
+            <div className={`${flex.row} gap-3 items-center`}>
+              {hasNewTranscriptUpdates && transcriptVisible && (
+                <button
+                  type="button"
+                  onClick={showLatestTranscript}
+                  className="text-sm font-semibold text-primary-500 hover:text-primary-600 transition-colors inline-flex items-center gap-2"
+                >
+                  <span
+                    aria-hidden="true"
+                    className="w-2 h-2 rounded-pill bg-primary-500 animate-pulse"
+                  />
+                  New Updates
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => setTranscriptVisible((v) => !v)}
+                className={`text-sm ${
+                  transcriptVisible
+                    ? "text-neutral-400 hover:text-neutral-600"
+                    : "text-primary-500 hover:text-primary-600"
+                } transition-colors`}
+              >
+                {transcriptVisible ? "Hide" : "Show"}
+              </button>
+            </div>
           </div>
           {transcriptVisible && (
             <div
@@ -1061,7 +1100,8 @@ export default function InterviewPage() {
         </div>
 
         {/* Right — Assessment + Questions + Actions */}
-        <div className={`flex-1 ${flex.col} gap-4 overflow-hidden`}>
+        {!isCompleted && (
+          <div className={`flex-1 ${flex.col} gap-4 overflow-hidden`}>
           {/* Live Assessment */}
           <div className={`${card.base} shrink-0 !py-3`}>
             <h2 className="text-base font-semibold text-neutral-800 mb-2">
@@ -1139,7 +1179,8 @@ export default function InterviewPage() {
               Complete
             </button>
           </div>
-        </div>
+          </div>
+        )}
       </div>
     </div>
   );
