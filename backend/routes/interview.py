@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 
 from bson import ObjectId
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import Response
 
 from database import get_db
 from dependencies import get_current_comp_id, require_role
@@ -19,9 +20,6 @@ from models.job_candidate import (
     SkillRating,
 )
 from services.openai_service import rate_candidate_skills
-
-from fastapi.responses import Response
-
 from services.transcrip import build_transcript_pdf
 
 router = APIRouter(prefix="/api/interviews", tags=["interviews"])
