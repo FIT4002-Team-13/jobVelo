@@ -13,3 +13,6 @@ Thumbs.db
 !.env.example
 backend/.env.example 
 .claude
+
+
+issues-to-fix.md

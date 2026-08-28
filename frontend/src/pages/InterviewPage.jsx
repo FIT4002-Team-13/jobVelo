@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { flex, card, button, badge } from "../styles/layout";
+import { flex, card, button, badge, modal } from "../styles/layout";
 import { useAuth } from "../lib/AuthContext.jsx";
 import { authedFetch } from "../lib/api.js";
 
@@ -159,6 +159,237 @@ function ScoreBar({ label, score }) {
           className={`h-full ${color} rounded-pill transition-all`}
           style={{ width: `${pct}%` }}
         />
+      </div>
+    </div>
+  );
+}
+
+// ── Post-interview report modal ──────────────────────────────────────────────
+
+function ScoreDonut({ value }) {
+  const r = 36;
+  const c = 2 * Math.PI * r;
+  const pct = Math.max(0, Math.min(1, value / 10));
+  return (
+    <div className="relative h-28 w-28 shrink-0">
+      <svg viewBox="0 0 96 96" className="h-full w-full -rotate-90">
+        <circle
+          cx="48" cy="48" r={r} fill="none" strokeWidth="9"
+          className="stroke-neutral-100"
+        />
+        <circle
+          cx="48" cy="48" r={r} fill="none" strokeWidth="9" strokeLinecap="round"
+          strokeDasharray={c} strokeDashoffset={c * (1 - pct)}
+          className="stroke-primary-500 transition-all duration-700"
+        />
+      </svg>
+      <div className={`absolute inset-0 ${flex.colCenter}`}>
+        <span className="text-2xl font-extrabold leading-none text-neutral-800">
+          {value.toFixed(1)}
+        </span>
+        <span className="mt-0.5 text-[10px] font-semibold uppercase tracking-wide text-neutral-400">
+          Overall
+        </span>
+      </div>
+    </div>
+  );
+}
+
+// One strengths/improvements card. `tone` picks the tinted palette so the
+// pair reads like the report cards on the candidate detail page.
+function FeedbackListCard({ title, section, tone }) {
+  const palette =
+    tone === "mint"
+      ? { bg: "bg-mint-50", heading: "text-mint-700" }
+      : { bg: "bg-coral-50", heading: "text-coral-600" };
+  const items = section?.items ?? [];
+  return (
+    <div className={`rounded-2xl p-4 ${palette.bg}`}>
+      <h4 className={`mb-2 text-xs font-bold uppercase tracking-wide ${palette.heading}`}>
+        {title}
+      </h4>
+      {items.length === 0 ? (
+        <p className="text-xs italic text-neutral-400">Nothing noted.</p>
+      ) : (
+        <ul className="list-disc space-y-1 pl-4 text-sm leading-relaxed text-neutral-800">
+          {items.map((item, i) => (
+            <li key={`${item}-${i}`}>{item}</li>
+          ))}
+        </ul>
+      )}
+      {section?.justification && (
+        <p className="mt-2 text-xs leading-relaxed text-neutral-500">
+          {section.justification}
+        </p>
+      )}
+    </div>
+  );
+}
+
+function ReportBody({ report, scores }) {
+  const scoreRows = scores
+    ? [
+        { label: "Communication", score: scores.communication },
+        { label: "Skill", score: scores.skill },
+        { label: "Problem Solving", score: scores.problem_solving },
+      ]
+    : null;
+  const overall = scoreRows
+    ? scoreRows.reduce((sum, r) => sum + r.score, 0) / scoreRows.length
+    : null;
+
+  return (
+    <div className={`${flex.col} gap-4`}>
+      {/* Result card - candidate tab only (the interviewer isn't rated). */}
+      {scoreRows && (
+        <div className="rounded-2xl border border-neutral-200 p-5">
+          <h4 className="mb-3 text-xs font-bold uppercase tracking-wide text-neutral-400">
+            Result
+          </h4>
+          <div className={`${flex.row} gap-6`}>
+            <ScoreDonut value={overall} />
+            <div className={`${flex.col} flex-1 gap-2.5`}>
+              {scoreRows.map((s) => (
+                <ScoreBar key={s.label} label={s.label} score={s.score} />
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="grid grid-cols-2 gap-4">
+        <FeedbackListCard title="Strengths" section={report?.strengths} tone="mint" />
+        <FeedbackListCard title="Improvements" section={report?.improvements} tone="coral" />
+      </div>
+
+      <div className="rounded-2xl bg-neutral-50 p-4">
+        <h4 className="mb-2 text-xs font-bold uppercase tracking-wide text-neutral-500">
+          Summary
+        </h4>
+        <p className="text-sm leading-relaxed text-neutral-800">
+          {report?.summary || "No summary generated."}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function InterviewReportModal({
+  state,
+  candidateName,
+  candidateRole,
+  interviewerName,
+  onClose,
+  onDone,
+  onRetry,
+}) {
+  const [activeTab, setActiveTab] = useState("candidate");
+  const { phase, data, error } = state;
+
+  const tabClass = (isActive) =>
+    `rounded-xl px-4 py-0.5 text-sm font-semibold transition-colors ${
+      isActive
+        ? "bg-primary-500 text-white"
+        : "bg-primary-100 text-primary-500 hover:bg-primary-200"
+    }`;
+
+  const isCandidateTab = activeTab === "candidate";
+  const headerName = isCandidateTab ? candidateName || "Candidate" : interviewerName || "Interviewer";
+  const headerRole = isCandidateTab ? candidateRole || "" : "Interviewer";
+
+  return (
+    <div className={modal.overlay}>
+      <div className={`${modal.panel} scrollbar-primary max-w-xl max-h-[92vh] overflow-y-auto`}>
+        {phase === "generating" && (
+          <div className={`${flex.colCenter} gap-3 py-16 text-center`}>
+            <svg
+              className="h-9 w-9 animate-spin text-primary-500"
+              viewBox="0 0 24 24" fill="none" stroke="currentColor"
+              strokeWidth="3" strokeLinecap="round"
+            >
+              <path d="M21 12a9 9 0 1 1-6.2-8.56" />
+            </svg>
+            <p className="text-base font-semibold text-neutral-700">
+              Generating interview report…
+            </p>
+            <p className="text-sm text-neutral-400">
+              Analysing the transcript. This usually takes a few seconds.
+            </p>
+          </div>
+        )}
+
+        {phase === "error" && (
+          <div className={`${flex.colCenter} gap-3 py-16 text-center`}>
+            <p className="text-base font-semibold text-coral-500">
+              Report generation failed.
+            </p>
+            {error && <p className="max-w-sm text-sm text-neutral-500">{error}</p>}
+            <div className={`${flex.row} gap-3 pt-2`}>
+              <button type="button" onClick={onClose} className={`${button.cancel} px-6 py-2`}>
+                Close
+              </button>
+              <button type="button" onClick={onRetry} className={button.primary}>
+                Retry
+              </button>
+            </div>
+          </div>
+        )}
+
+        {phase === "ready" && data && (
+          <div className={`${flex.col} gap-5`}>
+            {/* Header: who this report is about + report switcher */}
+            <div className={`${flex.colCenter} gap-2 pt-2`}>
+              <div
+                className={`h-16 w-16 rounded-pill ${flex.rowCenter} text-xl font-bold text-white ${avatarColor(headerName)}`}
+              >
+                {initials(headerName)}
+              </div>
+              <div className="text-center">
+                <h2 className="text-2xl font-bold text-neutral-800">{headerName}</h2>
+                {headerRole && <p className="text-sm text-neutral-400">{headerRole}</p>}
+              </div>
+              <div className={`${flex.row} gap-3 pt-1`}>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab("candidate")}
+                  className={tabClass(isCandidateTab)}
+                >
+                  CANDIDATE
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab("interviewer")}
+                  className={tabClass(!isCandidateTab)}
+                >
+                  INTERVIEWER
+                </button>
+              </div>
+            </div>
+
+            {isCandidateTab ? (
+              <ReportBody report={data.candidate_report} scores={data.scores} />
+            ) : (
+              <ReportBody report={data.interviewer_report} scores={null} />
+            )}
+
+            <div className={`${flex.row} gap-3 pt-1`}>
+              <button
+                type="button"
+                onClick={onClose}
+                className={`${button.cancel} flex-1 py-2.5`}
+              >
+                Back
+              </button>
+              <button
+                type="button"
+                onClick={onDone}
+                className={`${button.primary} flex-1`}
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -359,6 +590,9 @@ export default function InterviewPage() {
   const [candidateRole, setCandidateRole] = useState("");
   const [cvUrl, setCvUrl] = useState(null);
   const [jobId, setJobId] = useState(null);
+  const [candId, setCandId] = useState(null);
+  // Post-interview report popup: idle -> generating -> ready | error.
+  const [reportState, setReportState] = useState({ phase: "idle" });
   const [transcript, setTranscript] = useState(INITIAL_TRANSCRIPT);
   const [scores] = useState(MOCK_SCORES);
   const [questions, setQuestions] = useState([]);
@@ -767,10 +1001,7 @@ export default function InterviewPage() {
       }
     }
     authedFetch(`/api/interviews/${id}`)
-      .then((r) => {
-        if (!r.ok) throw new Error(`Failed to load interview: ${r.status}`);
-        return r.json();
-      })
+      .then((r) => r.json())
       .then((data) => {
         const serverTranscript = Array.isArray(data.intv_transcript)
           ? data.intv_transcript
@@ -797,16 +1028,20 @@ export default function InterviewPage() {
           }
         }
 
+        // These two endpoints are tenant-scoped (JWT required) - a bare
+        // fetch() got a silent 401 here, which left the header name/role
+        // blank and the report popup without the candidate's name.
         if (data.job_id) {
           setJobId(data.job_id);
           authedFetch(`/api/jobs/${data.job_id}`)
-            .then((r) => (r.ok ? r.json() : Promise.reject(new Error(r.status))))
+            .then((r) => r.json())
             .then((job) => { if (job.title) setCandidateRole(job.title); })
             .catch((err) => console.error("Failed to load job:", err));
         }
         if (data.cand_id) {
+          setCandId(data.cand_id);
           authedFetch(`/api/candidates/${data.cand_id}`)
-            .then((r) => (r.ok ? r.json() : Promise.reject(new Error(r.status))))
+            .then((r) => r.json())
             .then((cand) => {
               if (cand.cand_full_name) setCandidateName(cand.cand_full_name);
               if (cand.cand_cv_url) setCvUrl(cand.cand_cv_url);
@@ -821,7 +1056,11 @@ export default function InterviewPage() {
   }, [id]);
 
   useEffect(() => {
-    if (!jobId || questionsRequestedJobRef.current === jobId) {
+    // Never (re)generate suggestions for a finished interview - reopening a
+    // completed transcript was silently firing a fresh OpenAI run per visit.
+    // isCompleted lands in the same state batch as jobId, so this effect
+    // sees the final value on first run.
+    if (!jobId || isCompleted || questionsRequestedJobRef.current === jobId) {
       return;
     }
 
@@ -866,7 +1105,7 @@ export default function InterviewPage() {
         setQuestionsError(error.message || "Unable to generate questions");
       })
       .finally(() => {setQuestionsLoading(false);});
-  }, [jobId]);
+  }, [jobId, isCompleted]);
 
   async function generateMoreLike(question) {
     if (!jobId || similarQuestionId) {
@@ -1011,29 +1250,46 @@ export default function InterviewPage() {
     }
   }
 
+  // Complete = persist the transcript, have the LLM write both reports
+  // (candidate + interviewer) and score the candidate, then show them in
+  // the popup. Idempotent server-side, so "View Report" after completion
+  // re-uses the stored reports instead of a second LLM run.
   async function completeInterview() {
-    if (isCompleted) {
-      return;
-    }
+    if (reportState.phase === "generating") return;
 
-    const res = await authedFetch(`/api/interviews/${id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        intv_transcript: transcript,
-        intv_status: "completed",
-        intv_duration_seconds: timer,
-      }),
-    });
-    if (!res.ok) {
-      console.error("Failed to complete interview:", res.status);
-      setStatus("Failed to complete interview");
-      return;
+    setReportState({ phase: "generating" });
+    try {
+      // Drop in-flight partial captions - only finalised lines are analysed.
+      const finalEntries = transcript.filter(
+        (e) => !String(e.id).startsWith("partial-")
+      );
+      const res = await authedFetch(`/api/interviews/${id}/complete`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          transcript: finalEntries,
+          duration_seconds: timer,
+        }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        const detail = data?.detail;
+        throw new Error(
+          typeof detail === "string" ? detail : "Report generation failed."
+        );
+      }
+
+      if (isScreenSharing) void stopScreenShare();
+      setIsCompleted(true);
+      setStatus("Interview completed");
+      localStorage.removeItem(`transcript-${id}`);
+      setReportState({ phase: "ready", data });
+    } catch (err) {
+      setReportState({
+        phase: "error",
+        error: err.message || "Something went wrong.",
+      });
     }
-    setIsCompleted(true);
-    setStatus("Interview completed");
-    localStorage.removeItem(`transcript-${id}`);
-    navigate(`/jobs/${jobId}`);
   }
 
   return (
@@ -1237,18 +1493,41 @@ export default function InterviewPage() {
             </button>
             <button
               onClick={() => completeInterview()}
-              disabled={isCompleted}
+              disabled={reportState.phase === "generating"}
               className={`flex-1 py-2 text-sm font-semibold rounded-xl transition-colors ${
-                isCompleted
-                  ? "bg-neutral-300 text-neutral-500 cursor-not-allowed"
+                reportState.phase === "generating"
+                  ? "bg-neutral-300 text-neutral-500 cursor-wait"
+                  : isCompleted
+                  ? "text-white bg-primary-500 hover:bg-primary-600"
                   : "text-white bg-sky-300 hover:bg-sky-400"
               }`}
             >
-              Complete
+              {reportState.phase === "generating"
+                ? "Generating…"
+                : isCompleted
+                ? "View Report"
+                : "Complete"}
             </button>
           </div>
         </div>
       </div>
+
+      {reportState.phase !== "idle" && (
+        <InterviewReportModal
+          state={reportState}
+          candidateName={candidateName}
+          candidateRole={candidateRole}
+          interviewerName={user?.full_name}
+          onClose={() => setReportState({ phase: "idle" })}
+          onDone={() =>
+            navigate(
+              candId && jobId ? `/candidates/${candId}/${jobId}` : `/jobs/${jobId}`,
+              { replace: true }
+            )
+          }
+          onRetry={() => completeInterview()}
+        />
+      )}
     </div>
   );
 }

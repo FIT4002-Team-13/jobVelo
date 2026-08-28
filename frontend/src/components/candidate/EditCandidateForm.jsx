@@ -160,7 +160,18 @@ export default function EditCandidateForm({
     if (!formState.job_id) {
       return setError('Please select a job position.')
     }
-    if (formState.scheduled_at && !isFutureDateTime(formState.scheduled_at)) {
+    // Only insist on a future date when the user actually CHANGED it. The
+    // form pre-fills the existing interview datetime, which is naturally in
+    // the past once the interview has happened - failing validation on the
+    // untouched value made completed candidates impossible to edit at all.
+    const initialScheduledAt = initialData?.interview_datetime
+      ? initialData.interview_datetime.slice(0, 16)
+      : ''
+    if (
+      formState.scheduled_at &&
+      formState.scheduled_at !== initialScheduledAt &&
+      !isFutureDateTime(formState.scheduled_at)
+    ) {
       return setError('Scheduled date/time must be in the future.')
     }
 

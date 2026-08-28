@@ -35,6 +35,35 @@ class InterviewFeedback(BaseModel):
     improvements: InterviewFeedbackSection = Field(default_factory=InterviewFeedbackSection)
 
 
+class InterviewScores(BaseModel):
+    """The three 0-10 interview ratings, mirrored onto the job_candidates
+    link (communication_score / skill_score / problem_solving_score)."""
+
+    communication: float = Field(..., ge=0, le=10)
+    skill: float = Field(..., ge=0, le=10)
+    problem_solving: float = Field(..., ge=0, le=10)
+
+
+class InterviewCompleteRequest(BaseModel):
+    """Payload for POST /{intv_id}/complete. The transcript is optional -
+    when omitted the server uses whatever the periodic autosave stored."""
+
+    transcript: list[TranscriptEntry] | None = None
+    duration_seconds: int | None = Field(default=None, ge=0)
+
+
+class InterviewCompleteOut(BaseModel):
+    """Everything the post-interview report popup renders."""
+
+    intv_id: str
+    intv_status: InterviewStatus
+    scores: InterviewScores
+    candidate_report: InterviewFeedback
+    interviewer_report: InterviewFeedback
+    # True when the reports came from a previous completion (no new LLM run).
+    cached: bool = False
+
+
 class InterviewCreate(BaseModel):
     """Base payload for creating an interview session.
 
@@ -58,8 +87,8 @@ class InterviewUpdate(BaseModel):
     intv_transcript: list[TranscriptEntry] | None = None
     intv_status: InterviewStatus | None = None
     intv_duration_seconds: int | None = None
-    intv_candidate_report: str | None = None
-    intv_interviewer_report: str | None = None
+    intv_candidate_report: InterviewFeedback | None = None
+    intv_interviewer_report: InterviewFeedback | None = None
 
 
 class InterviewOut(BaseModel):
@@ -76,7 +105,7 @@ class InterviewOut(BaseModel):
     intv_transcript: list[TranscriptEntry] | None = None
     intv_status: InterviewStatus
     intv_duration_seconds: int | None = None
-    intv_candidate_report: str | None = None
-    intv_interviewer_report: str | None = None
+    intv_candidate_report: InterviewFeedback | None = None
+    intv_interviewer_report: InterviewFeedback | None = None
     intv_created_at: datetime
     intv_updated_at: datetime

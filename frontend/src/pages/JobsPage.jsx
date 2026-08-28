@@ -129,7 +129,14 @@ function JobCard({ job, onEdit, onDelete }) {
   // fully-populated ones. Each "missing" value renders as a muted italic
   // placeholder (status pill = neutral chip, numbers = 0) instead of an
   // empty string that would collapse the line and ruin the grid rhythm.
-  const status         = job.status        || null
+  // Display-status override: once any candidate on this job has completed
+  // an interview, a "Pending" pill would be misleading - show In Progress.
+  // A job explicitly marked Completed keeps its label.
+  const storedStatus   = job.status        || null
+  const status =
+    interviewState.completed && storedStatus !== "Completed"
+      ? "In Progress"
+      : storedStatus
   const description    = job.description?.trim()
   const interviewers   = job.interviewers?.length ?? 0
   const filled         = job.candidates_filled ?? 0
@@ -175,11 +182,6 @@ function JobCard({ job, onEdit, onDelete }) {
           {interviewers}
         </span>
         interviewers
-        {interviewState.loading ? (
-          <span className="ml-2 text-neutral-400">Checking…</span>
-        ) : interviewState.completed ? (
-          <span className="ml-2 font-semibold text-mint-600">Completed</span>
-        ) : null}
       </div>
 
       {/* Avatars - render dashed placeholders when nobody is assigned so the
