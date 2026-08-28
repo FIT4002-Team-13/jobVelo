@@ -24,6 +24,11 @@ class Settings(BaseSettings):
     openai_api_key: str = ""
     openai_question_model: str = "gpt-4o-mini"
     openai_analysis_model: str = "gpt-4o"
+    
+    # Realtime bias/appropriateness check on interviewer questions - kept as
+    # its own setting (not reusing openai_question_model) so it can be tuned
+    # or swapped independently of next-question generation.
+    openai_bias_model: str = "gpt-4o-mini"
 
     # Gemini — CV analysis. Multimodal model so we can ingest PDFs directly.
     # The "-latest" aliases track Google's current models; pinned versions
