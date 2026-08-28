@@ -266,6 +266,7 @@ async def analyse(
     has_new_cv = cv is not None and bool(cv.filename)
 
     # 1. Existing-doc check. Cheap query, runs before anything destructive.
+    replaced_cl_path: str | None = None
     existing = await db.cv_analyses.find_one({"jobcand_id": jobcand_id})
     if existing:
         doc_status, _ = _effective_status(existing)
@@ -273,6 +274,10 @@ async def analyse(
         if doc_status == "processing" or not has_new_cv:
             return _serialise(existing, cached=True)
         # New CV over a completed/failed analysis → replace it wholesale.
+        # Remember the old cover-letter path: if the new upload doesn't
+        # bring one, the candidate's cover-letter link would otherwise keep
+        # pointing at the file we're about to delete.
+        replaced_cl_path = existing.get("cover_letter_path")
         await db.cv_analyses.delete_one({"_id": existing["_id"]})
         if existing.get("cv_path"):
             delete_upload(existing["cv_path"])
@@ -352,7 +357,17 @@ async def analyse(
     }
     if cl_path:
         cand_updates["cand_cover_letter_url"] = f"/api/files/{cl_path}"
-    await db.candidates.update_one({"_id": candidate["_id"]}, {"$set": cand_updates})
+    update_ops: dict = {"$set": cand_updates}
+    # The replaced analysis had a cover letter but the new upload doesn't:
+    # drop the candidate's pointer to the now-deleted file instead of
+    # leaving a dead "PDF" link on the applications table.
+    if (
+        not cl_path
+        and replaced_cl_path
+        and candidate.get("cand_cover_letter_url") == f"/api/files/{replaced_cl_path}"
+    ):
+        update_ops["$unset"] = {"cand_cover_letter_url": ""}
+    await db.candidates.update_one({"_id": candidate["_id"]}, update_ops)
 
     # 7. Hand the heavy Gemini call to a background task and return now -
     #    the frontend polls GET /by-jobcand for completion.
@@ -431,3 +446,42 @@ async def delete_analysis(
         delete_upload(doc["cv_path"])
     if doc.get("cover_letter_path"):
         delete_upload(doc["cover_letter_path"])
+
+    # Safe delete for the candidate's document links too: the analysis
+    # upload pointed cand_cv_url / cand_cover_letter_url at the files we
+    # just removed - clearing them (ONLY when they reference these exact
+    # files, never an externally-supplied URL) stops the candidate and
+    # applications pages from rendering View/PDF buttons that 404.
+    link = (
+        await db.job_candidates.find_one({"_id": ObjectId(doc["jobcand_id"])})
+        if ObjectId.is_valid(doc.get("jobcand_id") or "")
+        else None
+    )
+    cand_oid = (
+        ObjectId(link["cand_id"])
+        if link and ObjectId.is_valid(link.get("cand_id") or "")
+        else None
+    )
+    if cand_oid:
+        candidate = await db.candidates.find_one({"_id": cand_oid})
+        unset: dict = {}
+        if candidate:
+            if (
+                doc.get("cv_path")
+                and candidate.get("cand_cv_url") == f"/api/files/{doc['cv_path']}"
+            ):
+                unset["cand_cv_url"] = ""
+            if (
+                doc.get("cover_letter_path")
+                and candidate.get("cand_cover_letter_url")
+                == f"/api/files/{doc['cover_letter_path']}"
+            ):
+                unset["cand_cover_letter_url"] = ""
+        if unset:
+            await db.candidates.update_one(
+                {"_id": cand_oid},
+                {
+                    "$unset": unset,
+                    "$set": {"cand_updated_at": datetime.now(timezone.utc)},
+                },
+            )

@@ -8,6 +8,7 @@ import EditCandidateForm from "../components/candidate/EditCandidateForm";
 import { flex, card, badge, form, button, modal, page } from "../styles/layout";
 
 import { useAuth } from "../lib/AuthContext.jsx";
+import { useToast } from "../components/common/ToastContext.jsx";
 import { api, authedFetch } from "../lib/api.js";
 import {
   isEmail,
@@ -95,7 +96,7 @@ function formatDateTime(iso) {
   const d = new Date(iso);
   const today = new Date();
   const isToday = d.toDateString() === today.toDateString();
-  const time = d.toLocaleTimeString("en-US", {
+  const time = d.toLocaleTimeString("en-AU", {
     hour: "numeric",
     minute: "2-digit",
     hour12: true,
@@ -673,8 +674,6 @@ function CandidatesTable({
             values={statusFilters}
             onChange={setStatusFilters}
             options={CANDIDATE_FILTER_OPTIONS}
-            // Only two statuses surface (SCHEDULED / EVALUATED) - radio-style
-            // is clearer than multi-select, and matches the dashboard.
             singleSelect
           />
         </div>
@@ -1011,6 +1010,10 @@ export default function JobDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { user } = useAuth();
+  const toast = useToast();
+  // Double-click guard for Start Interview - two rapid confirms used to
+  // race two POST /api/interviews calls and create duplicate interviews.
+  const startingRef = useRef(false);
 
   const [job, setJob] = useState(null);
   const [candidates, setCandidates] = useState([]);
@@ -1068,48 +1071,61 @@ export default function JobDetailPage() {
   function handleJobSaved(updated) {
     setJob(updated);
     setShowEdit(false);
+    toast.success(`Job "${updated?.title || "Untitled role"}" updated.`);
   }
 
   function handleCandidateAdded({ candidate, job: updatedJob }) {
     setCandidates((prev) => [...prev, candidate]);
     setJob(updatedJob);
     setShowAddCandidate(false);
+    toast.success(`${candidate?.name || "Candidate"} added to this job.`);
   }
 
   async function onConfirmStart() {
-    // Resume an existing in-progress or scheduled interview rather than
-    // creating a duplicate every time the button is clicked.
-    const existingRes = await authedFetch(
-      `/api/interviews?cand_id=${startTarget.cand_id}&job_id=${id}`
-    );
-    if (existingRes.ok) {
-      const existing = await existingRes.json();
-      const resumable = existing.find(
-        (i) => i.intv_status === "in_progress" || i.intv_status === "scheduled"
+    if (startingRef.current) return;
+    startingRef.current = true;
+    try {
+      // Resume an existing in-progress or scheduled interview rather than
+      // creating a duplicate every time the button is clicked.
+      const existingRes = await authedFetch(
+        `/api/interviews?cand_id=${startTarget.cand_id}&job_id=${id}`
       );
-      if (resumable) {
-        navigate(`/interview/${resumable.intv_id}`);
+      if (existingRes.ok) {
+        const existing = await existingRes.json();
+        const resumable = existing.find(
+          (i) => i.intv_status === "in_progress" || i.intv_status === "scheduled"
+        );
+        if (resumable) {
+          navigate(`/interview/${resumable.intv_id}`);
+          return;
+        }
+      }
+
+      const res = await authedFetch("/api/interviews", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          cand_id: startTarget.cand_id,
+          job_id: id,
+          intv_date_time: new Date().toISOString(),
+          intv_status: "in_progress",
+        }),
+      });
+      const interview = await res.json();
+      if (!res.ok) {
+        toast.error(interview?.detail || "Failed to start interview.");
+        setStartTarget(null);
         return;
       }
-    }
-
-    const res = await authedFetch("/api/interviews", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        cand_id: startTarget.cand_id,
-        job_id: id,
-        intv_date_time: new Date().toISOString(),
-        intv_status: "in_progress",
-      }),
-    });
-    const interview = await res.json();
-    if (!res.ok) {
-      alert(interview?.detail || "Failed to start interview.");
+      navigate(`/interview/${interview.intv_id}`);
+    } catch {
+      // Network failure used to leave the confirm modal stuck open with an
+      // unhandled rejection in the console.
+      toast.error("Could not reach the server - check your connection and try again.");
       setStartTarget(null);
-      return;
+    } finally {
+      startingRef.current = false;
     }
-    navigate(`/interview/${interview.intv_id}`);
   }
 
   // Delete flow:
@@ -1120,15 +1136,13 @@ export default function JobDetailPage() {
   function handleCandidateDeleted(jobcand_id) {
     setCandidates((rows) => rows.filter((r) => r.id !== jobcand_id));
     setDeleteTarget(null);
+    toast.success("Candidate removed from this job.");
   }
 
-  // Edit flow: EditCandidateForm PATCHes the candidate + application on the
-  // server, so a fresh fetch is the cheapest way to get the row (status,
-  // interviewer, schedule) back in the exact GET shape. The edit may also
-  // have MOVED the candidate to another job, in which case the row simply
-  // disappears from this job's list - which the refetch handles for free.
-  async function handleCandidateEdited() {
-    setEditTarget(null);
+  // Fresh fetch of the candidate rows in the exact GET shape - used after
+  // any server-side change (edit, pipeline drag) so status/interviewer/
+  // schedule are whatever the server now says, not an optimistic guess.
+  async function reloadCandidates() {
     try {
       const res = await authedFetch(`/api/jobs/${id}/candidates`);
       if (res.ok) {
@@ -1140,6 +1154,17 @@ export default function JobDetailPage() {
     }
   }
 
+  // Edit flow: EditCandidateForm PATCHes the candidate + application on the
+  // server. The edit may also have MOVED the candidate to another job, in
+  // which case the row simply disappears from this job's list - which the
+  // refetch handles for free.
+  async function handleCandidateEdited() {
+    setEditTarget(null);
+    toast.success("Candidate updated.");
+    await reloadCandidates();
+  }
+
+
   // Capacity gate. Candidates count comes from the freshly-loaded list
   // (which the AddCandidate flow optimistically appends to), so it always
   // reflects the latest state without re-fetching the job. We treat a
@@ -1147,13 +1172,19 @@ export default function JobDetailPage() {
   const capacity = job?.candidates_total ?? 0;
   const isFull = capacity > 0 && candidates.length >= capacity;
 
-  // Display-status override - same rule as JobsPage/DashboardPage: once any
-  // candidate on this job has completed an interview, a "Pending" pill would
-  // be misleading, so show In Progress. A job explicitly marked Completed
-  // keeps its label. Derived from the candidate rows we already load
-  // (each carries intv_completed), so no extra fetch is needed.
+  // Display-status override - same rule as JobsPage/DashboardPage:
+  //   every candidate on the job has completed their interview -> Completed
+  //   some (but not all) have completed -> In Progress
+  //   a job explicitly marked Completed keeps its label either way
+  // Derived from the candidate rows we already load (each carries
+  // intv_completed), so no extra fetch is needed.
+  const completedCount = candidates.filter((c) => c.intv_completed).length;
   const displayStatus =
-    candidates.some((c) => c.intv_completed) && job?.status !== "Completed"
+    job?.status === "Completed"
+      ? "Completed"
+      : candidates.length > 0 && completedCount === candidates.length
+      ? "Completed"
+      : completedCount > 0
       ? "In Progress"
       : job?.status;
 
@@ -1267,12 +1298,16 @@ export default function JobDetailPage() {
                     <circle cx="12" cy="12" r="10" />
                     <path d="M12 6v6l4 2" />
                   </svg>
+                  {/* Real last-update timestamp from the job doc - this used
+                      to render new Date() (always "today"), which quietly
+                      lied about how fresh the posting was. */}
                   Last Update{" "}
-                  {new Date().toLocaleDateString("en-US", {
-                    month: "short",
-                    day: "numeric",
-                    year: "numeric",
-                  })}
+                  {job.job_last_update_datetime
+                    ? new Date(job.job_last_update_datetime).toLocaleDateString(
+                        "en-AU",
+                        { month: "short", day: "numeric", year: "numeric" }
+                      )
+                    : "--"}
                 </p>
               </div>
               <div className={`${flex.row} gap-2`}>

@@ -6,6 +6,7 @@ import StartInterviewModal from '../components/job-candidate/StartInterviewModal
 import EditCandidateForm from '../components/candidate/EditCandidateForm'
 import { card, flex, page } from '../styles/layout'
 import { useAuth } from '../lib/AuthContext.jsx'
+import { useToast } from '../components/common/ToastContext.jsx'
 import { api, authedFetch, downloadFileWithAuth } from '../lib/api.js'
 
 function formatDate(iso) {
@@ -23,7 +24,7 @@ function formatDateTime(iso) {
   const today = new Date()
   const isToday = d.toDateString() === today.toDateString()
 
-  const time = d.toLocaleTimeString('en-US', {
+  const time = d.toLocaleTimeString('en-AU', {
     hour: 'numeric',
     minute: '2-digit',
     hour12: true,
@@ -446,7 +447,16 @@ function CandidateInfoCard({ candidate, job, interview, onStartInterview, interv
             <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>
             </svg>
-            Last Update {new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+            {/* Real timestamp from the candidate doc - previously rendered
+                new Date() (always "today"), which quietly lied. */}
+            Last Update{' '}
+            {candidate?.cand_updated_at
+              ? new Date(candidate.cand_updated_at).toLocaleDateString('en-AU', {
+                  month: 'short',
+                  day: 'numeric',
+                  year: 'numeric',
+                })
+              : '--'}
           </p>
         </div>
 
@@ -595,6 +605,7 @@ export default function CandidateDetailPage() {
   const { candId, jobId } = useParams()
   const { user } = useAuth()
   const navigate = useNavigate()
+  const toast = useToast()
 
   const [candidate, setCandidate] = useState(null)
   const [jobCand, setJobCand] = useState(null)
@@ -824,12 +835,12 @@ export default function CandidateDetailPage() {
             // No filename arg: the server's Content-Disposition carries
             // "<kind>-report-<candidate>-<interview datetime>.pdf".
             downloadFileWithAuth(`/api/interviews/${interview.intv_id}/candidate-report`)
-              .catch((err) => window.alert(err.message || 'Failed to download the report.'))
+              .catch((err) => toast.error(err.message || 'Failed to download the report.'))
           }}
           onDownloadInterviewerReport={() => {
             if (!interview?.intv_id) return
             downloadFileWithAuth(`/api/interviews/${interview.intv_id}/interviewer-report`)
-              .catch((err) => window.alert(err.message || 'Failed to download the report.'))
+              .catch((err) => toast.error(err.message || 'Failed to download the report.'))
           }}
         />
       </main>

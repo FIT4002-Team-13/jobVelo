@@ -17,8 +17,8 @@ function formatScheduledAt(iso) {
   if (!iso) return '--'
   const d = new Date(iso)
   if (Number.isNaN(d.getTime())) return '--'
-  const date = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-  const time = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
+  const date = d.toLocaleDateString('en-AU', { month: 'short', day: 'numeric' })
+  const time = d.toLocaleTimeString('en-AU', { hour: 'numeric', minute: '2-digit', hour12: true })
   return `${date}, ${time}`
 }
 

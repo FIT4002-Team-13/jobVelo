@@ -4,6 +4,7 @@ import Sidebar from '../components/common/Sidebar'
 import JobFormModal from '../components/job-candidate/JobFormModal'
 import { SortMenu, FilterMenu, makeSorter } from '../components/job-candidate/TableControls'
 import { authedFetch } from '../lib/api.js'
+import { useToast } from '../components/common/ToastContext.jsx'
 import { button, modal, page } from '../styles/layout'
 
 const JOB_STATUS_OPTIONS = [
@@ -246,6 +247,7 @@ function DeleteConfirmModal({ job, onClose, onDeleted }) {
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function JobsPage() {
+  const toast = useToast()
   const [jobs, setJobs]             = useState([])
   const [loading, setLoading]       = useState(true)
   const [error, setError]           = useState(null)
@@ -254,10 +256,10 @@ export default function JobsPage() {
   const [statusFilters, setStatusFilters] = useState([])        // empty = all
   const [formModal, setFormModal]   = useState(null)
   const [deleteTarget, setDeleteTarget] = useState(null)
-  // Jobs (by id) that have at least one completed interview - drives the
-  // "In Progress" display override on cards AND the status filter, so a
-  // card labelled In Progress actually matches the In Progress filter.
-  const [completedJobIds, setCompletedJobIds] = useState(() => new Set())
+  // Per-job count of DISTINCT candidates with a completed interview -
+  // drives the display override on cards AND the status filter, so a
+  // card's label always matches what the filter menu selects.
+  const [completedByJob, setCompletedByJob] = useState(() => ({}))
 
   useEffect(() => {
     // Guard both the HTTP status and the payload shape: on an expired token
@@ -281,39 +283,63 @@ export default function JobsPage() {
         if (!r.ok) return
         const interviews = await r.json()
         if (!Array.isArray(interviews)) return
-        setCompletedJobIds(new Set(
-          interviews
-            .filter(i => i.intv_status === 'completed')
-            .map(i => i.job_id)
-        ))
+        // Distinct candidates per job, so repeat interviews for the same
+        // candidate don't overcount toward "everyone is done".
+        const candsByJob = {}
+        for (const i of interviews) {
+          if (i.intv_status !== 'completed' || !i.job_id) continue
+          ;(candsByJob[i.job_id] ??= new Set()).add(i.cand_id)
+        }
+        setCompletedByJob(
+          Object.fromEntries(
+            Object.entries(candsByJob).map(([jobId, cands]) => [jobId, cands.size])
+          )
+        )
       })
       .catch(() => {})
   }, [])
 
   function handleSaved(saved) {
+    // Read create-vs-edit off the modal mode BEFORE closing it.
+    const isNew = formModal === 'create'
     setJobs(prev => {
       const idx = prev.findIndex(j => j.id === saved.id)
       return idx === -1 ? [saved, ...prev] : prev.map(j => j.id === saved.id ? saved : j)
     })
     setFormModal(null)
+    toast.success(
+      isNew
+        ? `Job "${saved.title || 'Untitled role'}" created.`
+        : `Job "${saved.title || 'Untitled role'}" updated.`
+    )
   }
 
   function handleDeleted(id) {
+    const deleted = jobs.find(j => j.id === id)
     setJobs(prev => prev.filter(j => j.id !== id))
     setDeleteTarget(null)
+    toast.success(`Job "${deleted?.title || 'Untitled role'}" deleted.`)
   }
 
-  // Stamp each job with the status the card will actually display: a job
-  // with a completed interview shows "In Progress" unless it's explicitly
-  // marked Completed. Filtering runs on this same value so the pill and
-  // the filter menu can never disagree.
-  const jobsWithStatus = jobs.map(j => ({
-    ...j,
-    display_status:
-      completedJobIds.has(j.id) && j.status !== 'Completed'
+  // Stamp each job with the status the card will actually display:
+  //   - every candidate on the job has completed their interview -> Completed
+  //   - some (but not all) have completed -> In Progress
+  //   - a job explicitly marked Completed keeps its label either way
+  // Filtering runs on this same value so the pill and the filter menu can
+  // never disagree.
+  const jobsWithStatus = jobs.map(j => {
+    const filled = j.candidates_filled ?? 0
+    const done = completedByJob[j.id] ?? 0
+    const display_status =
+      j.status === 'Completed'
+        ? 'Completed'
+        : filled > 0 && done >= filled
+        ? 'Completed'
+        : done > 0
         ? 'In Progress'
-        : j.status || null,
-  }))
+        : j.status || null
+    return { ...j, display_status }
+  })
 
   // search → filter by status → sort. Each stage is independent so order
   // doesn't actually matter, but read top-down it matches user mental model.

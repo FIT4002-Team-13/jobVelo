@@ -355,6 +355,50 @@ def test_cv_analysis_delete_orphan_falls_back_to_doc_comp_owner_ok(authed):
     fake_delete.assert_any_call("cv_analyses/x-cv.pdf")
 
 
+def test_cv_analysis_delete_clears_candidate_document_links(authed):
+    """Safe delete: when the candidate profile's cv/cover-letter URLs point
+    at the files the analysis owned, deleting the analysis must clear those
+    pointers too - otherwise the candidate page keeps rendering View/PDF
+    buttons that 404 against the deleted files."""
+    _, client = authed
+    jobcand_id = ObjectId()
+    cand_oid = ObjectId()
+    doc = {
+        "_id": ObjectId(),
+        "jobcand_id": str(jobcand_id),
+        "cv_path": "cv_analyses/x-cv.pdf",
+        "cover_letter_path": "cv_analyses/x-cl.pdf",
+    }
+    link = {"_id": jobcand_id, "job_id": str(ObjectId()), "cand_id": str(cand_oid)}
+
+    mock_db = MagicMock()
+    mock_db.cv_analyses.find_one = AsyncMock(return_value=doc)
+    mock_db.cv_analyses.delete_one = AsyncMock()
+    mock_db.job_candidates.find_one = AsyncMock(return_value=link)
+    mock_db.jobs.find_one = AsyncMock(return_value={"_id": ObjectId()})
+    mock_db.candidates.find_one = AsyncMock(
+        return_value={
+            "_id": cand_oid,
+            "cand_cv_url": "/api/files/cv_analyses/x-cv.pdf",
+            # Externally-supplied URL - must NOT be touched.
+            "cand_cover_letter_url": "https://example.com/their-own-letter.pdf",
+        }
+    )
+    mock_db.candidates.update_one = AsyncMock()
+
+    with (
+        patch("routes.cv_analysis.get_db", return_value=mock_db),
+        patch("routes.cv_analysis.delete_upload"),
+    ):
+        response = client.delete(f"/api/cv-analysis/{doc['_id']}")
+
+    assert response.status_code == 204
+    update = mock_db.candidates.update_one.call_args.args[1]
+    # The dangling CV pointer is cleared; the external cover-letter URL,
+    # which doesn't reference the deleted file, is left alone.
+    assert update["$unset"] == {"cand_cv_url": ""}
+
+
 def test_cv_analysis_delete_orphan_outsider_is_404(authed):
     """Same orphan, but stamped with someone else's comp -> 404, no delete."""
     _, client = authed

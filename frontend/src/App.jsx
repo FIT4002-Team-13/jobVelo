@@ -1,5 +1,6 @@
 import { BrowserRouter, Route, Routes } from 'react-router-dom'
 import { AuthProvider } from './lib/AuthContext.jsx'
+import { ToastProvider } from './components/common/ToastContext.jsx'
 import RequireAuth from './components/auth/RequireAuth.jsx'
 import RequireRole from './components/auth/RequireRole.jsx'
 import LandingPage from './pages/LandingPage.jsx'
@@ -20,6 +21,7 @@ import ApplicationsPage from './pages/ApplicationsPage.jsx'
 export default function App() {
   return (
     <AuthProvider>
+      <ToastProvider>
       {/* Opt in to React Router v7 behaviour early to silence the deprecation
           warnings printed on every page load. These flags only affect timing
           (startTransition) + splat-route resolution; nothing in our routes
@@ -119,6 +121,7 @@ export default function App() {
           />
         </Routes>
       </BrowserRouter>
+      </ToastProvider>
     </AuthProvider>
   )
 }

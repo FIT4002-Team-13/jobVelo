@@ -339,7 +339,17 @@ async def update_job(
     )
     if result is None:
         raise HTTPException(status_code=404, detail="Job not found")
-    return _serialize(result)
+
+    # Return the same computed fields the list/get endpoints carry
+    # (candidates_filled + interviewers). Without them the frontend's
+    # optimistic card update rendered 0 candidates and an empty avatar
+    # stack until the next full refresh.
+    stats = await _job_stats(db, [job_id])
+    return _serialize({
+        **result,
+        "interviewers": stats.get(job_id, {}).get("interviewers", []),
+        "candidates_filled": stats.get(job_id, {}).get("count", 0),
+    })
 
 
 @router.delete(

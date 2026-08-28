@@ -137,7 +137,7 @@ function Pagination({ page, totalPages, onPrev, onNext }) {
 
 export default function DashboardPage() {
   // toLocaleDateString return dd/mm/yyy, replace keeps the slashes as is but ensures it's always in the same format regardless of user locale.
-  const today = new Date().toLocaleDateString('en-GB').replace(/\//g, '/')
+  const today = new Date().toLocaleDateString('en-AU').replace(/\//g, '/')
 
   const [me,         setMe]         = useState(null)
   const [summary,    setSummary]    = useState(null)
@@ -145,10 +145,10 @@ export default function DashboardPage() {
   const [candidates, setCandidates] = useState([])
   const [loading,    setLoading]    = useState(true)
   const [error,      setError]      = useState(null)
-  // Jobs (by id) with at least one completed interview - drives the same
-  // "In Progress" display override JobsPage uses, so the pill here never
-  // disagrees with the one on the Jobs page.
-  const [completedJobIds, setCompletedJobIds] = useState(() => new Set())
+  // Per-job count of DISTINCT candidates with a completed interview -
+  // drives the same display override JobsPage uses, so the pill here
+  // never disagrees with the one on the Jobs page.
+  const [completedByJob, setCompletedByJob] = useState(() => ({}))
 
   // Search + sort + filter state, one set per panel.
   const [jobSearch,        setJobSearch]        = useState('')
@@ -168,16 +168,23 @@ export default function DashboardPage() {
   // enough at dashboard sizes that useMemo is overkill.
   const jobSorter = makeSorter(jobSortKey, { nameField: 'title', dateField: 'job_created_at' })
   const jobNeedle = jobSearch.trim().toLowerCase()
-  // Stamp each job with the status the row will actually display (the
-  // completed-interview override included) and filter on that same value,
-  // mirroring JobsPage so the pill and the filter can never disagree.
-  const jobsWithStatus = jobs.map(j => ({
-    ...j,
-    display_status:
-      completedJobIds.has(j.id ?? j._id) && j.status !== 'Completed'
+  // Stamp each job with the status the row will actually display and
+  // filter on that same value, mirroring JobsPage:
+  //   all candidates completed -> Completed; some -> In Progress;
+  //   an explicitly-Completed job keeps its label.
+  const jobsWithStatus = jobs.map(j => {
+    const filled = j.candidates_filled ?? 0
+    const done = completedByJob[j.id ?? j._id] ?? 0
+    const display_status =
+      j.status === 'Completed'
+        ? 'Completed'
+        : filled > 0 && done >= filled
+        ? 'Completed'
+        : done > 0
         ? 'In Progress'
-        : j.status,
-  }))
+        : j.status
+    return { ...j, display_status }
+  })
   const visibleJobs = jobsWithStatus
     .filter(j => !jobNeedle || (j.title ?? '').toLowerCase().includes(jobNeedle))
     .filter(j => !jobFilter || j.display_status === jobFilter)
@@ -242,14 +249,20 @@ export default function DashboardPage() {
         setJobs(Array.isArray(jobsData) ? jobsData : [])
 
         // Best-effort: if the interviews fetch fails, rows simply show
-        // their stored status without the completed-override.
+        // their stored status without the completed-override. Distinct
+        // candidates per job, so repeat interviews don't overcount.
         const intvData = intvRes.ok ? await intvRes.json().catch(() => []) : []
         if (Array.isArray(intvData)) {
-          setCompletedJobIds(new Set(
-            intvData
-              .filter(i => i.intv_status === 'completed')
-              .map(i => i.job_id)
-          ))
+          const candsByJob = {}
+          for (const i of intvData) {
+            if (i.intv_status !== 'completed' || !i.job_id) continue
+            ;(candsByJob[i.job_id] ??= new Set()).add(i.cand_id)
+          }
+          setCompletedByJob(
+            Object.fromEntries(
+              Object.entries(candsByJob).map(([jobId, cands]) => [jobId, cands.size])
+            )
+          )
         }
 
         // Map the application rows into the shape the panel renders

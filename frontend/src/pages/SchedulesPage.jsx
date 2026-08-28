@@ -52,7 +52,7 @@ function dateKey(d) {
 }
 
 function formatTime(d) {
-  return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
+  return d.toLocaleTimeString('en-AU', { hour: 'numeric', minute: '2-digit', hour12: true })
 }
 
 function formatLongDate(d) {
@@ -144,6 +144,7 @@ function EventPill({ ev, onOpen, direction = 'down', align = 'center' }) {
 export default function SchedulesPage() {
   const { user } = useAuth()
   const navigate = useNavigate()
+  const isInterviewer = user?.role === 'interviewer'
 
   const today = new Date()
   const [year, setYear] = useState(today.getFullYear())
@@ -191,7 +192,7 @@ export default function SchedulesPage() {
   }, [rows])
 
   const cells = useMemo(() => buildMonthCells(year, month), [year, month])
-  const monthLabel = new Date(year, month, 1).toLocaleDateString('en-US', {
+  const monthLabel = new Date(year, month, 1).toLocaleDateString('en-AU', {
     month: 'long',
     year: 'numeric',
   })
@@ -221,7 +222,9 @@ export default function SchedulesPage() {
           <div>
             <h1 className="text-4xl font-extrabold tracking-tight text-neutral-800">Schedules</h1>
             <p className="mt-1 text-xs text-neutral-400">
-              Your upcoming interviews at a glance
+              {isInterviewer
+                ? 'Your upcoming interviews at a glance'
+                : "Your team's interviews at a glance"}
             </p>
           </div>
 
@@ -345,8 +348,9 @@ export default function SchedulesPage() {
 
         {!loading && !error && rows.every((r) => !r.interview_datetime) && (
           <p className="mt-4 text-sm text-neutral-400">
-            No scheduled interviews yet — interviews you&apos;re assigned to will appear here once
-            they have a date.
+            {isInterviewer
+              ? "No scheduled interviews yet — interviews you're assigned to will appear here once they have a date."
+              : 'No scheduled interviews yet — schedule one from a job page and it will appear here.'}
           </p>
         )}
       </main>

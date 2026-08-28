@@ -7,6 +7,7 @@ import DeleteCandidateModal from '../components/job-candidate/DeleteCandidateMod
 import { SortMenu, FilterMenu } from '../components/job-candidate/TableControls'
 import { page, card, button, badge } from '../styles/layout'
 import { useAuth } from '../lib/AuthContext.jsx'
+import { useToast } from '../components/common/ToastContext.jsx'
 import { authedFetch } from '../lib/api.js'
 
 function getInitials(name = '') {
@@ -95,6 +96,7 @@ const FILTER_OPTIONS = [
 export default function ApplicationsPage() {
   const { user } = useAuth()
   const navigate = useNavigate()
+  const toast = useToast()
 
   const [rows, setRows] = useState([])
   const [jobs, setJobs] = useState([])
@@ -183,6 +185,7 @@ export default function ApplicationsPage() {
     try {
       await loadApplications()
       setShowAddModal(false)
+      toast.success('Candidate added.')
     } catch (err) {
       setError(err.message || 'Failed to refresh applications.')
     }
@@ -193,6 +196,7 @@ export default function ApplicationsPage() {
       await loadApplications()
       setShowEditModal(false)
       setSelectedRow(null)
+      toast.success('Candidate updated.')
     } catch (err) {
       setError(err.message || 'Failed to refresh applications.')
     }
@@ -542,6 +546,7 @@ export default function ApplicationsPage() {
           onDeleted={(linkId) => {
             setRows((prev) => prev.filter((r) => r.application_id !== linkId))
             setDeleteTarget(null)
+            toast.success('Candidate removed from the job.')
           }}
         />
       )}
