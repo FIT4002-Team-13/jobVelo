@@ -2,28 +2,37 @@ from bson import ObjectId
 from fastapi import APIRouter, Depends, HTTPException
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from pydantic import BaseModel
+
 from database import get_db
 from models.interview_question import (
+    FollowUpQuestionResult,
     SimilarQuestion,
     SimilarQuestionResult,
     SuggestedQuestionsList,
-    FollowUpQuestionResult,
 )
 from services.openai_service import (
+    generate_follow_up_question,
     generate_interview_questions,
     generate_similar_question,
-    generate_follow_up_question,
 )
+
 
 class FollowUpQuestionRequest(BaseModel):
     candidate_response: str
     interview_context: str = ""
 
+
 router = APIRouter(prefix="/api/interview-questions", tags=["interview_questions"])
 
-@router.post("/{job_id}", response_model=SuggestedQuestionsList,)
 
-async def suggest_questions(job_id: str, db: AsyncIOMotorDatabase = Depends(get_db),) -> SuggestedQuestionsList:
+@router.post(
+    "/{job_id}",
+    response_model=SuggestedQuestionsList,
+)
+async def suggest_questions(
+    job_id: str,
+    db: AsyncIOMotorDatabase = Depends(get_db),
+) -> SuggestedQuestionsList:
 
     # check if the job ID is a valid object
     if not ObjectId.is_valid(job_id):
@@ -32,9 +41,7 @@ async def suggest_questions(job_id: str, db: AsyncIOMotorDatabase = Depends(get_
             detail="Invalid job ID",
         )
 
-    job = await db.jobs.find_one(
-        {"_id": ObjectId(job_id)}
-    )
+    job = await db.jobs.find_one({"_id": ObjectId(job_id)})
 
     if job is None:
         raise HTTPException(
@@ -51,7 +58,7 @@ async def suggest_questions(job_id: str, db: AsyncIOMotorDatabase = Depends(get_
         )
 
     except RuntimeError as error:
-        #missing OpenAI API key
+        # missing OpenAI API key
         raise HTTPException(
             status_code=503,
             detail=str(error),
@@ -67,7 +74,6 @@ async def suggest_questions(job_id: str, db: AsyncIOMotorDatabase = Depends(get_
 
 
 @router.post("/{job_id}/follow-up", response_model=FollowUpQuestionResult)
-
 async def create_follow_up_question(
     job_id: str,
     request: FollowUpQuestionRequest,
@@ -107,8 +113,7 @@ async def create_follow_up_question(
             job_title=job.get("title", ""),
             job_description=description,
             transcript=(
-                f"{request.interview_context}\n"
-                f"Candidate: {request.candidate_response}"
+                f"{request.interview_context}\nCandidate: {request.candidate_response}"
             ).strip(),
         )
 
@@ -126,9 +131,11 @@ async def create_follow_up_question(
             detail=f"Could not generate follow-up question: {error}",
         ) from error
 
-@router.post("/{job_id}/similar", response_model=SimilarQuestionResult)
 
-async def create_similar_question(job_id: str, request: SimilarQuestion, db: AsyncIOMotorDatabase = Depends(get_db)):
+@router.post("/{job_id}/similar", response_model=SimilarQuestionResult)
+async def create_similar_question(
+    job_id: str, request: SimilarQuestion, db: AsyncIOMotorDatabase = Depends(get_db)
+):
 
     if not ObjectId.is_valid(job_id):
         raise HTTPException(
@@ -139,18 +146,12 @@ async def create_similar_question(job_id: str, request: SimilarQuestion, db: Asy
     job = await db.jobs.find_one({"_id": ObjectId(job_id)})
 
     if not job:
-        raise HTTPException(
-            status_code=404,
-            detail="Job not found"
-        )
+        raise HTTPException(status_code=404, detail="Job not found")
 
     description = job.get("description", "").strip()
 
     if not description:
-        raise HTTPException(
-            status_code=400,
-            detail="Job description is missing"
-        )
+        raise HTTPException(status_code=400, detail="Job description is missing")
 
     try:
         return await generate_similar_question(
