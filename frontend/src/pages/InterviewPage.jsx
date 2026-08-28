@@ -53,7 +53,7 @@ function avatarColor(name = "") {
   return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
 }
 
-function normaliseQuestion(question, index = 0) {
+function normaliseQuestion(question, index = 0, isFollowUp = false) {
   const isTechnical = question.category === "technical";
 
   return {
@@ -65,6 +65,7 @@ function normaliseQuestion(question, index = 0) {
       : "bg-sky-100 text-sky-700",
     text: question.question,
     why: question.reason,
+    isFollowUp,
   };
 }
 
@@ -165,7 +166,16 @@ function QuestionCard({ q, onMoreLike, onIgnore, isGeneratingSimilar }) {
       className={`${flex.col} gap-3 bg-neutral-0 border border-neutral-200 rounded-2xl p-4 w-[280px] h-[345px] shrink-0 overflow-y-auto scrollbar-hide`}
     >
       <div className={`${flex.rowBetween}`}>
-        <span className={`${badge.sm} ${q.categoryColor}`}>{q.category}</span>
+
+        <div className={`${flex.row} gap-2`}>
+          <span className={`${badge.sm} ${q.categoryColor}`}>{q.category}</span>
+          {q.isFollowUp && (
+            <span className="rounded-pill bg-neutral-100 px-2 py-0.5 text-[10px] font-semibold text-neutral-500">
+              Follow-up
+            </span>
+          )}
+        </div>
+
         <div className={`${flex.row} gap-2 text-neutral-400`}>
           <button className="hover:text-mint-500 transition-colors py-1">
             <svg
@@ -264,6 +274,8 @@ export default function InterviewPage() {
   const [questionsLoading, setQuestionsLoading] = useState(false);
   const [questionsError, setQuestionsError] = useState("");
   const [similarQuestionId, setSimilarQuestionId] = useState(null);
+  const [followUpQuestions, setFollowUpQuestions] = useState([]);
+  const [followUpLoading, setFollowUpLoading] = useState(false);
   const [timer, setTimer] = useState(0);
 
   const transcriptRef = useRef([]);
@@ -286,6 +298,10 @@ export default function InterviewPage() {
   const questionsRequestedJobRef = useRef(null);
   const questionsRef = useRef([]);
   const pendingCategoriesRef = useRef([]);
+  const displayedQuestions = [...followUpQuestions, ...questions].slice(0, 6);
+  const pendingCandidateResponseRef = useRef("");
+  const followUpTimerRef = useRef(null);
+  const followUpGeneratingRef = useRef(false);
 
   useEffect(() => {
     questionsRef.current = questions;
@@ -303,6 +319,8 @@ export default function InterviewPage() {
       Math.floor((Date.now() - startTimeRef.current) / 1000)
     );
 
+    const isCandidate = speaker === (candidateName || "Candidate");
+
     if (isFinal) {
       const entryId = String(entryCounterRef.current++);
       const prevPartialId = partialRef.current;
@@ -317,6 +335,17 @@ export default function InterviewPage() {
         localStorage.setItem(`transcript-${id}`, JSON.stringify(updated));
         return updated;
       });
+
+    // US19: generate follow-up questions from the candidate's
+    // completed response.
+    if (isCandidate && text?.trim()) {
+      pendingCandidateResponseRef.current = [
+        pendingCandidateResponseRef.current,
+        text.trim(),
+        ]
+          .filter(Boolean)
+          .join(" ");
+      }
     } else {
       if (!partialRef.current) {
         partialRef.current = `partial-${entryCounterRef.current++}`;
@@ -328,6 +357,29 @@ export default function InterviewPage() {
         ...prev.filter((entry) => entry.id !== partialId),
         partialEntry,
       ]);
+    }
+
+    // US19: reset the silence timer whenever the candidate is still speaking.
+    if (isCandidate && text?.trim()) {
+      if (followUpTimerRef.current) {
+        clearTimeout(followUpTimerRef.current);
+      }
+
+      followUpTimerRef.current = setTimeout(() => {
+        const candidateResponse =
+          pendingCandidateResponseRef.current.trim();
+
+        if (
+          !candidateResponse ||
+          followUpGeneratingRef.current
+        ) {
+          return;
+        }
+
+        pendingCandidateResponseRef.current = "";
+
+        void generateFollowUpQuestions(candidateResponse);
+      }, 2000);
     }
   }
 
@@ -754,22 +806,10 @@ export default function InterviewPage() {
 
       const similarQuestion = normaliseQuestion(data);
 
-      setQuestions((current) => {
-        const questionIndex = current.findIndex(
-          (item) => item.id === question.id
-        );
-
-        const insertAt =
-          questionIndex === -1
-            ? current.length
-            : questionIndex + 1;
-
-        return [
-          ...current.slice(0, insertAt),
-          similarQuestion,
-          ...current.slice(insertAt),
-        ];
-      });
+      setQuestions((current) => [
+        similarQuestion,
+        ...current,
+      ].slice(0, 6));
     } catch (error) {
       console.error("Similar question generation failed", error);
       setQuestionsError(
@@ -777,6 +817,61 @@ export default function InterviewPage() {
       );
     } finally {
       setSimilarQuestionId(null);
+    }
+  }
+
+  async function generateFollowUpQuestions(candidateResponse) {
+    if (!jobId || !candidateResponse?.trim() || followUpGeneratingRef.current) return;
+
+    followUpGeneratingRef.current = true;
+    setFollowUpLoading(true);
+
+    try {
+      const recentContext = transcript
+        .filter((entry) => entry.text)
+        .slice(-8)
+        .map((entry) => `${entry.speaker}: ${entry.text}`)
+        .join("\n");
+
+      const response = await fetch(
+        `/api/interview-questions/${jobId}/follow-up`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "application/json",
+          },
+          body: JSON.stringify({
+            candidate_response: candidateResponse.trim(),
+            interview_context: recentContext,
+          }),
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          data.detail || "Follow-up question generation failed"
+        );
+      }
+
+      const newFollowUps = (data.questions || [])
+        .slice(0, 2)
+        .map((question, index) =>
+          normaliseQuestion(question, index, true)
+        );
+
+      setFollowUpQuestions((prev) => [
+        ...newFollowUps,
+        ...prev,
+      ].slice(0, 2));
+
+    } catch (error) {
+      console.error("Follow-up question generation failed", error);
+    } finally {
+      setFollowUpLoading(false);
+      followUpGeneratingRef.current = false;
     }
   }
 
@@ -1032,13 +1127,13 @@ export default function InterviewPage() {
                 <div className={`${flex.rowCenter} h-full`}>
                   <p className="text-sm text-coral-500 text-center">{questionsError}</p>
                 </div>
-              ) : questions.length === 0 ? (
+              ) : displayedQuestions.length === 0 ? (
                 <div className={`${flex.rowCenter} h-full`}>
                   <p className="text-sm text-neutral-400">No suggested questions available.</p>
                 </div>
               ) : (
                 <div className={`${flex.row} gap-4 h-full items-start`}>
-                  {questions.map((q) => (
+                  {displayedQuestions.map((q) => (
                     <QuestionCard
                       key={q.id}
                       q={q}
