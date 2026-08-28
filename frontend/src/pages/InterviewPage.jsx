@@ -275,7 +275,7 @@ export default function InterviewPage() {
   const [questionsError, setQuestionsError] = useState("");
   const [similarQuestionId, setSimilarQuestionId] = useState(null);
   const [followUpQuestions, setFollowUpQuestions] = useState([]);
-  const [followUpLoading, setFollowUpLoading] = useState(false);
+  const [, setFollowUpLoading] = useState(false);
   const [timer, setTimer] = useState(0);
 
   const transcriptRef = useRef([]);
