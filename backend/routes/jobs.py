@@ -447,13 +447,21 @@ async def list_candidates_for_job(
             interview.get("intv_date_time") if interview else link.get("scheduled_at")
         )
 
+        ratings = link.get("ratings") or {}
+
         scores = [
-            link.get("communication_score"),
-            link.get("skill_score"),
-            link.get("problem_solving_score"),
+            (ratings.get("communication") or {}).get("score"),
+            (ratings.get("technical_skills") or {}).get("score"),
+            (ratings.get("problem_solving") or {}).get("score"),
         ]
-        scores = [s for s in scores if s is not None]
-        avg = sum(scores) / len(scores) if scores else link.get("score")
+
+        scores = [score for score in scores if score is not None]
+
+        avg = (
+            round(sum(scores) / len(scores), 1)
+            if scores
+            else None
+        )
 
         out.append({
             "id": str(link["_id"]),
@@ -465,9 +473,7 @@ async def list_candidates_for_job(
             "status": (interview.get("intv_status") or "not_scheduled").replace("_", " ").upper() if interview else "NOT SCHEDULED",
             "scheduled_at": scheduled_at,
             "interviewer": interviewer_name,
-            "communication_score":   link.get("communication_score"),
-            "skill_score":           link.get("skill_score"),
-            "problem_solving_score": link.get("problem_solving_score"),
+            "ratings": ratings or None,
             "score": avg,
             "intv_completed": completed_interview is not None,
             "intv_id": str(completed_interview["_id"]) if completed_interview else None,

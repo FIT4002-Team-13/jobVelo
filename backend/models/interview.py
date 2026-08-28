@@ -58,8 +58,8 @@ class InterviewUpdate(BaseModel):
     intv_transcript: list[TranscriptEntry] | None = None
     intv_status: InterviewStatus | None = None
     intv_duration_seconds: int | None = None
-    intv_candidate_report: str | None = None
-    intv_interviewer_report: str | None = None
+    intv_candidate_report: InterviewFeedback | None = None
+    intv_interviewer_report: InterviewFeedback | None = None
 
 
 class InterviewOut(BaseModel):
@@ -76,8 +76,8 @@ class InterviewOut(BaseModel):
     intv_transcript: list[TranscriptEntry] | None = None
     intv_status: InterviewStatus
     intv_duration_seconds: int | None = None
-    intv_candidate_report: str | None = None
-    intv_interviewer_report: str | None = None
+    intv_candidate_report: InterviewFeedback | None = None
+    intv_interviewer_report: InterviewFeedback | None = None
     intv_created_at: datetime
     intv_updated_at: datetime
 
