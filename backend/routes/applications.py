@@ -309,6 +309,9 @@ async def list_applications(
                 "phone": candidate.get("cand_phone") or "",
                 "job_id": str(job["_id"]),
                 "job_title": job.get("title") or "",
+                # When the candidate profile was created - the dashboard's
+                # admin summary uses it for the "+N this month" delta.
+                "cand_created_at": candidate.get("cand_created_at"),
                 "status": (interview.get("intv_status") or "not_scheduled").replace("_", " ").upper() if interview else "NOT SCHEDULED",
                 "cv_url": candidate.get("cand_cv_url"),
                 "cover_letter_url": candidate.get("cand_cover_letter_url"),
