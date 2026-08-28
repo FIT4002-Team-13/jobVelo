@@ -157,8 +157,17 @@ function TranscriptEntry({ entry, onNoteChange }) {
 
       {/* Always show saved note text without needing a click */}
       {hasNote && !editing && (
-        <div className="ml-11 mt-1.5 rounded-lg bg-primary-50 border border-primary-100 px-3 py-2">
-          <p className="text-xs text-primary-700 leading-relaxed whitespace-pre-wrap">{entry.comment}</p>
+        <div className="relative ml-11 mt-1.5 rounded-lg border border-primary-100 bg-primary-50 px-3 py-2 pr-10">
+          <p className="whitespace-pre-wrap text-xs leading-relaxed text-primary-700">
+            {entry.comment}
+          </p>
+
+          <button type="button" onClick={() => onNoteChange(entry.id, '')} title="Delete note" aria-label="Delete note" className="absolute right-2 top-2 flex h-6 w-6 items-center justify-center rounded-full text-primary-400 transition-colors hover:bg-primary-100 hover:text-coral-500">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+              <path d="M6 6l12 12" />
+              <path d="M18 6L6 18" />
+            </svg>
+          </button>
         </div>
       )}
 
