@@ -40,8 +40,8 @@ async def _delete_cv_analyses_for_links(db, jobcand_ids: list[str]) -> None:
         {"jobcand_id": {"$in": jobcand_ids}},
         {"cv_path": 1, "cover_letter_path": 1},
     ):
-        delete_upload(doc.get("cv_path"))
-        delete_upload(doc.get("cover_letter_path"))
+        await delete_upload(doc.get("cv_path"))
+        await delete_upload(doc.get("cover_letter_path"))
     await db.cv_analyses.delete_many({"jobcand_id": {"$in": jobcand_ids}})
 
 

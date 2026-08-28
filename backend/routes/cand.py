@@ -541,7 +541,7 @@ async def upload_cover_letter(
     old_url = candidate.get("cand_cover_letter_url") or ""
     old_prefix = "/api/files/candidate_docs/"
     if old_url.startswith(old_prefix):
-        delete_upload(old_url.removeprefix("/api/files/"))
+        await delete_upload(old_url.removeprefix("/api/files/"))
 
     now = datetime.now(timezone.utc)
     await db.candidates.update_one(

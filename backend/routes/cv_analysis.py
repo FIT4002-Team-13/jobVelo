@@ -280,9 +280,9 @@ async def analyse(
         replaced_cl_path = existing.get("cover_letter_path")
         await db.cv_analyses.delete_one({"_id": existing["_id"]})
         if existing.get("cv_path"):
-            delete_upload(existing["cv_path"])
+            await delete_upload(existing["cv_path"])
         if existing.get("cover_letter_path"):
-            delete_upload(existing["cover_letter_path"])
+            await delete_upload(existing["cover_letter_path"])
     elif not has_new_cv:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -339,9 +339,9 @@ async def analyse(
     except DuplicateKeyError:
         # A concurrent POST won the unique-index race. Serve their doc and
         # drop our now-orphaned files.
-        delete_upload(cv_path)
+        await delete_upload(cv_path)
         if cl_path:
-            delete_upload(cl_path)
+            await delete_upload(cl_path)
         winner = await db.cv_analyses.find_one({"jobcand_id": jobcand_id})
         if winner:
             return _serialise(winner, cached=True)
@@ -443,9 +443,9 @@ async def delete_analysis(
     # Best-effort cleanup. We don't fail the request if a file is already
     # gone - the DB row is the source of truth.
     if doc.get("cv_path"):
-        delete_upload(doc["cv_path"])
+        await delete_upload(doc["cv_path"])
     if doc.get("cover_letter_path"):
-        delete_upload(doc["cover_letter_path"])
+        await delete_upload(doc["cover_letter_path"])
 
     # Safe delete for the candidate's document links too: the analysis
     # upload pointed cand_cv_url / cand_cover_letter_url at the files we
