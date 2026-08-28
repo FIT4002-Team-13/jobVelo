@@ -831,7 +831,10 @@ function CandidatesTable({
                       </button>
                       <button
                         type="button"
-                        onClick={() => onDelete?.(c)}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          onDelete?.(c);
+                        }}
                         title="Remove this candidate from the job"
                         aria-label="Delete candidate"
                         className={`w-7 h-7 ${flex.rowCenter} rounded-lg text-coral-500 hover:bg-coral-50 hover:text-coral-700 transition-colors`}
