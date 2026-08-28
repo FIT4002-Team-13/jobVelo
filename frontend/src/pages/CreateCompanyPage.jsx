@@ -87,7 +87,9 @@ export default function CreateCompanyPage() {
     try {
       const res = await api.signupCompany(fd)
       applySession({ token: res.access_token, user: res.user })
-      navigate('/admin/dashboard', { replace: true })
+      // The fresh admin lands on the same dashboard as everyone else -
+      // the invitation-key page is one click away in the sidebar.
+      navigate('/dashboard', { replace: true })
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not reach the server. Please try again.')
     } finally {

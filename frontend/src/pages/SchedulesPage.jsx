@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import Sidebar from '../components/common/Sidebar'
-import { page, card } from '../styles/layout'
+import { page, card, modal } from '../styles/layout'
 import { useAuth } from '../lib/AuthContext.jsx'
 import { authedFetch } from '../lib/api.js'
 
@@ -153,6 +153,9 @@ export default function SchedulesPage() {
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  // Day whose full schedule is open in the overflow modal - null = closed.
+  // Set by clicking "+N more" on a crowded day cell.
+  const [dayDetail, setDayDetail] = useState(null)
 
   useEffect(() => {
     async function load() {
@@ -328,15 +331,17 @@ export default function SchedulesPage() {
                         />
                       ))}
                       {hidden > 0 && (
-                        <p
-                          className="px-1.5 text-[11px] font-medium text-neutral-400"
-                          title={dayEvents
-                            .slice(MAX_PILLS_PER_DAY)
-                            .map((ev) => `${formatTime(ev.when)} ${ev.candidate_name} — ${ev.job_title}`)
-                            .join('\n')}
+                        // Opens the day-detail modal with the FULL list -
+                        // the old version was inert text whose native
+                        // tooltip was the only (and easily missed) way to
+                        // see the overflowed interviews.
+                        <button
+                          type="button"
+                          onClick={() => setDayDetail({ date: day, events: dayEvents })}
+                          className="rounded-md px-1.5 py-0.5 text-left text-[11px] font-semibold text-neutral-500 transition-colors hover:bg-neutral-100 hover:text-primary-600"
                         >
                           +{hidden} more
-                        </p>
+                        </button>
                       )}
                     </div>
                   </div>
@@ -354,6 +359,76 @@ export default function SchedulesPage() {
           </p>
         )}
       </main>
+
+      {/* Day-detail modal - the full schedule for a crowded day. Google-
+          Calendar-style: every interview listed, each row clickable through
+          to the candidate page. */}
+      {dayDetail && (
+        <div
+          className={modal.overlay}
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) setDayDetail(null)
+          }}
+        >
+          <div className="w-full max-w-md rounded-2xl bg-neutral-0 p-6 shadow-xl">
+            <div className="mb-4 flex items-start justify-between">
+              <div>
+                <h2 className="text-base font-bold text-neutral-800">
+                  {formatLongDate(dayDetail.date)}
+                </h2>
+                <p className="text-xs text-neutral-400">
+                  {dayDetail.events.length} interview{dayDetail.events.length === 1 ? '' : 's'}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setDayDetail(null)}
+                className="text-xl leading-none text-neutral-400 hover:text-neutral-700"
+                aria-label="Close"
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="scrollbar-primary flex max-h-[60vh] flex-col gap-2 overflow-y-auto">
+              {dayDetail.events.map((ev) => (
+                <button
+                  key={ev.application_id}
+                  type="button"
+                  onClick={() => {
+                    setDayDetail(null)
+                    if (ev.cand_id && ev.job_id) navigate(`/candidates/${ev.cand_id}/${ev.job_id}`)
+                  }}
+                  className="flex items-center gap-3 rounded-xl border border-neutral-100 px-3 py-2.5 text-left transition-colors hover:border-primary-200 hover:bg-primary-500/5"
+                >
+                  <span className="w-16 shrink-0 text-xs font-semibold tabular-nums text-neutral-500">
+                    {formatTime(ev.when)}
+                  </span>
+                  <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-pill bg-primary-500 text-[11px] font-bold text-white">
+                    {getInitials(ev.candidate_name)}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-semibold text-neutral-800">
+                      {ev.candidate_name}
+                    </p>
+                    <p className="truncate text-xs text-neutral-400">
+                      {ev.job_title}
+                      {ev.interviewer ? ` · ${ev.interviewer}` : ''}
+                    </p>
+                  </div>
+                  <span
+                    className={`shrink-0 rounded-pill px-2 py-0.5 text-[10px] font-bold uppercase ${
+                      CHIP_STYLES[ev.status] ?? 'bg-neutral-100 text-neutral-500'
+                    }`}
+                  >
+                    {ev.status}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

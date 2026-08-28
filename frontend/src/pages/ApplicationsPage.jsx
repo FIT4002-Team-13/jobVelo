@@ -84,9 +84,7 @@ const FILTER_OPTIONS = [
   { value: '',              label: 'All'           },
   { value: 'NOT SCHEDULED', label: 'Not Scheduled' },
   { value: 'SCHEDULED',     label: 'Scheduled'     },
-  { value: 'IN PROGRESS',   label: 'In Progress'   },
   { value: 'COMPLETED',     label: 'Completed'     },
-  { value: 'CANCELLED',     label: 'Cancelled'     },
 ]
 
 // Previously had a bespoke OptionsPopup component here - replaced by the
