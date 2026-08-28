@@ -863,11 +863,12 @@ export default function CandidateDetailPage() {
           candidate={startTarget}
           jobTitle={job?.title}
           onClose={() => setStartTarget(null)}
+          // Resume-or-create via onConfirmStart - the old inline handler
+          // only navigated when an interview record already existed, so
+          // confirming on a fresh candidate silently did nothing.
           onConfirm={() => {
             setStartTarget(null)
-            if (interview?.intv_id) {
-              navigate(`/interview/${interview.intv_id}`, { replace: true })
-            }
+            onConfirmStart()
           }}
         />
       )}
