@@ -6,7 +6,7 @@ import StartInterviewModal from '../components/job-candidate/StartInterviewModal
 import EditCandidateForm from '../components/candidate/EditCandidateForm'
 import { card, flex, page } from '../styles/layout'
 import { useAuth } from '../lib/AuthContext.jsx'
-import { api, authedFetch } from '../lib/api.js'
+import { api, authedFetch, openFileWithAuth } from '../lib/api.js'
 
 import ScoreEvidencePopup from "../components/candidate/ScoreEvidencePopup";
 
@@ -186,9 +186,9 @@ function CandidateScorePanel({ jobCand, interview, onViewEvidence, onViewTranscr
         onClick={onViewTranscription}
         disabled={!hasTranscript}
         className={`mt-4 w-full rounded-[18px] px-4 py-1.5 text-sm font-semibold text-white transition-colors ${
-          interview?.intv_transcript
+          hasTranscript
             ? 'bg-primary-500 hover:bg-primary-600'
-            : 'bg-neutral-400 cursor-not-allowed'
+            : 'cursor-not-allowed bg-neutral-400'
         }`}
       >
         View Transcription
@@ -822,9 +822,12 @@ export default function CandidateDetailPage() {
               interview={interview}
               onViewEvidence={() => setShowScoreEvidence(true)}
               onViewTranscription={() => {
-                if (!interview?.intv_transcript?.length) return;
+                if (!interview?.intv_id) return
 
-                console.log("Open transcript view");
+                openFileWithAuth(
+                  `/api/interviews/${interview.intv_id}/transcript-pdf`
+                ).catch((error) => {console.error('Failed to open transcript:',error)
+                })
               }}
             />
           </div>

@@ -151,3 +151,38 @@ export const api = {
   completeInterview: (interviewId, transcript) => request(`/interviews/${encodeURIComponent(interviewId)}/complete`, {method: 'POST', body: { transcript }, auth: true}),
 
 }
+
+//--get-transcript----------------------------------------------------------------------------------
+export async function openFileWithAuth(fileUrl) {
+  const newTab = window.open('', '_blank')
+
+  if (!newTab) {
+    throw new ApiError('Please allow pop-ups to view the PDF.')
+  }
+
+  try {
+    const response = await authedFetch(fileUrl)
+
+    if (!response.ok) {
+      const data = await response.json().catch(() => null)
+
+      throw new ApiError(
+        data?.detail || `Failed to open PDF (${response.status})`,
+        {
+          status: response.status,
+          detail: data?.detail,
+        }
+      )
+    }
+
+    const blob = await response.blob()
+    const blobUrl = URL.createObjectURL(blob)
+
+    newTab.location.href = blobUrl
+
+    setTimeout(() => {URL.revokeObjectURL(blobUrl)}, 300000)
+    } catch (error) {
+      newTab.close()
+      throw error
+    }
+}

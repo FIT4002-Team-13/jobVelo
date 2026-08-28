@@ -20,6 +20,10 @@ from models.job_candidate import (
 )
 from services.openai_service import rate_candidate_skills
 
+from fastapi.responses import Response
+
+from services.transcrip import build_transcript_pdf
+
 router = APIRouter(prefix="/api/interviews", tags=["interviews"])
 
 def interview_helper(interview: dict) -> InterviewOut:
@@ -280,3 +284,63 @@ async def update_interview(intv_id: str, payload: InterviewUpdate) -> InterviewO
         )
 
     return interview_helper(updated_interview)
+
+@router.get("/{intv_id}/transcript-pdf")
+async def get_transcript_pdf(intv_id: str, comp_id: ObjectId = Depends(get_current_comp_id)) -> Response:
+    db = get_db()
+    if not ObjectId.is_valid(intv_id):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid interview id.")
+
+    interview = await db.interviews.find_one({"_id": ObjectId(intv_id)})
+
+    if not interview:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Interview not found.")
+
+    job_id = str(interview.get("job_id") or "")
+
+    if not ObjectId.is_valid(job_id):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found.")
+
+    job = await db.jobs.find_one(
+        {
+            "_id": ObjectId(job_id),
+            "comp_id": comp_id,
+        }
+    )
+
+    if not job:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Interview not found.")
+
+    transcript = [
+        entry
+        for entry in (interview.get("intv_transcript") or [])
+        if str(entry.get("text") or "").strip()
+        and not str(entry.get("id") or "").startswith("partial-")
+    ]
+
+    if not transcript:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No transcript is available.")
+
+    candidate = None
+    candidate_id = str(interview.get("cand_id") or "")
+
+    if ObjectId.is_valid(candidate_id):
+        candidate = await db.candidates.find_one(
+            {
+                "_id": ObjectId(candidate_id),
+                "comp_id": comp_id,
+            }
+        )
+
+    pdf = build_transcript_pdf(entries=transcript, candidate_name=(candidate or {}).get("cand_full_name"), job_title=job.get("title"), interview_datetime=interview.get("intv_date_time"))
+
+    return Response(
+        content=pdf,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": (
+                f'inline; filename="interview-transcript-{intv_id}.pdf"'
+            ),
+            "Cache-Control": "no-store",
+        },
+    )
