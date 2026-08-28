@@ -756,9 +756,10 @@ function CandidatesTable({
                         type="button"
                         disabled={!canStart || hasCompletedInterview}
                         title={!isInterviewer ? "Only interviewers can start interviews" : undefined}
-                        onClick={() =>
-                          canStart && !hasCompletedInterview && onStartInterview?.(c)
-                        }
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          if (canStart && !hasCompletedInterview) onStartInterview?.(c);
+                        }}
                         className={`${
                           flex.row
                         } gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors whitespace-nowrap ${
@@ -810,7 +811,10 @@ function CandidatesTable({
                       </button>
                       <button
                         type="button"
-                        onClick={() => onDelete?.(c)}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          onDelete?.(c);
+                        }}
                         title="Remove this candidate from the job"
                         aria-label="Delete candidate"
                         className={`w-7 h-7 ${flex.rowCenter} rounded-lg text-coral-500 hover:bg-coral-50 hover:text-coral-700 transition-colors`}
