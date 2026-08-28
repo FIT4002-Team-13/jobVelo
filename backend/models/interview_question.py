@@ -13,6 +13,14 @@ class SimilarQuestionResult(BaseModel):
     question: str
     reason: str
 
+class FollowUpQuestion(BaseModel):
+    category: Literal["technical", "behavioural"]
+    question: str
+    reason: str
+
+class FollowUpQuestionResult(BaseModel):
+    questions: list[FollowUpQuestion]
+    
 class SuggestedQuestion(BaseModel):
     category: Literal["technical", "behavioural"]
     question: str
@@ -21,3 +29,6 @@ class SuggestedQuestion(BaseModel):
 
 class SuggestedQuestionsList(BaseModel):
     questions: list[SuggestedQuestion]
+
+class FollowUpQuestionsList(BaseModel):
+    questions: list[FollowUpQuestion]
