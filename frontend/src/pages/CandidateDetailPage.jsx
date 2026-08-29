@@ -6,7 +6,7 @@ import StartInterviewModal from '../components/job-candidate/StartInterviewModal
 import EditCandidateForm from '../components/candidate/EditCandidateForm'
 import { card, flex, page } from '../styles/layout'
 import { useAuth } from '../lib/AuthContext.jsx'
-import { api, authedFetch } from '../lib/api.js'
+import { api, authedFetch, downloadFileWithAuth } from '../lib/api.js'
 
 function formatDate(iso) {
   if (!iso) return '--'
@@ -424,7 +424,9 @@ function CandidateInfoCard({ candidate, job, interview, onStartInterview, interv
   const statusClass =
     status === 'SCHEDULED'
       ? 'bg-primary-100 text-primary-600'
-      : status === 'EVALUATED'
+      : status === 'IN PROGRESS'
+      ? 'bg-sky-100 text-sky-600'
+      : status === 'COMPLETED' || status === 'EVALUATED'
       ? 'bg-mint-100 text-mint-700'
       : status === 'HIRED'
       ? 'bg-mint-500 text-white'
@@ -718,6 +720,47 @@ export default function CandidateDetailPage() {
     load()
   }, [candId, jobId, user?.comp_id, refreshKey])
 
+  // Mirrors JobDetailPage's onConfirmStart: resume an existing in-progress/
+  // scheduled interview rather than creating a duplicate, otherwise create
+  // one and jump straight into the live session.
+  async function onConfirmStart() {
+    try {
+      const existingRes = await authedFetch(
+        `/api/interviews?cand_id=${candId}&job_id=${jobId}`
+      )
+      if (existingRes.ok) {
+        const existing = await existingRes.json()
+        const resumable = existing.find(
+          (i) => i.intv_status === 'in_progress' || i.intv_status === 'scheduled'
+        )
+        if (resumable) {
+          navigate(`/interview/${resumable.intv_id}`)
+          return
+        }
+      }
+
+      const res = await authedFetch('/api/interviews', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          cand_id: candId,
+          job_id: jobId,
+          intv_date_time: new Date().toISOString(),
+          intv_status: 'in_progress',
+        }),
+      })
+      const interviewRecord = await res.json()
+      if (!res.ok) {
+        throw new Error(interviewRecord?.detail || 'Failed to start interview.')
+      }
+      navigate(`/interview/${interviewRecord.intv_id}`)
+    } catch (err) {
+      console.error('Failed to start interview', err)
+      alert(err.message || 'Failed to start interview.')
+      setStartTarget(null)
+    }
+  }
+
   if (loading) {
     return (
       <div className={page.loading}>
@@ -742,7 +785,7 @@ export default function CandidateDetailPage() {
         <div className="mb-6 flex items-start justify-between">
           <div>
             <button
-              onClick={() => navigate(-1)}
+              onClick={() => navigate('/candidates')}
               className={`${flex.row} mb-3 gap-2 rounded-lg border border-neutral-200 bg-neutral-0 px-3 py-1.5 text-sm font-semibold text-neutral-600 transition-colors hover:border-primary-200 hover:bg-primary-500/10 hover:text-primary-600`}
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -789,8 +832,8 @@ export default function CandidateDetailPage() {
               jobCand={jobCand}
               interview={interview}
               onViewTranscription={() => {
-                if (!interview?.intv_transcript) return
-                console.log('Open transcript view')
+                if (!interview?.intv_transcript || !interview?.intv_id) return
+                navigate(`/interview/${interview.intv_id}`, { replace: true })
               }}
             />
           </div>
@@ -802,11 +845,15 @@ export default function CandidateDetailPage() {
           candidateTableHeight={230}
           onDownloadCandidateReport={() => {
             if (!interview?.intv_id) return
-            window.open(`/api/interviews/${interview.intv_id}/candidate-report`, '_blank')
+            // No filename arg: the server's Content-Disposition carries
+            // "<kind>-report-<candidate>-<interview datetime>.pdf".
+            downloadFileWithAuth(`/api/interviews/${interview.intv_id}/candidate-report`)
+              .catch((err) => window.alert(err.message || 'Failed to download the report.'))
           }}
           onDownloadInterviewerReport={() => {
             if (!interview?.intv_id) return
-            window.open(`/api/interviews/${interview.intv_id}/interviewer-report`, '_blank')
+            downloadFileWithAuth(`/api/interviews/${interview.intv_id}/interviewer-report`)
+              .catch((err) => window.alert(err.message || 'Failed to download the report.'))
           }}
         />
       </main>
@@ -816,11 +863,12 @@ export default function CandidateDetailPage() {
           candidate={startTarget}
           jobTitle={job?.title}
           onClose={() => setStartTarget(null)}
+          // Resume-or-create via onConfirmStart - the old inline handler
+          // only navigated when an interview record already existed, so
+          // confirming on a fresh candidate silently did nothing.
           onConfirm={() => {
             setStartTarget(null)
-            if (interview?.intv_id) {
-              navigate(`/interview/${interview.intv_id}`)
-            }
+            onConfirmStart()
           }}
         />
       )}
