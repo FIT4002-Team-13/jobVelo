@@ -15,8 +15,9 @@ export default function DefineRoleSection() {
             Define the role. <span className="text-coral-500">Find the person.</span>
           </h2>
           <p className="mt-5 text-lg text-neutral-600 max-w-md">
-            Spin up a polished role spec in seconds. Smart Recruit writes the description,
-            tags requirements and starts sourcing the moment you hit publish.
+            Spin up a role in seconds — title, description, employment type and
+            interview slots. Add candidates and the AI takes it from CV screening
+            to the post-interview report.
           </p>
           <div className="mt-7 flex flex-wrap gap-3">
             {['Front-end Dev', 'Project Manager', 'Senior Full Stack', 'Intern Front-end'].map((t, i) => (
@@ -52,17 +53,24 @@ export default function DefineRoleSection() {
               <span className="text-xs text-neutral-400">×</span>
             </div>
 
+            {/* Mirrors the real Create Job modal's field set: title,
+                description, employment type + candidate slots, recruitment
+                window, salary. */}
             <form className="space-y-4">
               <Field label="Job Title" placeholder="e.g. Senior Frontend Engineer" />
-              <Field label="Job Description" placeholder="Write or let AI draft for you..." textarea />
+              <Field label="Job Description" placeholder="What the role involves, the stack, the team..." textarea />
               <div className="grid grid-cols-2 gap-3">
-                <Field label="Employment Type" placeholder="Full-time" />
+                <Field label="Employment Type" placeholder="Full-Time" />
                 <Field label="No. of Candidates" placeholder="3" />
               </div>
-              <Field label="Expected Salary" placeholder="$80,000 — $100,000" />
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Recruitment Start" placeholder="01/09/2026" />
+                <Field label="Recruitment End" placeholder="30/09/2026" />
+              </div>
+              <Field label="Salary" placeholder="$95,000 / year" />
               <div className="flex items-center justify-end gap-2 pt-2">
                 <button type="button" className="btn-ghost !py-2 !px-4 !text-xs">Cancel</button>
-                <button type="button" className="btn-primary !py-2 !px-4 !text-xs">Publish</button>
+                <button type="button" className="btn-primary !py-2 !px-4 !text-xs">Create Job</button>
               </div>
             </form>
           </div>

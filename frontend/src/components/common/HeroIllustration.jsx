@@ -1,86 +1,138 @@
 import { motion } from 'framer-motion'
-import { Star } from 'lucide-react'
+import { Mic, Sparkles } from 'lucide-react'
+
+// One anchor object, one accessory, one chip - not a collage. The anchor
+// is the product's wow moment (the AI interview report, real palette and
+// anatomy); a small live-interview card peeks out behind it to hint at
+// where the report comes from; the original soft "cloud" backdrop unifies
+// the whole composition.
+
+const SCORE_BARS = [
+  { label: 'Communication',   pct: 84, bar: 'bg-primary-500' },
+  { label: 'Skill',           pct: 76, bar: 'bg-coral-400' },
+  { label: 'Problem Solving', pct: 90, bar: 'bg-mint-500' },
+]
+
+// Fixed pseudo-random heights so the waveform looks organic but renders
+// identically on every visit.
+const WAVE = [12, 20, 9, 24, 15, 27, 12, 21, 10]
 
 export default function HeroIllustration({ className = '' }) {
   return (
     <div className={`relative mx-auto max-w-[560px] aspect-[5/4] ${className}`}>
-      {/* Cloud background */}
+      {/* Cloud backdrop - one soft shape holding the scene together. */}
       <div className="absolute inset-4 rounded-[40%] bg-gradient-to-br from-primary-50 via-white to-mint-50 shadow-lg" />
 
-      {/* Main browser card */}
+      {/* Accessory: live interview, tucked behind the report's top-right. */}
       <motion.div
-        className="absolute left-[8%] top-[18%] w-[62%] rounded-2xl bg-white shadow-xl border border-neutral-100"
+        className="absolute right-[6%] top-[8%] w-[38%] rotate-3 rounded-2xl border border-neutral-100 bg-white p-3.5 shadow-lg"
+        animate={{ y: [0, -9, 0] }}
+        transition={{ duration: 7, repeat: Infinity, ease: 'easeInOut', delay: 0.5 }}
+      >
+        <div className="mb-2.5 flex items-center justify-between">
+          <div className="flex items-center gap-1.5 text-[11px] font-bold text-neutral-700">
+            <span className="grid h-5 w-5 place-items-center rounded-md bg-sky-100">
+              <Mic size={11} className="text-sky-500" />
+            </span>
+            Live interview
+          </div>
+          <span className="flex items-center gap-1 text-[9px] font-bold text-coral-500">
+            <motion.span
+              className="h-1.5 w-1.5 rounded-pill bg-coral-500"
+              animate={{ opacity: [1, 0.25, 1] }}
+              transition={{ duration: 1.4, repeat: Infinity }}
+            />
+            REC
+          </span>
+        </div>
+        <div className="flex h-7 items-center justify-center gap-[3px]">
+          {WAVE.map((h, i) => (
+            <motion.span
+              key={i}
+              className="w-[3px] rounded-pill bg-sky-400"
+              style={{ height: h }}
+              animate={{ scaleY: [1, 0.4, 1] }}
+              transition={{ duration: 1.1, repeat: Infinity, ease: 'easeInOut', delay: i * 0.1 }}
+            />
+          ))}
+        </div>
+      </motion.div>
+
+      {/* Anchor: the AI interview report. */}
+      <motion.div
+        className="absolute left-[6%] top-[22%] z-10 w-[64%] rounded-2xl border border-neutral-100 bg-white p-5 shadow-xl"
         animate={{ y: [0, -8, 0] }}
         transition={{ duration: 6, repeat: Infinity, ease: 'easeInOut' }}
       >
-        <div className="flex items-center gap-1.5 px-4 py-2.5 border-b border-neutral-100">
-          <span className="h-2.5 w-2.5 rounded-pill bg-coral-300" />
-          <span className="h-2.5 w-2.5 rounded-pill bg-mint-300" />
-          <span className="h-2.5 w-2.5 rounded-pill bg-primary-300" />
+        {/* Card header */}
+        <div className="mb-4 flex items-center justify-between">
+          <div className="flex items-center gap-2 text-xs font-bold text-neutral-700">
+            <span className="grid h-6 w-6 place-items-center rounded-md bg-primary-100">
+              <Sparkles size={12} className="text-primary-500" />
+            </span>
+            Interview Report
+          </div>
+          <span className="rounded-pill bg-mint-100 px-2.5 py-0.5 text-[10px] font-bold text-mint-700">
+            ✓ Ready
+          </span>
         </div>
-        <div className="p-4 space-y-3">
-          <div className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded-pill bg-primary-100" />
-            <div className="flex-1 space-y-1.5">
-              <div className="h-2 w-2/3 rounded-pill bg-neutral-200" />
-              <div className="flex gap-0.5">
-                {[...Array(5)].map((_, i) => (
-                  <Star key={i} size={10} className="fill-coral-400 stroke-coral-400" />
-                ))}
-              </div>
+
+        {/* Candidate row */}
+        <div className="mb-4 flex items-center gap-3">
+          <div className="grid h-10 w-10 shrink-0 place-items-center rounded-pill bg-primary-500 text-xs font-bold text-white">
+            SD
+          </div>
+          <div className="flex-1 space-y-1.5">
+            <div className="h-2 w-1/2 rounded-pill bg-neutral-200" />
+            <div className="h-1.5 w-1/3 rounded-pill bg-neutral-100" />
+          </div>
+          {/* Overall score donut - draws itself in on load. */}
+          <div className="relative h-14 w-14 shrink-0">
+            <svg viewBox="0 0 56 56" className="h-full w-full -rotate-90">
+              <circle cx="28" cy="28" r="22" fill="none" strokeWidth="6" className="stroke-neutral-100" />
+              <motion.circle
+                cx="28" cy="28" r="22" fill="none" strokeWidth="6" strokeLinecap="round"
+                className="stroke-primary-500"
+                strokeDasharray={2 * Math.PI * 22}
+                initial={{ strokeDashoffset: 2 * Math.PI * 22 }}
+                animate={{ strokeDashoffset: 2 * Math.PI * 22 * (1 - 0.84) }}
+                transition={{ duration: 1.4, delay: 0.8, ease: 'easeOut' }}
+              />
+            </svg>
+            <div className="absolute inset-0 grid place-items-center">
+              <span className="text-sm font-extrabold text-neutral-800">8.4</span>
             </div>
           </div>
-          {[
-            { bg: 'bg-mint-100',    dot: 'bg-mint-500',    label: 'AI suggests: candidate' },
-            { bg: 'bg-primary-100', dot: 'bg-primary-500', label: 'Set the interview' },
-            { bg: 'bg-coral-100',   dot: 'bg-coral-500',   label: 'Great match for role' },
-          ].map((row) => (
-            <div key={row.label} className="flex items-center gap-2">
-              <span className={`h-4 w-4 rounded-pill ${row.bg} flex items-center justify-center`}>
-                <span className={`h-1.5 w-1.5 rounded-pill ${row.dot}`} />
-              </span>
-              <div className="h-2 flex-1 rounded-pill bg-neutral-100" />
+        </div>
+
+        {/* Score bars - the report's real three metrics. */}
+        <div className="space-y-2.5">
+          {SCORE_BARS.map((b, i) => (
+            <div key={b.label}>
+              <div className="mb-1 flex justify-between text-[10px] font-semibold">
+                <span className="text-neutral-500">{b.label}</span>
+                <span className="tabular-nums text-neutral-600">{(b.pct / 10).toFixed(1)}</span>
+              </div>
+              <div className="h-1.5 overflow-hidden rounded-pill bg-neutral-100">
+                <motion.div
+                  className={`h-full rounded-pill ${b.bar}`}
+                  initial={{ width: 0 }}
+                  animate={{ width: `${b.pct}%` }}
+                  transition={{ duration: 1, delay: 0.5 + i * 0.15, ease: 'easeOut' }}
+                />
+              </div>
             </div>
           ))}
         </div>
       </motion.div>
 
-      {/* Feedback card */}
+      {/* Single chip - kept clear of both cards. */}
       <motion.div
-        className="absolute right-[4%] top-[12%] w-[40%] rounded-2xl bg-white shadow-xl border border-neutral-100 p-3"
-        animate={{ y: [0, -10, 0] }}
-        transition={{ duration: 7, repeat: Infinity, ease: 'easeInOut', delay: 0.5 }}
-      >
-        <div className="text-xs font-bold text-neutral-700 mb-2">Feedback</div>
-        {['bg-mint-200', 'bg-coral-200', 'bg-primary-200'].map((bg, n) => (
-          <div key={n} className="flex items-center gap-2 mb-2 last:mb-0">
-            <div className={`h-7 w-7 rounded-pill ${bg}`} />
-            <div className="flex-1 space-y-1">
-              <div className="h-1.5 w-3/4 rounded-pill bg-neutral-200" />
-              <div className="flex gap-0.5">
-                {[...Array(5)].map((_, i) => (
-                  <Star key={i} size={7} className="fill-coral-400 stroke-coral-400" />
-                ))}
-              </div>
-            </div>
-          </div>
-        ))}
-      </motion.div>
-
-      {/* Floating chips */}
-      <motion.div
-        className="absolute left-[2%] top-[8%] rounded-pill bg-mint-400 text-white text-xs font-semibold px-3 py-1.5 shadow-md"
+        className="absolute bottom-[10%] right-[12%] z-10 rounded-pill bg-mint-400 px-3.5 py-1.5 text-xs font-semibold text-white shadow-md"
         animate={{ y: [0, -6, 0], rotate: [-2, 2, -2] }}
         transition={{ duration: 5, repeat: Infinity, ease: 'easeInOut' }}
       >
         ✓ AI shortlisted
-      </motion.div>
-      <motion.div
-        className="absolute right-[10%] bottom-[12%] rounded-pill bg-primary-500 text-white text-xs font-semibold px-3 py-1.5 shadow-md"
-        animate={{ y: [0, 6, 0] }}
-        transition={{ duration: 4.5, repeat: Infinity, ease: 'easeInOut', delay: 0.3 }}
-      >
-        +12 new candidates
       </motion.div>
     </div>
   )
