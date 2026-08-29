@@ -37,7 +37,9 @@ const STATUS_STYLES = {
 const CANDIDATE_STATUS_STYLES = {
   'NOT SCHEDULED': 'bg-neutral-100 text-neutral-500',
   SCHEDULED:       'bg-primary-100 text-primary-600',
+  'IN PROGRESS':   'bg-sky-100 text-sky-600',
   INCOMPLETE:      'bg-coral-50 text-coral-600',
+  COMPLETED:       'bg-mint-100 text-mint-700',
   EVALUATED:       'bg-sky-100 text-sky-600',
   HIRED:           'bg-mint-500 text-white',
   REJECTED:        'bg-coral-100 text-coral-700',
@@ -542,11 +544,13 @@ function CandidatesTable({
   candidates,
   tab,
   setTab,
+  user,
   onStartInterview,
   onDelete,
   onOpenInterview,
   onOpenCandidate,
 }) {
+  const isInterviewer = user?.role === "interviewer";
   const [search, setSearch] = useState("");
   // SortMenu is only consulted while the SCHEDULES tab is active. The
   // RANKINGS tab is itself a sort ("highest score first") so letting the
@@ -741,55 +745,77 @@ function CandidatesTable({
                 );
                 // Actions: Start Interview is only meaningful for SCHEDULED rows
                 // (so it stays greyed-out on the RANKINGS tab where everything is
-                // typically EVALUATED). Delete is always available - removing a
+                // typically EVALUATED), and is interviewer-only - mirrors the
+                // backend's Depends(require_role("interviewer")) on
+                // POST /api/interviews. Delete is always available - removing a
                 // mis-added candidate from a job shouldn't depend on their state.
-                const canStart = c.status === "SCHEDULED";
+                const canStart = c.status === "SCHEDULED" && isInterviewer;
                 const hasCompletedInterview = Boolean(c.intv_completed);
                 const actionsCell = (
-                  <td className="px-4 py-3">
+                  // stopPropagation: the whole row navigates to the candidate
+                  // page on click - without this, the action buttons would
+                  // fire AND navigate away (which is why Delete appeared to
+                  // do nothing: the confirm modal unmounted immediately).
+                  <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                     <div className={`${flex.row} gap-2`}>
-                      <button
-                        type="button"
-                        disabled={!canStart || hasCompletedInterview}
-                        onClick={() =>
-                          canStart && !hasCompletedInterview && onStartInterview?.(c)
-                        }
-                        className={`${
-                          flex.row
-                        } gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors whitespace-nowrap ${
-                          canStart && !hasCompletedInterview
-                            ? "bg-primary-500 hover:bg-primary-600 text-white"
-                            : "bg-neutral-100 text-neutral-400 cursor-not-allowed"
-                        }`}
-                      >
-                        <svg
-                          width="11"
-                          height="11"
-                          viewBox="0 0 24 24"
-                          fill="currentColor"
+                      {hasCompletedInterview ? (
+                        // Interview done - the primary action becomes reviewing
+                        // it. The interview page renders the stored transcript
+                        // (and the report via View Report) for completed runs.
+                        <button
+                          type="button"
+                          title="View the completed interview's transcription"
+                          onClick={() => c.intv_id && onOpenInterview?.(c.intv_id)}
+                          className={`${flex.row} justify-center w-[150px] gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors whitespace-nowrap bg-mint-100 text-mint-700 hover:bg-mint-200`}
                         >
-                          <polygon points="5 3 19 12 5 21 5 3" />
-                        </svg>
-                        Start Interview
-                      </button>
-                      {/* View - placeholder for the upcoming candidate-detail page.
-                        Kept here so the icon row stays familiar, will get wired
-                        up once /candidates/:id lands. */}
+                          <svg
+                            width="11"
+                            height="11"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          >
+                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                            <polyline points="14 2 14 8 20 8" />
+                            <line x1="16" y1="13" x2="8" y2="13" />
+                            <line x1="16" y1="17" x2="8" y2="17" />
+                          </svg>
+                          View Transcription
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          disabled={!canStart}
+                          title={!isInterviewer ? "Only interviewers can start interviews" : undefined}
+                          onClick={() => canStart && onStartInterview?.(c)}
+                          className={`${
+                            flex.row
+                          } justify-center w-[150px] gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors whitespace-nowrap ${
+                            canStart
+                              ? "bg-primary-500 hover:bg-primary-600 text-white"
+                              : "bg-neutral-100 text-neutral-400 cursor-not-allowed"
+                          }`}
+                        >
+                          <svg
+                            width="11"
+                            height="11"
+                            viewBox="0 0 24 24"
+                            fill="currentColor"
+                          >
+                            <polygon points="5 3 19 12 5 21 5 3" />
+                          </svg>
+                          Start Interview
+                        </button>
+                      )}
                       <button
                         type="button"
-                        title={hasCompletedInterview ? "Open completed interview" : "View candidate details"}
-                        aria-label={hasCompletedInterview ? "Open completed interview" : "View candidate"}
-                        onClick={(event) => {
-                          event.preventDefault();
-                          event.stopPropagation();
-                          if (!hasCompletedInterview || !c.intv_id) return;
-                          onOpenInterview?.(c.intv_id);
-                        }}
-                        className={`w-7 h-7 ${flex.rowCenter} rounded-lg ${
-                          hasCompletedInterview
-                            ? "text-mint-600 hover:bg-mint-50 hover:text-mint-700"
-                            : "text-neutral-400 hover:bg-neutral-100 hover:text-neutral-600"
-                        } transition-colors`}
+                        title="View candidate details"
+                        aria-label="View candidate details"
+                        onClick={() => onOpenCandidate?.(c)}
+                        className={`w-7 h-7 ${flex.rowCenter} rounded-lg text-neutral-400 hover:bg-neutral-100 hover:text-neutral-600 transition-colors`}
                       >
                         <svg
                           width="14"
@@ -805,7 +831,10 @@ function CandidatesTable({
                       </button>
                       <button
                         type="button"
-                        onClick={() => onDelete?.(c)}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          onDelete?.(c);
+                        }}
                         title="Remove this candidate from the job"
                         aria-label="Delete candidate"
                         className={`w-7 h-7 ${flex.rowCenter} rounded-lg text-coral-500 hover:bg-coral-50 hover:text-coral-700 transition-colors`}
@@ -912,6 +941,7 @@ function CandidatesTable({
 export default function JobDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { user } = useAuth();
 
   const [job, setJob] = useState(null);
   const [candidates, setCandidates] = useState([]);
@@ -993,6 +1023,11 @@ export default function JobDetailPage() {
       }),
     });
     const interview = await res.json();
+    if (!res.ok) {
+      alert(interview?.detail || "Failed to start interview.");
+      setStartTarget(null);
+      return;
+    }
     navigate(`/interview/${interview.intv_id}`);
   }
 
@@ -1217,6 +1252,7 @@ export default function JobDetailPage() {
             candidates={candidates}
             tab={tab}
             setTab={setTab}
+            user={user}
             onStartInterview={(c) => setStartTarget(c)}
             onDelete={(c) => setDeleteTarget(c)}
             onOpenInterview={(intvId) => navigate(`/interview/${intvId}`)}

@@ -37,6 +37,8 @@ const STATUS_STYLES = {
 const CANDIDATE_STATUS_STYLES = {
   'NOT SCHEDULED': 'bg-neutral-100 text-neutral-500',
   SCHEDULED:       'bg-primary-100 text-primary-600',
+  'IN PROGRESS':   'bg-sky-100 text-sky-600',
+  COMPLETED:       'bg-mint-100 text-mint-700',
   EVALUATED:       'bg-mint-100 text-mint-700',
   HIRED:           'bg-mint-500 text-white',
   REJECTED:        'bg-coral-100 text-coral-700',

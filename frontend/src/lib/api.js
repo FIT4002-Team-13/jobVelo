@@ -27,6 +27,38 @@ export function authedFetch(url, init = {}) {
   const headers = { ...(init.headers || {}) }
   if (token) headers.Authorization = `Bearer ${token}`
   return fetch(`${FETCH_BASE}${url}`, { ...init, headers })
+  // return fetch(url, { ...init, headers })
+
+}
+
+// Download a file from an auth-protected endpoint and hand it to the
+// browser as a save-as. window.open can't carry the Bearer token, so we
+// fetch the bytes ourselves and click a temporary object-URL link.
+export async function downloadFileWithAuth(fileUrl, filename) {
+  const res = await authedFetch(fileUrl)
+  if (!res.ok) {
+    let message = `Download failed (${res.status})`
+    try {
+      const data = await res.json()
+      if (typeof data?.detail === 'string') message = data.detail
+    } catch {
+      /* non-JSON error body */
+    }
+    throw new ApiError(message, { status: res.status })
+  }
+  // Prefer the server's Content-Disposition filename (it carries the
+  // candidate name + interview datetime); an explicit `filename` arg wins.
+  const disposition = res.headers.get('content-disposition') || ''
+  const serverName = disposition.match(/filename="?([^";]+)"?/)?.[1]
+
+  const blobUrl = URL.createObjectURL(await res.blob())
+  const a = document.createElement('a')
+  a.href = blobUrl
+  a.download = filename || serverName || 'download'
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  setTimeout(() => URL.revokeObjectURL(blobUrl), 10_000)
 }
 
 // Auto-detects JSON vs FormData bodies:

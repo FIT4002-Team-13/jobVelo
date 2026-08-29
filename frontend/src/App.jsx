@@ -7,6 +7,7 @@ import LoginPage from './pages/LoginPage.jsx'
 import SignupPage from './pages/SignupPage.jsx'
 import CreateCompanyPage from './pages/CreateCompanyPage.jsx'
 import DashboardPage from './pages/DashboardPage.jsx'
+import SchedulesPage from './pages/SchedulesPage.jsx'
 import AdminDashboardPage from './pages/AdminDashboardPage.jsx'
 import JobsPage from './pages/JobsPage'
 import JobDetailPage from './pages/JobDetailPage'
@@ -50,6 +51,14 @@ export default function App() {
             }
           />
           <Route
+            path="/schedules"
+            element={
+              <RequireAuth>
+                <SchedulesPage />
+              </RequireAuth>
+            }
+          />
+          <Route
             path="/jobs"
             element={
               <RequireAuth>
@@ -69,12 +78,12 @@ export default function App() {
             path="/profile" 
             element={
               <Profile />
-            } 
-          />
-          <Route 
-            path="/profile" 
-            element={
-              <Profile />
+          //   } 
+          // />
+          // <Route 
+          //   path="/profile" 
+          //   element={
+          //     <Profile />
             } 
           />
           {/* CV analysis report, keyed by the job-candidate link. Deep-
