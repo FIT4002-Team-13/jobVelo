@@ -13,7 +13,7 @@ PyJWT==2.9.0
 deepgram-sdk==3.7.7
 
 # LLM providers - kept as separate services so callers pick explicitly
-openai==1.54.0
+openai==3.3.1
 # openai==1.54.0 passes a `proxies` kwarg into httpx.AsyncClient(...) that
 # httpx removed in 0.28. Pin httpx explicitly so pip doesn't silently
 # resolve the latest (incompatible) version - this broke every OpenAI call
