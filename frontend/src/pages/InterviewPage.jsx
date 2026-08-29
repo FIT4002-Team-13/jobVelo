@@ -1001,6 +1001,7 @@ export default function InterviewPage() {
           if (Array.isArray(data.intv_sections) && data.intv_sections.length > 0) {
             setSections(data.intv_sections);
             setSectionStates(data.intv_sections.map(() => ({ status: "idle", elapsed: 0 })));
+            sectionIntervals.current.forEach((intv) => clearInterval(intv));
             sectionIntervals.current = new Array(data.intv_sections.length).fill(null);
             if (!completed) startSection(0);
           } else {
@@ -1014,6 +1015,7 @@ export default function InterviewPage() {
                 if (Array.isArray(plan) && plan.length > 0) {
                   setSections(plan);
                   setSectionStates(plan.map(() => ({ status: "idle", elapsed: 0 })));
+                  sectionIntervals.current.forEach((intv) => clearInterval(intv));
                   sectionIntervals.current = new Array(plan.length).fill(null);
                   if (!completed) startSection(0);
                   fetch(`/api/interviews/${id}`, {
