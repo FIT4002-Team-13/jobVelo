@@ -881,6 +881,14 @@ export default function InterviewPage() {
   async function ignoreQuestion(question) {
     if (!jobId) return;
 
+    // US19: if the question being ignored is a follow-up, remove it from the follow-up list only.
+    if (question.isFollowUp) {
+      setFollowUpQuestions((current) =>
+        current.filter((q) => q.id !== question.id)
+      );
+      return;
+    }
+
     // Read + update from the ref so a second click in the same tick sees
     // the freshest list (React state hasn't re-rendered yet).
     const remaining = questionsRef.current.filter((q) => q.id !== question.id);
