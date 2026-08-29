@@ -53,7 +53,7 @@ function avatarColor(name = "") {
   return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
 }
 
-function normaliseQuestion(question, index = 0, isFollowUp = false) {
+function normaliseQuestion(question, index = 0, isFollowUp = false, isNew = false) {
   const isTechnical = question.category === "technical";
 
   return {
@@ -66,6 +66,7 @@ function normaliseQuestion(question, index = 0, isFollowUp = false) {
     text: question.question,
     why: question.reason,
     isFollowUp,
+    isNew,
   };
 }
 
@@ -163,7 +164,9 @@ function QuestionCard({ q, onMoreLike, onIgnore, isGeneratingSimilar }) {
   const [whyOpen, setWhyOpen] = useState(false);
   return (
     <div
-      className={`${flex.col} gap-3 bg-neutral-0 border border-neutral-200 rounded-2xl p-4 w-[280px] h-[345px] shrink-0 overflow-y-auto scrollbar-hide`}
+      className={`${flex.col} gap-3 bg-neutral-0 border border-neutral-200 rounded-2xl p-4 w-[280px] h-[345px] shrink-0 overflow-y-auto scrollbar-hide ${
+        q.isNew ? "new-question-glow" : ""
+      }`}
     >
       <div className={`${flex.rowBetween}`}>
 
@@ -804,7 +807,7 @@ export default function InterviewPage() {
         );
       }
 
-      const similarQuestion = normaliseQuestion(data);
+      const similarQuestion = normaliseQuestion(data, 0, false, true);
 
       setQuestions((current) => [
         similarQuestion,
@@ -859,7 +862,7 @@ export default function InterviewPage() {
       const newFollowUps = (data.questions || [])
         .slice(0, 2)
         .map((question, index) =>
-          normaliseQuestion(question, index, true)
+          normaliseQuestion(question, index, true, true),
         );
 
       setFollowUpQuestions((prev) => [
@@ -944,7 +947,8 @@ export default function InterviewPage() {
         );
       }
 
-      const replacement = normaliseQuestion(data);
+      const replacement = normaliseQuestion(data, 0, false, true);      
+      
       setQuestions((current) => {
         const next = [...current, replacement];
         questionsRef.current = next;
