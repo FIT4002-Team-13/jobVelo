@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 
 import Sidebar from '../components/common/Sidebar'
+import ReportSections from '../components/interview/ReportSections.jsx'
 import StartInterviewModal from '../components/job-candidate/StartInterviewModal'
 import EditCandidateForm from '../components/candidate/EditCandidateForm'
 import { card, flex, page } from '../styles/layout'
@@ -167,60 +168,8 @@ function CandidateScorePanel({ jobCand, interview, onViewTranscription }) {
   )
 }
 
-function ReportCard({ title, children, bgClass, titleColor}) {
-  return (
-    <div className={`h-full rounded-2xl p-6 ${bgClass}`}>
-      <h3 className={`mb-1 text-md font-bold uppercase ${titleColor}`}>
-        {title}
-      </h3>
-      {children}
-    </div>
-  )
-}
-
-function BulletList({ items = [] }) {
-  if (!items.length) return null
-
-  return (
-    <ul className="mb-6 list-disc space-y-1 pl-5 text-sm leading-7 text-neutral-900">
-      {items.map((item, index) => (
-        <li key={`${item}-${index}`}>{item}</li>
-      ))}
-    </ul>
-  )
-}
-
-// One requirement row inside the JOB REQUIREMENTS card - a pass/fail tag
-// next to the requirement text, with the AI's one-line justification below.
-// Mirrors the Suggested Questions panel's "source"-style pattern: a claim
-// tied to concrete evidence, not just a bare bullet.
-function RequirementRow({ requirement, addressed, justification }) {
-  return (
-    <li className="list-none">
-      <div className="flex items-start gap-2">
-        <span
-          className={`mt-0.5 shrink-0 rounded-pill px-2 py-0.5 text-[10px] font-bold uppercase ${
-            addressed
-              ? 'bg-mint-100 text-mint-700'
-              : 'bg-coral-100 text-coral-600'
-          }`}
-        >
-          {addressed ? 'Addressed' : 'Not addressed'}
-        </span>
-        <p className="text-sm font-semibold leading-tight text-neutral-900">
-          {requirement}
-        </p>
-      </div>
-      <p className="mt-1 pl-1 text-xs leading-5 text-neutral-500">
-        {justification}
-      </p>
-    </li>
-  )
-}
-
 function FeedbackPanel({
   interview,
-  candidateTableHeight = 230,
   onDownloadCandidateReport,
   onDownloadInterviewerReport,
 }) {
@@ -235,22 +184,6 @@ function FeedbackPanel({
   const interviewerReport = interview?.intv_interviewer_report
   const activeReport      = activeTab === 'candidate' ? candidateReport : interviewerReport
   const hasActiveReport   = !!activeReport
-  // Panel grows to full height when either tab has something to show, so
-  // switching between tabs doesn't make the card jump in size if only one
-  // report has been generated so far.
-  const hasAnyReport      = !!candidateReport || !!interviewerReport
-  const panelHeight       = hasAnyReport ? candidateTableHeight : candidateTableHeight / 2
-
-  const summary = activeReport?.summary ?? ''
-  const strengthsItems = activeReport?.strengths?.items ?? []
-  const strengthsJustification = activeReport?.strengths?.justification ?? ''
-  const improvementsItems = activeReport?.improvements?.items ?? []
-  const improvementsJustification = activeReport?.improvements?.justification ?? ''
-  // Only the candidate report is scored against job requirements - the
-  // interviewer report evaluates question quality/pacing, not requirement
-  // coverage, so this stays empty (and the card hidden) on that tab.
-  const requirementsMapping =
-    activeTab === 'candidate' ? activeReport?.requirements_mapping ?? [] : []
 
   const handleDownload = () => {
     // Only fire the download when the report actually exists on the doc -
@@ -272,10 +205,7 @@ function FeedbackPanel({
     }`
 
   return (
-    <section
-      className={`${card.base} ${flex.col} w-full gap-3`}
-      style={{ minHeight: `${panelHeight}px` }}
-    >
+    <section className={`${card.base} ${flex.col} w-full gap-4`}>
       <div className={flex.rowBetween}>
         <h2 className="text-lg font-bold text-neutral-800">Reports</h2>
 
@@ -315,71 +245,20 @@ function FeedbackPanel({
       </div>
 
       {hasActiveReport ? (
-        <div
-          className={`grid flex-1 gap-6 ${
-            requirementsMapping.length ? 'grid-cols-4' : 'grid-cols-3'
-          }`}
-        >
-          <ReportCard title="SUMMARY" bgClass="bg-neutral-50">
-            <p className="text-sm leading-7 text-neutral-900">{summary}</p>
-          </ReportCard>
-
-          <ReportCard
-            title="STRENGTHS"
-            titleColor="text-mint-700"
-            bgClass="bg-mint-50"
-          >
-            <BulletList items={strengthsItems} />
-
-            <h4 className="mb-2 text-md font-bold uppercase text-mint-700">
-              JUSTIFICATION
-            </h4>
-            <p className="text-sm leading-7 text-neutral-900">
-              {strengthsJustification}
-            </p>
-          </ReportCard>
-
-          <ReportCard
-            title="IMPROVEMENTS"
-            titleColor="text-coral-500"
-            bgClass="bg-coral-50"
-          >
-            <BulletList items={improvementsItems} />
-
-            <h4 className="mb-2 text-md font-bold uppercase text-coral-500">
-              JUSTIFICATION
-            </h4>
-            <p className="text-sm leading-7 text-neutral-900">
-              {improvementsJustification}
-            </p>
-          </ReportCard>
-
-          {requirementsMapping.length > 0 && (
-            <ReportCard
-              title="JOB REQUIREMENTS"
-              titleColor="text-primary-600"
-              bgClass="bg-primary-50"
-            >
-              <ul className="space-y-3">
-                {requirementsMapping.map((item, index) => (
-                  <RequirementRow
-                    key={`${item.requirement}-${index}`}
-                    requirement={item.requirement}
-                    addressed={item.addressed}
-                    justification={item.justification}
-                  />
-                ))}
-              </ul>
-            </ReportCard>
-          )}
-        </div>
+        // Only the candidate report is mapped to job requirements - the
+        // interviewer report evaluates question quality/pacing, not
+        // requirement coverage.
+        <ReportSections
+          report={activeReport}
+          showRequirements={activeTab === 'candidate'}
+        />
       ) : (
         // Per-tab empty state - shows on whichever tab is active when that
         // specific report hasn't been generated yet. Switching tabs still
         // works, so a user can see the other tab's report if only one has
         // landed.
-        <div className="flex flex-1 items-center justify-center rounded-2xl bg-neutral-50 px-6 py-10">
-          <p className="text-center text-md font-semibold text-neutral-500">
+        <div className="flex items-center justify-center rounded-2xl bg-neutral-50 px-6 py-10">
+          <p className="text-center text-sm font-semibold text-neutral-500">
             No {activeTab} report generated yet.
           </p>
         </div>
@@ -856,8 +735,6 @@ export default function CandidateDetailPage() {
 
         <FeedbackPanel
           interview={interview}
-          jobCand={jobCand}
-          candidateTableHeight={230}
           onDownloadCandidateReport={() => {
             if (!interview?.intv_id) return
             // No filename arg: the server's Content-Disposition carries

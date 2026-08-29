@@ -128,18 +128,48 @@ async def get_interview(intv_id: str) -> InterviewOut:
 
     return interview_helper(interview)
 
-def _transcript_to_text(entries: list[dict]) -> str:
-    """Flatten transcript entries into "[mm:ss] Speaker: text" lines for
-    the LLM. Skips empty lines and in-flight partials defensively."""
-    lines = []
+def _merge_consecutive_turns(entries: list[dict]) -> list[dict]:
+    """Merge back-to-back fragments from the SAME speaker into one turn.
+
+    Live speech-to-text emits many short partial fragments per utterance,
+    each with its own timestamp - so a single spoken sentence is split
+    across several entries. When the report LLM later quotes "verbatim from
+    one line" it lands on a fragment and the evidence reads as a cut-off
+    half-sentence. Stitching consecutive same-speaker fragments into one
+    block (keeping the FIRST fragment's timestamp as the turn's marker) means
+    each line the LLM sees is a whole utterance, so it can quote a complete
+    sentence anchored to a real timestamp.
+    """
+    merged: list[dict] = []
     for e in entries or []:
         text = (e.get("text") or "").strip()
         if not text:
             continue
         speaker = e.get("speaker") or "Unknown"
+        if merged and merged[-1]["speaker"] == speaker:
+            # Same speaker still talking - append to the open turn. A space
+            # joins fragments; existing terminal punctuation is preserved.
+            merged[-1]["text"] = f"{merged[-1]['text']} {text}".strip()
+        else:
+            merged.append(
+                {
+                    "speaker": speaker,
+                    "timestamp": e.get("timestamp") or "",
+                    "text": text,
+                }
+            )
+    return merged
+
+
+def _transcript_to_text(entries: list[dict]) -> str:
+    """Flatten transcript entries into "[mm:ss] Speaker: text" lines for the
+    LLM, one line per speaker TURN (consecutive same-speaker fragments are
+    merged first) so quotes come out as complete sentences, not fragments."""
+    lines = []
+    for e in _merge_consecutive_turns(entries):
         timestamp = e.get("timestamp") or ""
         prefix = f"[{timestamp}] " if timestamp else ""
-        lines.append(f"{prefix}{speaker}: {text}")
+        lines.append(f"{prefix}{e['speaker']}: {e['text']}")
     return "\n".join(lines)
 
 

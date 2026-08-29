@@ -62,11 +62,44 @@ def _body(pdf: _ReportPDF, text: str) -> None:
     pdf.multi_cell(0, 5.5, _latin(text), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
 
 
-def _bullets(pdf: _ReportPDF, items: list[str]) -> None:
-    pdf.set_font("Helvetica", "", 10)
-    pdf.set_text_color(*_INK)
+def _point_text(item) -> str:
+    """A feedback item is either the legacy plain string or the US28
+    {point, evidence} dict."""
+    if isinstance(item, dict):
+        return item.get("point") or ""
+    return str(item)
+
+
+def _evidence_of(item) -> list[dict]:
+    if isinstance(item, dict) and isinstance(item.get("evidence"), list):
+        return item["evidence"]
+    return []
+
+
+def _evidence_lines(pdf: _ReportPDF, evidence: list[dict]) -> None:
+    """Render the timestamped quotes under a bullet, indented and muted so
+    the point stays the headline and the evidence reads as support."""
+    for ev in evidence:
+        if not isinstance(ev, dict):
+            continue
+        quote = (ev.get("quote") or "").strip()
+        if not quote:
+            continue
+        ts = (ev.get("timestamp") or "").strip()
+        prefix = f'[{ts}] ' if ts else ""
+        pdf.set_x(pdf.l_margin + 5)
+        pdf.set_font("Helvetica", "I", 9)
+        pdf.set_text_color(*_MUTED)
+        pdf.multi_cell(0, 4.8, _latin(f'{prefix}"{quote}"'), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+
+
+def _bullets(pdf: _ReportPDF, items: list) -> None:
     for item in items:
-        pdf.multi_cell(0, 5.5, _latin(f"-  {item}"), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+        pdf.set_font("Helvetica", "", 10)
+        pdf.set_text_color(*_INK)
+        pdf.multi_cell(0, 5.5, _latin(f"-  {_point_text(item)}"), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+        _evidence_lines(pdf, _evidence_of(item))
+        pdf.ln(0.5)
 
 
 def _justification(pdf: _ReportPDF, text: str | None) -> None:
@@ -198,6 +231,26 @@ def build_interview_report_pdf(
         _justification(pdf, improvements.get("justification"))
     else:
         _body(pdf, "Nothing noted.")
+
+    # ── Job requirements mapping (candidate variant only, US28) ──────────
+    requirements = report.get("requirements_mapping") or []
+    if kind == "candidate" and requirements:
+        _heading(pdf, "Job Requirements")
+        for req in requirements:
+            if not isinstance(req, dict):
+                continue
+            addressed = bool(req.get("addressed"))
+            tag = "[MET]" if addressed else "[GAP]"
+            pdf.set_font("Helvetica", "B", 10)
+            pdf.set_text_color(*(_MINT if addressed else _CORAL))
+            pdf.cell(pdf.get_string_width(_latin(tag)) + 3, 5.5, _latin(tag))
+            pdf.set_font("Helvetica", "", 10)
+            pdf.set_text_color(*_INK)
+            pdf.multi_cell(0, 5.5, _latin(req.get("requirement") or ""), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+            _evidence_lines(pdf, req.get("evidence") if isinstance(req.get("evidence"), list) else [])
+            if not (req.get("evidence") or addressed) and req.get("justification"):
+                _justification(pdf, req.get("justification"))
+            pdf.ln(0.5)
 
     # ── Section 2: full transcription, always on its own page ────────────
     entries = [e for e in (transcript or []) if (e.get("text") or "").strip()]

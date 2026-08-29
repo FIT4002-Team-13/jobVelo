@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 # Interview cycle for scheduling + running + post-interview state.
 InterviewStatus = Literal["not_scheduled", "scheduled", "in_progress", "completed", "cancelled"]
@@ -16,13 +16,54 @@ class TranscriptEntry(BaseModel):
     text: str
     comment: str | None = None
 
+
+class EvidenceRef(BaseModel):
+    """One timestamped transcript quote backing a feedback point (US28).
+
+    `timestamp` is the minutes:seconds marker from the transcript entry the
+    quote came from; `quote` is a short verbatim snippet of the candidate's
+    own words. The frontend hides these behind a per-point disclosure so the
+    report stays scannable but every claim is auditable.
+    """
+
+    timestamp: str = ""
+    quote: str
+
+
+class FeedbackPoint(BaseModel):
+    """A single strength/improvement point plus 0-2 pieces of transcript
+    evidence.
+
+    Backward compatibility: reports generated before US28 stored each item
+    as a plain string, so the section validator below coerces a bare string
+    into `FeedbackPoint(point=<string>, evidence=[])` - old documents (and
+    any LLM run that still emits strings) keep loading without a migration.
+    """
+
+    point: str
+    evidence: list[EvidenceRef] = Field(default_factory=list)
+
+
 class InterviewFeedbackSection(BaseModel):
     """
     Create/update payload for one section of the interview feedback report.
     """
 
-    items: list[str] = Field(default_factory=list)
+    items: list[FeedbackPoint] = Field(default_factory=list)
+    # Kept for backward compatibility with pre-US28 reports; the per-point
+    # evidence has superseded it, so new reports leave it null.
     justification: str | None = None
+
+    @field_validator("items", mode="before")
+    @classmethod
+    def _coerce_items(cls, value):
+        """Accept the legacy list[str] shape as well as list[FeedbackPoint]."""
+        if not isinstance(value, list):
+            return value
+        return [
+            {"point": item, "evidence": []} if isinstance(item, str) else item
+            for item in value
+        ]
 
 
 class RequirementMapping(BaseModel):
@@ -30,12 +71,15 @@ class RequirementMapping(BaseModel):
 
     There's no structured requirements list on a job (just a free-text
     `description`), so `requirement` is itself LLM-extracted from that
-    description/title at report-generation time - see US28.
+    description/title at report-generation time - see US28. `evidence`
+    carries the timestamped candidate quotes that show the requirement was
+    addressed (empty when it wasn't).
     """
 
     requirement: str
     addressed: bool
-    justification: str
+    justification: str = ""
+    evidence: list[EvidenceRef] = Field(default_factory=list)
 
 
 class InterviewFeedback(BaseModel):

@@ -3,6 +3,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import { flex, card, button, badge, modal } from "../styles/layout";
 import { useAuth } from "../lib/AuthContext.jsx";
 import { authedFetch } from "../lib/api.js";
+import ReportSections from "../components/interview/ReportSections.jsx";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -190,38 +191,7 @@ function ScoreDonut({ value }) {
   );
 }
 
-// One strengths/improvements card. `tone` picks the tinted palette so the
-// pair reads like the report cards on the candidate detail page.
-function FeedbackListCard({ title, section, tone }) {
-  const palette =
-    tone === "mint"
-      ? { bg: "bg-mint-50", heading: "text-mint-700" }
-      : { bg: "bg-coral-50", heading: "text-coral-600" };
-  const items = section?.items ?? [];
-  return (
-    <div className={`rounded-2xl p-4 ${palette.bg}`}>
-      <h4 className={`mb-2 text-xs font-bold uppercase tracking-wide ${palette.heading}`}>
-        {title}
-      </h4>
-      {items.length === 0 ? (
-        <p className="text-xs italic text-neutral-400">Nothing noted.</p>
-      ) : (
-        <ul className="list-disc space-y-1 pl-4 text-sm leading-relaxed text-neutral-800">
-          {items.map((item, i) => (
-            <li key={`${item}-${i}`}>{item}</li>
-          ))}
-        </ul>
-      )}
-      {section?.justification && (
-        <p className="mt-2 text-xs leading-relaxed text-neutral-500">
-          {section.justification}
-        </p>
-      )}
-    </div>
-  );
-}
-
-function ReportBody({ report, scores }) {
+function ReportBody({ report, scores, showRequirements }) {
   const scoreRows = scores
     ? [
         { label: "Communication", score: scores.communication },
@@ -234,7 +204,7 @@ function ReportBody({ report, scores }) {
     : null;
 
   return (
-    <div className={`${flex.col} gap-4`}>
+    <div className={`${flex.col} gap-5`}>
       {/* Result card - candidate tab only (the interviewer isn't rated). */}
       {scoreRows && (
         <div className="rounded-2xl border border-neutral-200 p-5">
@@ -252,19 +222,11 @@ function ReportBody({ report, scores }) {
         </div>
       )}
 
-      <div className="grid grid-cols-2 gap-4">
-        <FeedbackListCard title="Strengths" section={report?.strengths} tone="mint" />
-        <FeedbackListCard title="Improvements" section={report?.improvements} tone="coral" />
-      </div>
-
-      <div className="rounded-2xl bg-neutral-50 p-4">
-        <h4 className="mb-2 text-xs font-bold uppercase tracking-wide text-neutral-500">
-          Summary
-        </h4>
-        <p className="text-sm leading-relaxed text-neutral-800">
-          {report?.summary || "No summary generated."}
-        </p>
-      </div>
+      {/* Same summary / strengths / improvements / job-requirements body the
+          candidate detail page uses, with per-point timestamped evidence
+          behind the chevron disclosure. "stack" = single column for the
+          narrow modal. */}
+      <ReportSections report={report} showRequirements={showRequirements} variant="stack" />
     </div>
   );
 }
@@ -362,9 +324,17 @@ function InterviewReportModal({
             </div>
 
             {isCandidateTab ? (
-              <ReportBody report={data.candidate_report} scores={data.scores} />
+              <ReportBody
+                report={data.candidate_report}
+                scores={data.scores}
+                showRequirements
+              />
             ) : (
-              <ReportBody report={data.interviewer_report} scores={null} />
+              <ReportBody
+                report={data.interviewer_report}
+                scores={null}
+                showRequirements={false}
+              />
             )}
 
             <div className={`${flex.row} gap-3 pt-1`}>
