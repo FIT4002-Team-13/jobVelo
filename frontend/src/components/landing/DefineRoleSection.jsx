@@ -49,28 +49,65 @@ export default function DefineRoleSection() {
                 <span className="h-2.5 w-2.5 rounded-pill bg-mint-300" />
                 <span className="h-2.5 w-2.5 rounded-pill bg-primary-300" />
               </div>
-              <div className="text-sm font-bold">Create Job</div>
+              <div className="text-sm font-bold">Create Job Posting</div>
               <span className="text-xs text-neutral-400">×</span>
             </div>
 
-            {/* Mirrors the real Create Job modal's field set: title,
-                description, employment type + candidate slots, recruitment
-                window, salary. */}
+            {/* Mirrors the REAL Create Job modal - same fields, same order,
+                same controls: title, description, recruitment dates,
+                employment-type checkboxes, candidate slots + salary with
+                the $ prefix and Hourly/Yearly rate, and a Publish button. */}
             <form className="space-y-4">
-              <Field label="Job Title" placeholder="e.g. Senior Frontend Engineer" />
-              <Field label="Job Description" placeholder="What the role involves, the stack, the team..." textarea />
+              <Field label="Job Title *" placeholder="eg. Senior Software Engineer" />
+              <Field label="Description" placeholder="What the role involves, the stack, the team..." textarea />
               <div className="grid grid-cols-2 gap-3">
-                <Field label="Employment Type" placeholder="Full-Time" />
-                <Field label="No. of Candidates" placeholder="3" />
+                <Field label="Recruitment Start Date *" placeholder="01/09/2026" />
+                <Field label="Recruitment End Date *" placeholder="30/09/2026" />
               </div>
-              <div className="grid grid-cols-2 gap-3">
-                <Field label="Recruitment Start" placeholder="01/09/2026" />
-                <Field label="Recruitment End" placeholder="30/09/2026" />
+              <div>
+                <span className="block text-[11px] font-semibold text-neutral-500 mb-1.5">Employment Type *</span>
+                <div className="flex flex-wrap gap-x-4 gap-y-1.5">
+                  {['Full-time', 'Part-time', 'Casual', 'Internship'].map((t, i) => (
+                    <span key={t} className="flex items-center gap-1.5 text-xs text-neutral-600">
+                      <span
+                        className={`grid h-3.5 w-3.5 place-items-center rounded-[4px] border ${
+                          i === 0
+                            ? 'border-primary-500 bg-primary-500 text-[9px] font-bold text-white'
+                            : 'border-neutral-300 bg-white'
+                        }`}
+                      >
+                        {i === 0 ? '✓' : ''}
+                      </span>
+                      {t}
+                    </span>
+                  ))}
+                </div>
               </div>
-              <Field label="Salary" placeholder="$95,000 / year" />
+              <div className="grid grid-cols-[96px_1fr] gap-3">
+                <Field label="No. of Candidates *" placeholder="3" />
+                <div>
+                  <span className="block text-[11px] font-semibold text-neutral-500 mb-1">Salary</span>
+                  <div className="flex items-center gap-3">
+                    <div className="flex flex-1 items-center overflow-hidden rounded-lg border border-neutral-200">
+                      <span className="border-r border-neutral-200 bg-neutral-50 px-2 py-2 text-xs text-neutral-400">$</span>
+                      <span className="px-2 text-xs text-neutral-400">100k</span>
+                    </div>
+                    {['Hourly', 'Yearly'].map((t, i) => (
+                      <span key={t} className="flex items-center gap-1 text-xs text-neutral-600">
+                        <span
+                          className={`h-3 w-3 rounded-pill border ${
+                            i === 1 ? 'border-primary-500 bg-primary-500 shadow-[inset_0_0_0_2px_white]' : 'border-neutral-300 bg-white'
+                          }`}
+                        />
+                        {t}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              </div>
               <div className="flex items-center justify-end gap-2 pt-2">
                 <button type="button" className="btn-ghost !py-2 !px-4 !text-xs">Cancel</button>
-                <button type="button" className="btn-primary !py-2 !px-4 !text-xs">Create Job</button>
+                <button type="button" className="btn-primary !py-2 !px-4 !text-xs">Publish</button>
               </div>
             </form>
           </div>
