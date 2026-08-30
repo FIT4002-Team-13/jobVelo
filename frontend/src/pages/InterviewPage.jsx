@@ -651,9 +651,6 @@ export default function InterviewPage() {
     questionsRef.current = questions;
   }, [questions]);
 
-  const [isCompleting, setIsCompleting] = useState(false);
-  const [evaluation, setEvaluation] = useState(null);
-
   useEffect(() => {
     const element = transcriptContainerRef.current;
     if (element) {
