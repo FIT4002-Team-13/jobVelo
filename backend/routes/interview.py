@@ -6,7 +6,7 @@ from bson import ObjectId
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 
 from database import get_db
-from dependencies import get_current_user, require_role
+from dependencies import get_current_comp_id, get_current_user, require_role
 from models.interview import (
     InterviewCompleteOut,
     InterviewCompleteRequest,
@@ -16,14 +16,14 @@ from models.interview import (
     InterviewOut,
     InterviewScores,
     InterviewUpdate,
+    TranscriptEntry,
 )
 
 from models.job_candidate import (
     CandidateRatings,
-    JobCandidateEvaluationOut,
     SkillRating,
 )
-from services.openai_service import rate_candidate_skills, generate_interview_reports
+from services.openai_service import generate_interview_reports, rate_candidate_skills
 from services.transcrip import build_transcript_pdf
 
 router = APIRouter(prefix="/api/interviews", tags=["interviews"])
@@ -176,11 +176,41 @@ def _has_non_interviewer_speech(entries: list[dict], interviewer_names: set[str]
     return False
 
 
-def _clamp_score(value) -> float:
-    try:
-        return round(min(10.0, max(0.0, float(value))), 1)
-    except (TypeError, ValueError):
-        return 0.0
+def _zero_ratings() -> CandidateRatings:
+    return CandidateRatings(
+        technical_skills=SkillRating(
+            skill="Technical Skills",
+            score=0,
+            explanation=(
+                "No candidate transcript evidence was available to evaluate technical skills."
+            ),
+            evidence=[],
+        ),
+        communication=SkillRating(
+            skill="Communication",
+            score=0,
+            explanation=(
+                "No candidate transcript evidence was available to evaluate communication."
+            ),
+            evidence=[],
+        ),
+        problem_solving=SkillRating(
+            skill="Problem Solving",
+            score=0,
+            explanation=(
+                "No candidate transcript evidence was available to evaluate problem-solving ability."
+            ),
+            evidence=[],
+        ),
+    )
+
+
+def _scores_from_ratings(ratings: CandidateRatings) -> InterviewScores:
+    return InterviewScores(
+        communication=ratings.communication.score,
+        skill=ratings.technical_skills.score,
+        problem_solving=ratings.problem_solving.score,
+    )
 
 
 def _cv_analysis_to_text(doc: dict) -> str:
@@ -232,26 +262,23 @@ async def _get_interviewer_name(db, intv_id: str) -> str | None:
 @router.post(
     "/{intv_id}/complete",
     response_model=InterviewCompleteOut,
-    summary="Finish an interview: persist the transcript, generate both LLM reports, and score the candidate.",
+    summary="Finish an interview: persist the transcript, generate both LLM reports, and rate the candidate.",
 )
 async def complete_interview(
     intv_id: str,
     payload: InterviewCompleteRequest,
     _user: dict = Depends(require_role("interviewer")),
+    comp_id: ObjectId = Depends(get_current_comp_id),
 ) -> InterviewCompleteOut:
     """Called when the interviewer clicks Complete.
 
     1. Persists the final transcript + duration and marks the interview
        "completed".
-    2. Runs one LLM pass over the transcript producing the candidate
-       report (summary / strengths / improvements + three 0-10 ratings)
-       and the interviewer coaching report (no ratings).
-    3. Mirrors the ratings onto the job_candidates link (which also flips
-       the application status to EVALUATED, same as the manual scores
-       endpoint).
+    2. Generates the candidate and interviewer feedback reports.
+    3. Generates and stores the candidate ratings with transcript evidence.
 
-    Idempotent: re-calling on an interview that already has both reports
-    returns the stored ones without another LLM run.
+    Idempotent: re-calling on an interview that already has both reports and
+    ratings returns the stored results without another LLM run.
     """
     if not ObjectId.is_valid(intv_id):
         raise HTTPException(status_code=400, detail="Invalid interview id.")
@@ -261,20 +288,53 @@ async def complete_interview(
     if not interview:
         raise HTTPException(status_code=404, detail="Interview not found.")
 
-    link = await db.job_candidates.find_one(
-        {"cand_id": interview.get("cand_id"), "job_id": interview.get("job_id")}
+    cand_id = str(interview.get("cand_id") or "")
+    job_id = str(interview.get("job_id") or "")
+
+    if not ObjectId.is_valid(cand_id):
+        raise HTTPException(status_code=400, detail="Interview has an invalid candidate id.")
+
+    if not ObjectId.is_valid(job_id):
+        raise HTTPException(status_code=400, detail="Interview has an invalid job id.")
+
+    candidate = await db.candidates.find_one(
+        {
+            "_id": ObjectId(cand_id),
+            "comp_id": comp_id,
+        }
     )
 
-    # Re-entry: reports already generated -> serve them, no second LLM run.
-    if interview.get("intv_candidate_report") and interview.get("intv_interviewer_report"):
+    job = await db.jobs.find_one(
+        {
+            "_id": ObjectId(job_id),
+            "comp_id": comp_id,
+        }
+    )
+
+    link = await db.job_candidates.find_one(
+        {
+            "cand_id": cand_id,
+            "job_id": job_id,
+        }
+    )
+
+    if not candidate or not job or not link:
+        raise HTTPException(status_code=404, detail="Interview evaluation data not found.")
+
+    stored_ratings = link.get("ratings")
+
+    # Re-entry: reports and ratings already generated -> serve them, no second LLM run.
+    if (
+        interview.get("intv_candidate_report")
+        and interview.get("intv_interviewer_report")
+        and stored_ratings
+    ):
+        ratings = CandidateRatings.model_validate(stored_ratings)
+
         return InterviewCompleteOut(
             intv_id=intv_id,
             intv_status="completed",
-            scores=InterviewScores(
-                communication=_clamp_score((link or {}).get("communication_score")),
-                skill=_clamp_score((link or {}).get("skill_score")),
-                problem_solving=_clamp_score((link or {}).get("problem_solving_score")),
-            ),
+            scores=_scores_from_ratings(ratings),
             candidate_report=InterviewFeedback(**interview["intv_candidate_report"]),
             interviewer_report=InterviewFeedback(**interview["intv_interviewer_report"]),
             cached=True,
@@ -287,31 +347,27 @@ async def complete_interview(
         if payload.transcript is not None
         else (interview.get("intv_transcript") or [])
     )
+
+    entries = [
+        entry
+        for entry in entries
+        if str(entry.get("text") or "").strip()
+        and not str(entry.get("id") or "").startswith("partial-")
+    ]
+
+    final_entries = [TranscriptEntry.model_validate(entry) for entry in entries]
     transcript_text = _transcript_to_text(entries)
-    if not transcript_text:
-        raise HTTPException(
-            status_code=400,
-            detail="No transcript recorded - nothing to analyse.",
-        )
 
     # Context for the LLM: role title + JD (scoring yardstick), candidate
     # name, the pre-interview CV analysis (hypotheses to verify), and the
     # interview duration (confidence calibration).
-    job = None
-    candidate = None
-    if ObjectId.is_valid(interview.get("job_id") or ""):
-        job = await db.jobs.find_one({"_id": ObjectId(interview["job_id"])})
-    if ObjectId.is_valid(interview.get("cand_id") or ""):
-        candidate = await db.candidates.find_one({"_id": ObjectId(interview["cand_id"])})
-
     cv_context = None
-    if link:
-        analysis = await db.cv_analyses.find_one({"jobcand_id": str(link["_id"])})
-        # Only a finished analysis is useful context; processing/failed docs
-        # carry empty sections. Docs from before the status field are
-        # complete by construction.
-        if analysis and (analysis.get("status") or "completed") == "completed":
-            cv_context = _cv_analysis_to_text(analysis) or None
+    analysis = await db.cv_analyses.find_one({"jobcand_id": str(link["_id"])})
+    # Only a finished analysis is useful context; processing/failed docs
+    # carry empty sections. Docs from before the status field are
+    # complete by construction.
+    if analysis and (analysis.get("status") or "completed") == "completed":
+        cv_context = _cv_analysis_to_text(analysis) or None
 
     # Diarization guard: detect transcripts where every line is attributed
     # to the interviewer (the candidate's audio channel never connected -
@@ -322,88 +378,113 @@ async def complete_interview(
     interviewer_name = await _get_interviewer_name(db, intv_id)
     interviewer_label = interviewer_name or "Interviewer"
     interviewer_match_names = {"interviewer", interviewer_label.strip().casefold()}
-    candidate_label = (candidate or {}).get("cand_full_name") or "Candidate"
+    candidate_label = candidate.get("cand_full_name") or "Candidate"
     candidate_speech_detected = _has_non_interviewer_speech(entries, interviewer_match_names)
 
-    try:
-        result = await generate_interview_reports(
-            transcript_text,
-            job_title=(job or {}).get("title"),
-            job_description=(job or {}).get("description"),
-            candidate_name=(candidate or {}).get("cand_full_name"),
-            cv_analysis_context=cv_context,
-            duration_seconds=payload.duration_seconds or interview.get("intv_duration_seconds"),
-            interviewer_speaker_label=interviewer_label,
-            candidate_speaker_label=candidate_label,
-            candidate_speech_detected=candidate_speech_detected,
-        )
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"Report generation failed: {e}",
-        ) from e
-
-    raw_scores = result.get("scores") or {}
-    scores = InterviewScores(
-        communication=_clamp_score(raw_scores.get("communication")),
-        skill=_clamp_score(raw_scores.get("skill")),
-        problem_solving=_clamp_score(raw_scores.get("problem_solving")),
-    )
-    # Pydantic fills any missing sections with safe empties rather than 500-ing.
-    candidate_report = InterviewFeedback(**(result.get("candidate_report") or {}))
-    interviewer_report = InterviewFeedback(**(result.get("interviewer_report") or {}))
-
-    # Hard override: no LLM-authored candidate_report/scores without
-    # evidence. Runs unconditionally on the parsed result - it's an
-    # authoritative replacement, not a fallback for malformed output, so it
-    # can't be defeated by the model ignoring the prompt's instructions.
-    if not candidate_speech_detected:
-        scores = InterviewScores(communication=0.0, skill=0.0, problem_solving=0.0)
+    if not final_entries:
+        ratings = _zero_ratings()
         candidate_report = InterviewFeedback(
-            summary=(
-                "No distinguishable candidate speech was found in this transcript. "
-                f"Every line is attributed to the interviewer ({interviewer_label}), "
-                "which happens when the candidate's audio channel never connects "
-                "(solo testing, in-person interviews, or a screen-share that only "
-                "captured video). This report cannot evaluate the candidate and "
-                "was not generated by AI."
-            ),
+            summary="No transcript was recorded, so candidate feedback could not be generated.",
             strengths=InterviewFeedbackSection(items=[], justification=None),
             improvements=InterviewFeedbackSection(items=[], justification=None),
         )
+        interviewer_report = InterviewFeedback(
+            summary="No transcript was recorded, so interviewer feedback could not be generated.",
+            strengths=InterviewFeedbackSection(items=[], justification=None),
+            improvements=InterviewFeedbackSection(items=[], justification=None),
+        )
+    else:
+        try:
+            result = await generate_interview_reports(
+                transcript_text,
+                job_title=job.get("title"),
+                job_description=job.get("description"),
+                candidate_name=candidate.get("cand_full_name"),
+                cv_analysis_context=cv_context,
+                duration_seconds=(
+                    payload.duration_seconds
+                    if payload.duration_seconds is not None
+                    else interview.get("intv_duration_seconds")
+                ),
+                interviewer_speaker_label=interviewer_label,
+                candidate_speaker_label=candidate_label,
+                candidate_speech_detected=candidate_speech_detected,
+            )
+
+            if candidate_speech_detected:
+                ratings = await rate_candidate_skills(
+                    transcript=final_entries,
+                    job_title=job.get("title"),
+                    job_description=job.get("description"),
+                    candidate_name=candidate.get("cand_full_name"),
+                )
+            else:
+                ratings = _zero_ratings()
+        except ValueError as error:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=str(error),
+            ) from error
+        except RuntimeError as error:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="OpenAI is not configured.",
+            ) from error
+        except Exception as error:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=f"Interview completion failed: {error}",
+            ) from error
+
+        # Pydantic fills any missing sections with safe empties rather than 500-ing.
+        candidate_report = InterviewFeedback(**(result.get("candidate_report") or {}))
+        interviewer_report = InterviewFeedback(**(result.get("interviewer_report") or {}))
+
+        # Hard override: no LLM-authored candidate report without evidence.
+        if not candidate_speech_detected:
+            candidate_report = InterviewFeedback(
+                summary=(
+                    "No distinguishable candidate speech was found in this transcript. "
+                    f"Every line is attributed to the interviewer ({interviewer_label}), "
+                    "which happens when the candidate's audio channel never connects "
+                    "(solo testing, in-person interviews, or a screen-share that only "
+                    "captured video). This report cannot evaluate the candidate and "
+                    "was not generated by AI."
+                ),
+                strengths=InterviewFeedbackSection(items=[], justification=None),
+                improvements=InterviewFeedbackSection(items=[], justification=None),
+            )
+
+    scores = _scores_from_ratings(ratings)
 
     now = datetime.now(timezone.utc)
+
+    await db.job_candidates.update_one(
+        {"_id": link["_id"]},
+        {
+            "$set": {
+                "ratings": ratings.model_dump(),
+                "status": "EVALUATED",
+                "updated_at": now,
+            },
+            "$unset": {
+                "communication_score": "",
+                "skill_score": "",
+                "problem_solving_score": "",
+            },
+        },
+    )
+
     interview_updates: dict = {
         "intv_status": "completed",
+        "intv_transcript": entries,
         "intv_candidate_report": candidate_report.model_dump(),
         "intv_interviewer_report": interviewer_report.model_dump(),
         "intv_updated_at": now,
     }
-    if payload.transcript is not None:
-        interview_updates["intv_transcript"] = entries
     if payload.duration_seconds is not None:
         interview_updates["intv_duration_seconds"] = payload.duration_seconds
     await db.interviews.update_one({"_id": ObjectId(intv_id)}, {"$set": interview_updates})
-
-    # Mirror the ratings onto the application link. Same side-effect as the
-    # manual PATCH /job-candidates/{id}/scores: recording scores flips the
-    # application to EVALUATED. Skipped when no candidate speech was found -
-    # writing 0.0 scores would be indistinguishable from a genuinely bad
-    # evaluation, and flipping to EVALUATED would hide this candidate from
-    # any "needs evaluation" queue when nothing was actually evaluated.
-    if link and candidate_speech_detected:
-        await db.job_candidates.update_one(
-            {"_id": link["_id"]},
-            {
-                "$set": {
-                    "communication_score": scores.communication,
-                    "skill_score": scores.skill,
-                    "problem_solving_score": scores.problem_solving,
-                    "status": "EVALUATED",
-                    "updated_at": now,
-                }
-            },
-        )
 
     return InterviewCompleteOut(
         intv_id=intv_id,
@@ -451,11 +532,12 @@ async def _report_pdf_response(intv_id: str, kind: str, user: dict) -> Response:
     link = await db.job_candidates.find_one(
         {"cand_id": interview.get("cand_id"), "job_id": interview.get("job_id")}
     )
+    ratings = (link or {}).get("ratings") or {}
     scores = (
         {
-            "communication": (link or {}).get("communication_score"),
-            "skill": (link or {}).get("skill_score"),
-            "problem_solving": (link or {}).get("problem_solving_score"),
+            "communication": (ratings.get("communication") or {}).get("score"),
+            "skill": (ratings.get("technical_skills") or {}).get("score"),
+            "problem_solving": (ratings.get("problem_solving") or {}).get("score"),
         }
         if kind == "candidate"
         else None
@@ -513,116 +595,6 @@ async def download_interviewer_report(
 ) -> Response:
     return await _report_pdf_response(intv_id, "interviewer", user)
 
-
-@router.post("/{intv_id}/complete", response_model=JobCandidateEvaluationOut, summary="Complete an interview and generate final ratings.")
-async def complete_interview(intv_id: str, payload: InterviewCompleteRequest, comp_id: ObjectId = Depends(get_current_comp_id)) -> JobCandidateEvaluationOut:
-    db = get_db()
-
-    if not ObjectId.is_valid(intv_id):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid interview id.")
-
-    interview_oid = ObjectId(intv_id)
-
-    interview = await db.interviews.find_one({"_id": interview_oid})
-
-    if not interview:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Interview not found.")
-
-    cand_id = str(interview["cand_id"])
-    job_id = str(interview["job_id"])
-
-    if not ObjectId.is_valid(cand_id):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Interview has an invalid candidate id.",)
-
-    if not ObjectId.is_valid(job_id):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Interview has an invalid job id.")
-
-    candidate = await db.candidates.find_one(
-        {
-            "_id": ObjectId(cand_id),
-            "comp_id": comp_id,
-        }
-    )
-
-    job = await db.jobs.find_one(
-        {
-            "_id": ObjectId(job_id),
-            "comp_id": comp_id,
-        }
-    )
-
-    job_candidate = await db.job_candidates.find_one(
-        {
-            "cand_id": cand_id,
-            "job_id": job_id,
-        }
-    )
-
-    if not candidate or not job or not job_candidate:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="interview evaluation data not found.")
-
-    final_entries = [entry
-        for entry in payload.transcript
-        if entry.text.strip()
-        and not entry.id.startswith("partial-")
-    ]
-
-    now = datetime.now(timezone.utc)
-
-    if not final_entries:
-        ratings = CandidateRatings(
-            technical_skills=SkillRating(
-                skill="Technical Skills",
-                score=0,
-                explanation=("No transcript was available to evaluate the candidate's technical skills."),
-                evidence=[],
-            ),
-            communication=SkillRating(
-                skill="Communication",
-                score=0,
-                explanation=("No transcript was available to evaluate the candidate's communication."),
-                evidence=[],
-            ),
-            problem_solving=SkillRating(
-                skill="Problem Solving",
-                score=0,
-                explanation=("No transcript was available to evaluate the candidate's problem-solving ability."),
-                evidence=[],
-            ),
-        )
-
-    else:
-        try:
-            ratings = await rate_candidate_skills(transcript=final_entries, job_title=job.get("title"), job_description=job.get("description"), candidate_name=candidate.get("cand_full_name"))
-        except ValueError as error:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,detail=str(error)) from error
-        except RuntimeError as error:
-            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="OpenAI is not configured.") from error
-
-    now = datetime.now(timezone.utc)
-
-    await db.job_candidates.update_one(
-        {"_id": job_candidate["_id"]},
-        {
-            "$set": {
-                "ratings": ratings.model_dump(),
-                "status": "EVALUATED",
-                "updated_at": now,
-            }
-        },
-    )
-
-    await db.interviews.update_one(
-        {"_id": interview_oid},
-        {
-            "$set": {
-                "intv_status": "completed",
-                "intv_updated_at": now,
-            }
-        },
-    )
-
-    return JobCandidateEvaluationOut(ratings=ratings, status="EVALUATED")
 
 @router.patch(
     "/{intv_id}",
