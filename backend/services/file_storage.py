@@ -149,6 +149,52 @@ async def save_upload(file: UploadFile, *, subdir: str, key: str) -> str:
     return rel_path
 
 
+async def save_bytes(
+    data: bytes, *, subdir: str, key: str, ext: str, content_type: str
+) -> str:
+    """Persist raw `data` into GridFS (same validation as save_upload).
+
+    Used when there's no UploadFile to hand - e.g. copying a candidate's
+    already-stored CV into a fresh file for a second job's analysis, so each
+    analysis owns its own file and deleting one can't orphan the other."""
+    if subdir not in _KNOWN_SUBDIRS:
+        raise HTTPException(status_code=500, detail=f"Unknown upload subdir: {subdir}")
+    ext = ext.lower()
+    if ext not in _ALLOWED_EXTS[subdir]:
+        raise HTTPException(status_code=415, detail=f"{subdir}: unsupported file type {ext or 'unknown'}")
+    if not data:
+        raise HTTPException(status_code=400, detail="Empty file")
+    max_bytes = _MAX_BYTES_PER_SUBDIR.get(subdir, _DEFAULT_MAX_BYTES)
+    if len(data) > max_bytes:
+        raise HTTPException(status_code=413, detail=f"File too large (max {max_bytes // 1024 // 1024} MB)")
+
+    rel_path = f"{subdir}/{_safe_key(key)}{ext}"
+    bucket = _bucket()
+    async for old in bucket.find({"filename": rel_path}):
+        await bucket.delete(old._id)
+    await bucket.upload_from_stream(
+        rel_path,
+        data,
+        metadata={
+            "content_type": content_type or _CONTENT_TYPES.get(ext, "application/octet-stream"),
+            "subdir": subdir,
+            "uploaded_at": datetime.now(timezone.utc),
+        },
+    )
+    return rel_path
+
+
+async def read_bytes(rel_path: str | None) -> bytes | None:
+    """Read the full contents of a stored file, or None if it's missing."""
+    if not rel_path:
+        return None
+    try:
+        grid_out, _ = await open_download_stream(rel_path)
+    except HTTPException:
+        return None
+    return await grid_out.read()
+
+
 async def open_download_stream(rel_path: str):
     """Open a streamable handle to the newest file stored under `rel_path`.
 

@@ -337,9 +337,10 @@ function FeedbackPanel({
 //   - analysis completed  → solid primary button, opens the analysis report
 //   - analysis processing → disabled button with a spinner ("Analysing…")
 //   - analysis failed     → disabled coral button, error in the tooltip
-//   - no analysis yet     → legacy behaviour: link to cand_cv_url if one
-//                           exists, otherwise the greyed-out disabled state
-function CvViewButton({ cvAnalysis, cvUrl, onViewAnalysis }) {
+//   - no analysis, has CV  → "Analyse CV" (reuses the candidate's stored CV
+//                           for this job, no re-upload) + a raw-PDF link
+//   - no analysis, no CV   → greyed-out disabled state
+function CvViewButton({ cvAnalysis, cvUrl, onViewAnalysis, onAnalyse, analysing }) {
   const base =
     'inline-flex min-w-[98px] items-center justify-center gap-1.5 rounded-xl px-4 py-0.5 text-sm font-semibold transition-colors'
 
@@ -391,26 +392,44 @@ function CvViewButton({ cvAnalysis, cvUrl, onViewAnalysis }) {
     )
   }
 
+  // No analysis for this job yet. If the candidate has a CV on file, offer
+  // to analyse it against THIS job (server reuses the stored PDF - the
+  // candidate was likely analysed for a different job already).
+  if (cvUrl) {
+    return (
+      <button
+        type="button"
+        onClick={onAnalyse}
+        disabled={analysing || !onAnalyse}
+        title="Analyse the candidate's CV against this job"
+        className={`${base} ${
+          analysing
+            ? 'cursor-wait bg-primary-100 text-primary-500'
+            : 'bg-primary-500 text-white hover:bg-primary-600'
+        }`}
+      >
+        {analysing ? (
+          <>
+            <svg className="h-3.5 w-3.5 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round">
+              <path d="M21 12a9 9 0 1 1-6.2-8.56" />
+            </svg>
+            Analysing…
+          </>
+        ) : (
+          'Analyse CV'
+        )}
+      </button>
+    )
+  }
+
   return (
-    <a
-      href={cvUrl || '#'}
-      target="_blank"
-      rel="noreferrer"
-      className={`${base} ${
-        cvUrl
-          ? 'bg-primary-500 text-white hover:bg-primary-600'
-          : 'cursor-not-allowed bg-neutral-300 text-neutral-500'
-      }`}
-      onClick={(e) => {
-        if (!cvUrl) e.preventDefault()
-      }}
-    >
+    <span className={`${base} cursor-not-allowed bg-neutral-300 text-neutral-500`}>
       View
-    </a>
+    </span>
   )
 }
 
-function CandidateInfoCard({ candidate, job, interview, onStartInterview, interviewer, onEdit, cvAnalysis, onViewCvAnalysis }) {
+function CandidateInfoCard({ candidate, job, interview, onStartInterview, interviewer, onEdit, cvAnalysis, onViewCvAnalysis, onAnalyseCv, analysingCv }) {
   const { user } = useAuth()
   const status = (interview?.intv_status ?? 'not_scheduled').replace(/_/g, ' ').toUpperCase()
   // Starting an interview is interviewer-only - mirrors the backend's
@@ -571,6 +590,8 @@ function CandidateInfoCard({ candidate, job, interview, onStartInterview, interv
             cvAnalysis={cvAnalysis}
             cvUrl={candidate?.cand_cv_url}
             onViewAnalysis={onViewCvAnalysis}
+            onAnalyse={onAnalyseCv}
+            analysing={analysingCv}
           />
         </div>
 
@@ -621,6 +642,26 @@ export default function CandidateDetailPage() {
   const [showEditModal, setShowEditModal] = useState(false)
   const [refreshKey, setRefreshKey] = useState(0)
   const [cvAnalysis, setCvAnalysis] = useState(null)
+  const [analysingCv, setAnalysingCv] = useState(false)
+
+  // Analyse the candidate's already-stored CV against THIS job - no
+  // re-upload. The backend reuses the candidate's cand_cv_url file; we set
+  // the returned "processing" doc so the existing poll picks up completion.
+  async function handleAnalyseCv() {
+    if (!jobCand?.jobcand_id || analysingCv) return
+    setAnalysingCv(true)
+    try {
+      const fd = new FormData()
+      fd.append('jobcand_id', jobCand.jobcand_id)
+      const data = await api.analyseCv(fd)
+      setCvAnalysis(data)
+      setRefreshKey((k) => k + 1)
+    } catch (err) {
+      toast.error(err?.message || 'Could not start the CV analysis.')
+    } finally {
+      setAnalysingCv(false)
+    }
+  }
 
   // Load the CV analysis for this application and poll while it's still
   // processing, so the "View" button flips from spinner to available the
@@ -812,6 +853,8 @@ export default function CandidateDetailPage() {
                   state: { analysis: cvAnalysis },
                 })
               }}
+              onAnalyseCv={handleAnalyseCv}
+              analysingCv={analysingCv}
             />
           </div>
           <div className="col-span-4">

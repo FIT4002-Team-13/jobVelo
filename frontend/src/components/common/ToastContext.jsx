@@ -15,9 +15,15 @@ import { createContext, useCallback, useContext, useRef, useState } from 'react'
 
 const ToastContext = createContext(null)
 
+// Each tone carries a tinted border + ring and a soft coloured drop-shadow
+// (the "glow") so a toast reads instantly against any page and its severity
+// is legible at a glance.
 const TONES = {
   success: {
     bar: 'bg-mint-500',
+    border: 'border-mint-200',
+    ring: 'ring-mint-100',
+    glow: 'shadow-[0_12px_30px_-8px_rgba(63,212,147,0.5)]',
     icon: (
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-mint-500">
         <path d="M20 6 9 17l-5-5" />
@@ -26,6 +32,9 @@ const TONES = {
   },
   error: {
     bar: 'bg-coral-500',
+    border: 'border-coral-200',
+    ring: 'ring-coral-100',
+    glow: 'shadow-[0_12px_30px_-8px_rgba(255,115,118,0.5)]',
     icon: (
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-coral-500">
         <circle cx="12" cy="12" r="10" />
@@ -35,6 +44,9 @@ const TONES = {
   },
   info: {
     bar: 'bg-primary-500',
+    border: 'border-primary-200',
+    ring: 'ring-primary-100',
+    glow: 'shadow-[0_12px_30px_-8px_rgba(93,137,233,0.5)]',
     icon: (
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-primary-500">
         <circle cx="12" cy="12" r="10" />
@@ -87,7 +99,7 @@ export function ToastProvider({ children }) {
               key={t.id}
               type="button"
               onClick={() => dismiss(t.id)}
-              className="pointer-events-auto flex w-full items-center gap-3 overflow-hidden rounded-xl border border-neutral-200 bg-neutral-0 py-3 pl-0 pr-4 text-left shadow-lg transition-opacity hover:opacity-90"
+              className={`pointer-events-auto flex w-full items-center gap-3 overflow-hidden rounded-xl border bg-neutral-0 py-3 pl-0 pr-4 text-left ring-2 transition-opacity hover:opacity-90 ${tone.border} ${tone.ring} ${tone.glow}`}
             >
               <span className={`h-full w-1 self-stretch ${tone.bar}`} aria-hidden />
               {tone.icon}

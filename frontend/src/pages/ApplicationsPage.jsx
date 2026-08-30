@@ -8,7 +8,7 @@ import { SortMenu, FilterMenu } from '../components/job-candidate/TableControls'
 import { page, card, button, badge } from '../styles/layout'
 import { useAuth } from '../lib/AuthContext.jsx'
 import { useToast } from '../components/common/ToastContext.jsx'
-import { authedFetch } from '../lib/api.js'
+import { api, authedFetch } from '../lib/api.js'
 
 function getInitials(name = '') {
   const safeName = typeof name === 'string' ? name.trim() : ''
@@ -110,6 +110,8 @@ export default function ApplicationsPage() {
   const [selectedRow, setSelectedRow] = useState(null)
   // Row queued for deletion - null when the confirm modal is closed.
   const [deleteTarget, setDeleteTarget] = useState(null)
+  // application_id currently being analysed (click guard for the CV cell).
+  const [analysingId, setAnalysingId] = useState(null)
 
   async function loadApplications() {
     const res = await authedFetch(
@@ -118,6 +120,39 @@ export default function ApplicationsPage() {
     if (!res.ok) throw new Error('Failed to load applications.')
     const data = await res.json()
     setRows(Array.isArray(data) ? data : [])
+  }
+
+  // Analyse the candidate's already-stored CV against this job - no
+  // re-upload. application_id IS the job-candidate link id, so the backend
+  // reuses the stored PDF. Refresh once to show "Analysing…", then poll the
+  // single analysis until it lands and refresh the row to "View".
+  async function handleAnalyseCv(row) {
+    const jobcandId = row?.application_id
+    if (!jobcandId || analysingId) return
+    setAnalysingId(jobcandId)
+    try {
+      const fd = new FormData()
+      fd.append('jobcand_id', jobcandId)
+      await api.analyseCv(fd)
+      await loadApplications()
+      const poll = async () => {
+        try {
+          const a = await api.getCvAnalysisByJobcand(jobcandId)
+          if (a?.status === 'processing') {
+            setTimeout(poll, 4000)
+          } else {
+            await loadApplications()
+            setAnalysingId(null)
+          }
+        } catch {
+          setAnalysingId(null)
+        }
+      }
+      setTimeout(poll, 4000)
+    } catch (err) {
+      toast.error(err?.message || 'Could not start the CV analysis.')
+      setAnalysingId(null)
+    }
   }
 
   useEffect(() => {
@@ -345,8 +380,9 @@ export default function ApplicationsPage() {
 
                       <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                         {/* Once an analysis exists the cell links to the CV
-                            analysis report; the raw-PDF link only remains for
-                            legacy rows that have a file but no analysis. */}
+                            analysis report; a candidate with a CV but no
+                            analysis for this job gets an "Analyse CV" trigger
+                            that reuses the stored PDF (no re-upload). */}
                         {row.cv_analysis_status === 'completed' ? (
                           <button
                             type="button"
@@ -355,7 +391,7 @@ export default function ApplicationsPage() {
                           >
                             View
                           </button>
-                        ) : row.cv_analysis_status === 'processing' ? (
+                        ) : row.cv_analysis_status === 'processing' || analysingId === row.application_id ? (
                           <span
                             className="inline-flex items-center gap-1.5 text-neutral-400"
                             title="The CV is being analysed."
@@ -380,14 +416,15 @@ export default function ApplicationsPage() {
                             Failed
                           </span>
                         ) : row.cv_url ? (
-                          <a
-                            href={row.cv_url}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="text-coral-500 hover:underline"
+                          <button
+                            type="button"
+                            onClick={() => handleAnalyseCv(row)}
+                            disabled={!!analysingId}
+                            title="Analyse the candidate's CV against this job"
+                            className="font-semibold text-primary-500 hover:underline disabled:cursor-not-allowed disabled:opacity-50"
                           >
-                            PDF
-                          </a>
+                            Analyse CV
+                          </button>
                         ) : (
                           '--'
                         )}

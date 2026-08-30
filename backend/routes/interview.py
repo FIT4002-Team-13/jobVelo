@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timedelta, timezone
 
 from bson import ObjectId
@@ -16,10 +17,15 @@ from models.interview import (
     InterviewOut,
     InterviewScores,
     InterviewUpdate,
+    TranscriptEntry,
 )
 from services.openai_service import generate_interview_reports
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/api/interviews", tags=["interviews"])
+
+_VALID_STATUSES = {"not_scheduled", "scheduled", "in_progress", "completed", "cancelled"}
 
 
 async def _job_in_company(db, job_id: str | None, comp_id: ObjectId) -> bool:
@@ -43,22 +49,67 @@ async def _get_interview_in_company(db, intv_id: str, comp_id: ObjectId) -> dict
     return interview
 
 
+def _safe_report(raw) -> InterviewFeedback | None:
+    """Validate a stored report, tolerating legacy/partial shapes. A report
+    that no longer matches the model (e.g. written before US28's evidence
+    fields, or with a null section) must not 500 the whole read - we drop it
+    to None and log, so the rest of the interview still loads."""
+    if not raw or not isinstance(raw, dict):
+        return None
+    try:
+        return InterviewFeedback(**raw)
+    except Exception:  # any malformed shape falls back to None
+        logger.warning("Dropping unparseable interview report", exc_info=True)
+        return None
+
+
+def _safe_transcript(raw) -> list[TranscriptEntry] | None:
+    """Validate transcript entries one-by-one, skipping any malformed entry
+    (missing id/speaker/timestamp/text) rather than failing the whole list."""
+    if not isinstance(raw, list):
+        return None
+    out: list[TranscriptEntry] = []
+    for entry in raw:
+        try:
+            out.append(TranscriptEntry(**entry))
+        except Exception:
+            continue
+    return out
+
+
 def interview_helper(interview: dict) -> InterviewOut:
-    """Convert a raw Mongo interview document into the API response model."""
+    """Convert a raw Mongo interview document into the API response model.
+
+    Defensive against legacy / partially-written documents: required
+    timestamps fall back to each other (or now), an unknown status falls
+    back to not_scheduled, and malformed reports/transcripts degrade to
+    None/[] instead of raising - one bad historical doc shouldn't 500 an
+    entire list query (this was the "failed to load candidate page" bug)."""
+    now = datetime.now(timezone.utc)
+    created = interview.get("intv_created_at")
+    updated = interview.get("intv_updated_at")
+    if not isinstance(created, datetime):
+        created = updated if isinstance(updated, datetime) else now
+    if not isinstance(updated, datetime):
+        updated = created
+
+    status_val = interview.get("intv_status")
+    if status_val not in _VALID_STATUSES:
+        status_val = "not_scheduled"
 
     return InterviewOut(
         intv_id=str(interview["_id"]),
-        cand_id=str(interview["cand_id"]),
-        job_id=str(interview["job_id"]),
+        cand_id=str(interview.get("cand_id", "")),
+        job_id=str(interview.get("job_id", "")),
         intv_date_time=interview.get("intv_date_time"),
         intv_location=interview.get("intv_location"),
-        intv_transcript=interview.get("intv_transcript"),
-        intv_status=interview["intv_status"],
+        intv_transcript=_safe_transcript(interview.get("intv_transcript")),
+        intv_status=status_val,
         intv_duration_seconds=interview.get("intv_duration_seconds"),
-        intv_candidate_report=interview.get("intv_candidate_report"),
-        intv_interviewer_report=interview.get("intv_interviewer_report"),
-        intv_created_at=interview["intv_created_at"],
-        intv_updated_at=interview["intv_updated_at"],
+        intv_candidate_report=_safe_report(interview.get("intv_candidate_report")),
+        intv_interviewer_report=_safe_report(interview.get("intv_interviewer_report")),
+        intv_created_at=created,
+        intv_updated_at=updated,
     )
 
 @router.post(

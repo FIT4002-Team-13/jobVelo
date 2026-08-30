@@ -51,7 +51,7 @@ from models.cv_analysis import (
     CvAnalysisPositionFit,
     CvAnalysisQuestion,
 )
-from services.file_storage import delete_upload, save_upload
+from services.file_storage import delete_upload, read_bytes, save_bytes, save_upload
 from services.gemini_service import analyse_cv
 
 router = APIRouter(prefix="/api/cv-analysis", tags=["cv-analysis"])
@@ -65,6 +65,17 @@ _PROCESSING_TIMEOUT = timedelta(minutes=10)
 
 
 _ALLOWED_PDF_MIME = {"application/pdf"}
+
+_FILES_URL_PREFIX = "/api/files/"
+
+
+def _storage_path(url: str | None) -> str | None:
+    """Map a stored `cand_cv_url` ("/api/files/cv_analyses/xxx.pdf") back to
+    the GridFS storage path ("cv_analyses/xxx.pdf"). Returns None for a
+    missing or externally-hosted URL (which we can't read bytes from)."""
+    if not url or not url.startswith(_FILES_URL_PREFIX):
+        return None
+    return url[len(_FILES_URL_PREFIX):] or None
 
 
 def _validate_pdf(upload: UploadFile, label: str) -> None:
@@ -267,6 +278,9 @@ async def analyse(
 
     # 1. Existing-doc check. Cheap query, runs before anything destructive.
     replaced_cl_path: str | None = None
+    # Set when there's no upload but the candidate already has a stored CV we
+    # can reuse for this new job's analysis (no re-upload needed).
+    reuse_cv_path: str | None = None
     existing = await db.cv_analyses.find_one({"jobcand_id": jobcand_id})
     if existing:
         doc_status, _ = _effective_status(existing)
@@ -284,13 +298,20 @@ async def analyse(
         if existing.get("cover_letter_path"):
             await delete_upload(existing["cover_letter_path"])
     elif not has_new_cv:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="No existing analysis for this job-candidate. Upload a CV PDF to generate one.",
-        )
+        # No analysis for THIS link and no upload. If the candidate already
+        # has a CV on file (added to another job earlier), reuse it against
+        # this job's description instead of demanding a re-upload.
+        _probe_link, _probe_job, probe_candidate = await _lookup_jobcand_context(jobcand_id)
+        reuse_cv_path = _storage_path(probe_candidate.get("cand_cv_url"))
+        if not reuse_cv_path:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="No CV on file for this candidate. Upload a CV PDF to generate an analysis.",
+            )
 
     # 2. Validate the uploads before anything is written.
-    _validate_pdf(cv, "CV")
+    if has_new_cv:
+        _validate_pdf(cv, "CV")
     if cover_letter is not None and cover_letter.filename:
         _validate_pdf(cover_letter, "Cover letter")
     else:
@@ -303,17 +324,43 @@ async def analyse(
     job_description = job.get("description") or None
     candidate_name  = candidate.get("cand_full_name") or candidate.get("name")
 
-    # 4. Read bytes into memory once for both the disk save and the LLM call.
-    cv_bytes = await cv.read()
-    cl_bytes = await cover_letter.read() if cover_letter else None
-
+    # 4. Gather the CV bytes and persist a fresh copy this analysis OWNS (so a
+    #    later delete of one job's analysis can't orphan another's file).
     request_id = uuid.uuid4().hex
-    await cv.seek(0)
-    cv_path = await save_upload(cv, subdir="cv_analyses", key=f"{request_id}-cv")
+    cv_mime = "application/pdf"
+    if has_new_cv:
+        cv_bytes = await cv.read()
+        cv_mime = cv.content_type or "application/pdf"
+        await cv.seek(0)
+        cv_path = await save_upload(cv, subdir="cv_analyses", key=f"{request_id}-cv")
+    else:
+        cv_bytes = await read_bytes(reuse_cv_path)
+        if not cv_bytes:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="The candidate's stored CV could not be read. Upload a CV PDF to generate an analysis.",
+            )
+        cv_path = await save_bytes(
+            cv_bytes, subdir="cv_analyses", key=f"{request_id}-cv", ext=".pdf", content_type="application/pdf"
+        )
+
+    cl_bytes: bytes | None = None
+    cl_mime: str | None = None
     cl_path: str | None = None
     if cover_letter is not None:
+        cl_bytes = await cover_letter.read()
+        cl_mime = cover_letter.content_type or "application/pdf"
         await cover_letter.seek(0)
         cl_path = await save_upload(cover_letter, subdir="cv_analyses", key=f"{request_id}-cl")
+    elif not has_new_cv:
+        # Reusing the CV - carry over the candidate's stored cover letter too.
+        reuse_cl_path = _storage_path(candidate.get("cand_cover_letter_url"))
+        cl_bytes = await read_bytes(reuse_cl_path)
+        if cl_bytes:
+            cl_mime = "application/pdf"
+            cl_path = await save_bytes(
+                cl_bytes, subdir="cv_analyses", key=f"{request_id}-cl", ext=".pdf", content_type="application/pdf"
+            )
 
     # 5. Insert the doc as "processing". The analysis fields are filled in
     #    by the background task; until then they serialise as empty.
@@ -375,9 +422,9 @@ async def analyse(
         _run_analysis,
         inserted.inserted_id,
         cv_bytes=cv_bytes,
-        cv_mime_type=cv.content_type or "application/pdf",
+        cv_mime_type=cv_mime,
         cover_letter_bytes=cl_bytes,
-        cover_letter_mime_type=(cover_letter.content_type if cover_letter else None),
+        cover_letter_mime_type=cl_mime,
         position_title=position_title,
         job_description=job_description,
     )
