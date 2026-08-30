@@ -38,10 +38,7 @@ def job_candidate_helper(job_candidate: dict) -> JobCandidateOut:
         job_id=str(job_candidate["job_id"]),
         status=job_candidate.get("status"),
         cv_analysis=job_candidate.get("cv_analysis"),
-        communication_score=job_candidate.get("communication_score"),
-        skill_score=job_candidate.get("skill_score"),
-        problem_solving_score=job_candidate.get("problem_solving_score"),
-        final_score=job_candidate.get("final_score"),
+        ratings=job_candidate.get("ratings"),
         rank=job_candidate.get("rank"),
         created_at=job_candidate.get("created_at") or datetime.now(timezone.utc),
         updated_at=job_candidate.get("updated_at") or datetime.now(timezone.utc),
@@ -94,9 +91,7 @@ async def create_job_candidate(
         "cand_id": payload.cand_id,
         "job_id": payload.job_id,
         "cv_analysis": payload.cv_analysis,
-        "communication_score": payload.communication_score,
-        "skill_score": payload.skill_score,
-        "problem_solving_score": payload.problem_solving_score,
+        "ratings": None,
         "created_at": now,
         "updated_at": now,
     }
@@ -241,7 +236,7 @@ async def get_job_candidate(
     return job_candidate_helper(job_candidate)
 
 
-@router.patch("/{jobcand_id}/scores", response_model=JobCandidateOut)
+@router.patch("/{jobcand_id}/ratings", response_model=JobCandidateOut)
 async def update_job_candidate_scores(
     jobcand_id: str,
     payload: JobCandidateScoreUpdate,
@@ -276,7 +271,7 @@ async def update_job_candidate_scores(
         raise HTTPException(status_code=400, detail="No fields to update")
 
     # Auto-bump status when a real (non-null) score is being recorded.
-    if any(v is not None for v in updates.values()):
+    if updates.get("ratings") is not None:
         updates["status"] = "EVALUATED"
 
     updates["updated_at"] = datetime.now(timezone.utc)
