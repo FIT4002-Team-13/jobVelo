@@ -38,6 +38,9 @@ function statusClass(status) {
       return 'bg-neutral-100 text-neutral-500'
     case 'SCHEDULED':
       return 'bg-primary-100 text-primary-600'
+    case 'IN PROGRESS':
+      return 'bg-sky-100 text-sky-600'
+    case 'COMPLETED':
     case 'EVALUATED':
       return 'bg-mint-100 text-mint-700'
     case 'HIRED':
