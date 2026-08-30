@@ -1,41 +1,44 @@
 import { motion } from 'framer-motion'
-import { Bot, Calendar, MessageSquare, ShieldCheck, Sparkles, Workflow } from 'lucide-react'
+import { BarChart3, Bot, FileText, MessageSquare, Mic, ShieldCheck } from 'lucide-react'
 
+// Six cards, six REAL features - each one maps to something a visitor will
+// actually find after logging in. No invented capabilities, no compliance
+// badges we can't back up.
 const features = [
   {
     icon: Bot,
-    title: 'AI shortlist',
-    body: 'Rank applicants on signal — not noise — with explainable AI scoring.',
+    title: 'AI CV screening',
+    body: 'Every CV is analysed against the role: fit scores, strengths, gaps and inconsistencies — with reasons you can read.',
     color: 'bg-primary-50 text-primary-600',
   },
   {
-    icon: Calendar,
-    title: 'Smart scheduling',
-    body: 'One link, every timezone. Auto-reschedule when calendars shift.',
+    icon: Mic,
+    title: 'Live transcription',
+    body: 'Interviews are transcribed in real time as you talk — every word captured, nothing to write up afterwards.',
     color: 'bg-coral-50 text-coral-600',
   },
   {
     icon: MessageSquare,
-    title: 'Structured feedback',
-    body: 'Capture interviewer notes in a shared rubric — no more silent biases.',
+    title: 'Suggested questions',
+    body: 'An AI question deck tailored to the role and CV, ready before the call and swappable during it.',
     color: 'bg-mint-50 text-mint-600',
   },
   {
-    icon: Workflow,
-    title: 'Pipeline automation',
-    body: 'Move candidates between stages on triggers — with full audit trail.',
+    icon: FileText,
+    title: 'Instant reports',
+    body: 'Scored candidate and interviewer reports, written minutes after the interview — downloadable as PDFs.',
     color: 'bg-primary-50 text-primary-600',
   },
   {
-    icon: Sparkles,
-    title: 'AI-assisted JD',
-    body: 'Generate inclusive, on-brand job descriptions in seconds.',
+    icon: BarChart3,
+    title: 'Rankings & pipeline',
+    body: 'Candidates ranked by their interview scores per role, with live status across dashboard, jobs and schedules.',
     color: 'bg-coral-50 text-coral-600',
   },
   {
     icon: ShieldCheck,
-    title: 'Compliant by default',
-    body: 'GDPR, SOC2 and EEOC-ready, with role-based access controls.',
+    title: 'Private team workspace',
+    body: 'Invitation-only accounts, role-based permissions, and every record isolated to your company.',
     color: 'bg-mint-50 text-mint-600',
   },
 ]

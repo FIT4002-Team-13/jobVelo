@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import Sidebar from '../components/common/Sidebar'
 import { api, ApiError } from '../lib/api.js'
-import { button, card, page } from '../styles/layout'
+import { useToast } from '../components/common/ToastContext.jsx'
+import { button, card, modal, page } from '../styles/layout'
 
 // Match the score-bar colour to the metric so the legend is implicit.
 // Coral = experience, primary = technical, mint = soft — same vibe as the
@@ -297,6 +298,8 @@ export default function CvAnalysisPage() {
 
   const [deleting, setDeleting] = useState(false)
   const [deleteError, setDeleteError] = useState(null)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const toast = useToast()
 
   useEffect(() => {
     let cancelled = false
@@ -397,28 +400,25 @@ export default function CvAnalysisPage() {
     cv_path,
   } = analysis
 
-  // Delete drops the record so the user can upload a different CV for the
-  // same job-candidate (via the candidate page's Edit form). We confirm via
-  // window.confirm to keep this inline (the destructive action is narrow
-  // and rare; no need for a full modal here). On success, go back to
-  // wherever the user came from - usually the candidate page.
-  async function handleDelete() {
+  // Delete drops the record AND the stored PDFs (the server also clears
+  // the candidate profile's links to those files, so no dead "View"/"PDF"
+  // buttons linger). Confirmed via the same styled modal every other
+  // destructive action in the app uses - window.confirm looked jarringly
+  // out of place. On success, go back to wherever the user came from.
+  async function confirmDelete() {
     if (!analysis_id) {
+      setShowDeleteConfirm(false)
       setDeleteError('This analysis cannot be deleted (no id).')
       return
     }
-    const ok = window.confirm(
-      'Delete this analysis?\n\nThe job-candidate link is kept - you can upload a different CV ' +
-      'from the candidate page (Edit) right after.'
-    )
-    if (!ok) return
-
     setDeleteError(null)
     setDeleting(true)
     try {
       await api.deleteCvAnalysis(analysis_id)
+      toast.success('CV analysis and stored PDFs deleted.')
       navigate(-1)
     } catch (err) {
+      setShowDeleteConfirm(false)
       setDeleteError(err instanceof ApiError ? err.message : 'Failed to delete analysis.')
       setDeleting(false)
     }
@@ -448,10 +448,10 @@ export default function CvAnalysisPage() {
                 people don't muscle-memory click through it. */}
             <button
               type="button"
-              onClick={handleDelete}
+              onClick={() => setShowDeleteConfirm(true)}
               disabled={deleting}
               className={`${button.danger} px-5 py-2.5 disabled:opacity-60`}
-              title="Delete this analysis (lets you upload a new CV)"
+              title="Delete this analysis and its stored PDFs (lets you upload a new CV)"
             >
               {deleting ? 'Deleting…' : 'Delete'}
             </button>
@@ -510,6 +510,51 @@ export default function CvAnalysisPage() {
           </div>
         </div>
       </main>
+
+      {/* Delete confirmation - same chrome as the other destructive modals
+          (DeleteCandidateModal / JobsPage's DeleteConfirmModal) so the
+          action reads identically across the app. */}
+      {showDeleteConfirm && (
+        <div className={modal.overlay}>
+          <div className="bg-neutral-0 rounded-2xl w-full max-w-sm shadow-xl p-6">
+            <div className="flex items-center justify-center w-12 h-12 rounded-pill bg-coral-100 mx-auto mb-4">
+              <svg
+                width="22" height="22" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" strokeWidth="2" className="text-coral-500"
+              >
+                <polyline points="3 6 5 6 21 6" /><path d="M19 6l-1 14H6L5 6" />
+                <path d="M10 11v6" /><path d="M14 11v6" /><path d="M9 6V4h6v2" />
+              </svg>
+            </div>
+            <h2 className="text-base font-bold text-neutral-800 text-center mb-1">
+              Delete CV Analysis
+            </h2>
+            <p className="text-sm text-neutral-500 text-center mb-6">
+              This removes the analysis report <span className="font-semibold text-neutral-700">and the stored CV / cover-letter PDFs</span>.
+              The candidate stays on the job — you can upload a new CV from
+              the candidate page afterwards.
+            </p>
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={() => setShowDeleteConfirm(false)}
+                disabled={deleting}
+                className={`flex-1 py-2 ${button.cancel} disabled:opacity-60`}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={confirmDelete}
+                disabled={deleting}
+                className={`flex-1 py-2 ${button.danger}`}
+              >
+                {deleting ? 'Deleting…' : 'Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

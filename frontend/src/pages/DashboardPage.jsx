@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
+import { Briefcase, Users, CalendarCheck2, CalendarClock, CalendarDays } from 'lucide-react'
 import Sidebar from '../components/common/Sidebar'
 import { api, authedFetch } from '../lib/api.js'
 import { SortMenu, FilterMenu, makeSorter } from '../components/job-candidate/TableControls'
@@ -20,7 +21,9 @@ const CANDIDATE_FILTER_OPTIONS = [
   { value: '',              label: 'All'           },
   { value: 'NOT SCHEDULED', label: 'Not Scheduled' },
   { value: 'SCHEDULED',     label: 'Scheduled'     },
-  { value: 'EVALUATED',     label: 'Evaluated'     },
+  { value: 'IN PROGRESS',   label: 'In Progress'   },
+  { value: 'COMPLETED',     label: 'Completed'     },
+  { value: 'CANCELLED',     label: 'Cancelled'     },
 ]
 
 // Solid-fill status pills - kept in sync with JobsPage + JobDetailPage.
@@ -39,17 +42,38 @@ const CANDIDATE_STATUS_STYLES = {
   SCHEDULED:       'bg-primary-100 text-primary-600',
   'IN PROGRESS':   'bg-sky-100 text-sky-600',
   COMPLETED:       'bg-mint-100 text-mint-700',
+  CANCELLED:       'bg-coral-100 text-coral-700',
   EVALUATED:       'bg-mint-100 text-mint-700',
   HIRED:           'bg-mint-500 text-white',
   REJECTED:        'bg-coral-100 text-coral-700',
 }
 
-// ── Style tokens for summary cards ──────────────────────────────────────────
-
-const CARD_STYLES = [
-  { label: 'Today',     key: 'today_interviews',    bg: 'bg-tint-mint',  countColor: 'text-mint-600',  labelColor: 'text-mint-700',  unitColor: 'text-mint-500'  },
-  { label: 'Completed', key: 'completed_interviews', bg: 'bg-tint-sky',   countColor: 'text-sky-500',   labelColor: 'text-sky-700',   unitColor: 'text-sky-400'   },
-  { label: 'Up-coming', key: 'upcoming_interviews',  bg: 'bg-tint-coral', countColor: 'text-coral-500', labelColor: 'text-coral-700', unitColor: 'text-coral-400' },
+// ── Summary card configs ────────────────────────────────────────────────────
+// Personal (non-admin) cards. Same white-card + tinted-icon anatomy as the
+// admin stat cards - the old full-pastel cards blended into the page
+// background; keeping the colour to the icon square gives them an edge.
+const PERSONAL_CARDS = [
+  {
+    label: 'Today',
+    key: 'today_interviews',
+    icon: <CalendarDays size={22} className="text-mint-600" />,
+    iconTint: 'bg-mint-100',
+    deltaText: 'interviews today',
+  },
+  {
+    label: 'Completed',
+    key: 'completed_interviews',
+    icon: <CalendarCheck2 size={22} className="text-sky-500" />,
+    iconTint: 'bg-sky-100',
+    deltaText: 'interviews completed',
+  },
+  {
+    label: 'Up-coming',
+    key: 'upcoming_interviews',
+    icon: <CalendarClock size={22} className="text-coral-500" />,
+    iconTint: 'bg-coral-100',
+    deltaText: 'interviews ahead',
+  },
 ]
 
 // Default page size for both panels. Five rows fits the dashboard layout
@@ -80,6 +104,29 @@ function SearchBar({ placeholder, value, onChange }) {
 // SortBtn / FilterBtn used to be defined here as non-functional placeholders;
 // they've moved to components/TableControls.jsx and are now wired up to local
 // state below. Search bar stays local because it's a different shape.
+
+// Company-wide stat card for the admin summary: tinted icon square on the
+// left; uppercase label, big count, and a small "this month" delta stacked
+// on the right. Mirrors the reference design's card anatomy while using
+// the app's own palette tokens.
+function SummaryStatCard({ icon, iconTint, label, value, deltaText, deltaClass }) {
+  return (
+    <div className="flex items-center gap-4 rounded-2xl border border-neutral-200 bg-neutral-0 px-5 py-5 shadow-sm">
+      <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-xl ${iconTint}`}>
+        {icon}
+      </div>
+      <div className="min-w-0">
+        <p className="text-[11px] font-bold uppercase tracking-wider text-neutral-400">
+          {label}
+        </p>
+        <p className="text-3xl font-extrabold leading-tight text-neutral-900 tabular-nums">
+          {value}
+        </p>
+        <p className={`text-xs font-semibold ${deltaClass}`}>{deltaText}</p>
+      </div>
+    </div>
+  )
+}
 
 // Shown inside the Jobs / Candidates panels when the list is empty.
 function EmptyState({ message, hint }) {
@@ -134,7 +181,7 @@ function Pagination({ page, totalPages, onPrev, onNext }) {
 
 export default function DashboardPage() {
   // toLocaleDateString return dd/mm/yyy, replace keeps the slashes as is but ensures it's always in the same format regardless of user locale.
-  const today = new Date().toLocaleDateString('en-GB').replace(/\//g, '/')
+  const today = new Date().toLocaleDateString('en-AU').replace(/\//g, '/')
 
   const [me,         setMe]         = useState(null)
   const [summary,    setSummary]    = useState(null)
@@ -142,6 +189,13 @@ export default function DashboardPage() {
   const [candidates, setCandidates] = useState([])
   const [loading,    setLoading]    = useState(true)
   const [error,      setError]      = useState(null)
+  // Per-job count of DISTINCT candidates with a completed interview -
+  // drives the same display override JobsPage uses, so the pill here
+  // never disagrees with the one on the Jobs page.
+  const [completedByJob, setCompletedByJob] = useState(() => ({}))
+  // Full company interviews list - feeds the admin summary cards
+  // (completed / upcoming counts) without another fetch.
+  const [allInterviews, setAllInterviews] = useState([])
 
   // Search + sort + filter state, one set per panel.
   const [jobSearch,        setJobSearch]        = useState('')
@@ -161,9 +215,26 @@ export default function DashboardPage() {
   // enough at dashboard sizes that useMemo is overkill.
   const jobSorter = makeSorter(jobSortKey, { nameField: 'title', dateField: 'job_created_at' })
   const jobNeedle = jobSearch.trim().toLowerCase()
-  const visibleJobs = jobs
+  // Stamp each job with the status the row will actually display and
+  // filter on that same value, mirroring JobsPage:
+  //   all candidates completed -> Completed; some -> In Progress;
+  //   an explicitly-Completed job keeps its label.
+  const jobsWithStatus = jobs.map(j => {
+    const filled = j.candidates_filled ?? 0
+    const done = completedByJob[j.id ?? j._id] ?? 0
+    const display_status =
+      j.status === 'Completed'
+        ? 'Completed'
+        : filled > 0 && done >= filled
+        ? 'Completed'
+        : done > 0
+        ? 'In Progress'
+        : j.status
+    return { ...j, display_status }
+  })
+  const visibleJobs = jobsWithStatus
     .filter(j => !jobNeedle || (j.title ?? '').toLowerCase().includes(jobNeedle))
-    .filter(j => !jobFilter || j.status === jobFilter)
+    .filter(j => !jobFilter || j.display_status === jobFilter)
   const sortedJobs = jobSorter ? [...visibleJobs].sort(jobSorter) : visibleJobs
 
   const candSorter = makeSorter(candSortKey, { nameField: 'cand_full_name', dateField: 'cand_created_at' })
@@ -189,6 +260,78 @@ export default function DashboardPage() {
   // result set, then slice for display. We clamp at render-time instead
   // of an effect so the controls always reflect the data we're actually
   // showing - no flicker, no stale "Page 3 / 1" intermediate state.
+  // Company-wide totals for the admin's summary cards - all derived from
+  // data the dashboard already fetches, so no extra requests. Deltas count
+  // what landed inside the current calendar month.
+  const isAdmin = me?.role === 'admin'
+  const _now = new Date()
+  const _monthStart = new Date(_now.getFullYear(), _now.getMonth(), 1)
+  const _nextMonthStart = new Date(_now.getFullYear(), _now.getMonth() + 1, 1)
+  const inThisMonth = (iso) => {
+    if (!iso) return false
+    const d = new Date(iso)
+    return !Number.isNaN(d.getTime()) && d >= _monthStart && d < _nextMonthStart
+  }
+  const uniqueCandidateCount = new Set(
+    candidates.map((c) => c._cand_id).filter(Boolean)
+  ).size
+  const newCandidatesThisMonth = new Set(
+    candidates
+      .filter((c) => inThisMonth(c._cand_created_at))
+      .map((c) => c._cand_id)
+      .filter(Boolean)
+  ).size
+  const jobsThisMonth = jobs.filter((j) => inThisMonth(j.job_created_at)).length
+  const completedInterviews = allInterviews.filter((i) => i.intv_status === 'completed')
+  const completedThisMonth = completedInterviews.filter((i) =>
+    inThisMonth(i.intv_date_time)
+  ).length
+  const upcomingInterviews = allInterviews.filter(
+    (i) =>
+      i.intv_status === 'scheduled' &&
+      i.intv_date_time &&
+      new Date(i.intv_date_time) > _now
+  )
+  const upcomingThisMonth = upcomingInterviews.filter(
+    (i) => new Date(i.intv_date_time) < _nextMonthStart
+  ).length
+
+  const growthDelta = (n) => ({
+    deltaText: n > 0 ? `+${n} this month` : 'no change this month',
+    deltaClass: n > 0 ? 'text-mint-600' : 'text-neutral-400',
+  })
+  const adminCards = [
+    {
+      label: 'Total Jobs',
+      value: jobs.length,
+      icon: <Briefcase size={22} className="text-primary-500" />,
+      iconTint: 'bg-primary-100',
+      ...growthDelta(jobsThisMonth),
+    },
+    {
+      label: 'Candidates',
+      value: uniqueCandidateCount,
+      icon: <Users size={22} className="text-mint-600" />,
+      iconTint: 'bg-mint-100',
+      ...growthDelta(newCandidatesThisMonth),
+    },
+    {
+      label: 'Interviews Completed',
+      value: completedInterviews.length,
+      icon: <CalendarCheck2 size={22} className="text-sky-500" />,
+      iconTint: 'bg-sky-100',
+      ...growthDelta(completedThisMonth),
+    },
+    {
+      label: 'Upcoming Interviews',
+      value: upcomingInterviews.length,
+      icon: <CalendarClock size={22} className="text-coral-500" />,
+      iconTint: 'bg-coral-100',
+      deltaText: `${upcomingThisMonth} this month`,
+      deltaClass: upcomingThisMonth > 0 ? 'text-coral-500' : 'text-neutral-400',
+    },
+  ]
+
   const jobTotalPages   = Math.max(1, Math.ceil(sortedJobs.length        / PAGE_SIZE))
   const candTotalPages  = Math.max(1, Math.ceil(sortedCandidates.length  / PAGE_SIZE))
   const safeJobPage     = Math.min(jobPage,  jobTotalPages  - 1)
@@ -208,14 +351,39 @@ export default function DashboardPage() {
         // shows the SAME rows as the /candidates page (one per application
         // where the current user is the interviewer, scoped to the
         // company server-side).
-        const [sumRes, jobsRes, appsRes] = await Promise.all([
+        const [sumRes, jobsRes, appsRes, intvRes] = await Promise.all([
           authedFetch('/api/dashboard/summary'),
           authedFetch('/api/jobs'),
           authedFetch(`/api/applications?user_id=${encodeURIComponent(meData.userid)}`),
+          authedFetch('/api/interviews'),
         ])
         setMe(meData)
-        setSummary(await sumRes.json())
-        setJobs(await jobsRes.json())
+
+        // Guard both HTTP status and payload shape before storing into
+        // state: on an expired token these come back as {detail: ...},
+        // and storing that into array state white-screens the page at
+        // `.filter is not a function`.
+        setSummary(sumRes.ok ? await sumRes.json().catch(() => null) : null)
+        const jobsData = jobsRes.ok ? await jobsRes.json().catch(() => []) : []
+        setJobs(Array.isArray(jobsData) ? jobsData : [])
+
+        // Best-effort: if the interviews fetch fails, rows simply show
+        // their stored status without the completed-override. Distinct
+        // candidates per job, so repeat interviews don't overcount.
+        const intvData = intvRes.ok ? await intvRes.json().catch(() => []) : []
+        if (Array.isArray(intvData)) {
+          setAllInterviews(intvData)
+          const candsByJob = {}
+          for (const i of intvData) {
+            if (i.intv_status !== 'completed' || !i.job_id) continue
+            ;(candsByJob[i.job_id] ??= new Set()).add(i.cand_id)
+          }
+          setCompletedByJob(
+            Object.fromEntries(
+              Object.entries(candsByJob).map(([jobId, cands]) => [jobId, cands.size])
+            )
+          )
+        }
 
         // Map the application rows into the shape the panel renders
         // (cand_full_name / cand_email / cand_status / cand_created_at).
@@ -233,6 +401,8 @@ export default function DashboardPage() {
               cand_created_at: a.interview_datetime,
               _cand_id:        a.cand_id,
               _job_id:         a.job_id,
+              // Real profile-creation date, for the admin summary delta.
+              _cand_created_at: a.cand_created_at,
             }))
           : []
         setCandidates(rows)
@@ -273,20 +443,38 @@ export default function DashboardPage() {
           <p className="mt-1 text-sm font-medium text-primary-500">{today}</p>
         </div>
 
-        {/* Summary */}
+        {/* Summary - role-aware. Admins get the company-wide totals (jobs,
+            candidates, completed + upcoming interviews); everyone else
+            keeps the personal today/completed/upcoming interview cards. */}
         <section className="mb-7">
           <h2 className="text-base font-bold text-neutral-800">Summary</h2>
-          <p className="text-xs text-neutral-400 mb-4">Overview of your recruitment pipeline</p>
+          <p className="text-xs text-neutral-400 mb-4">
+            {isAdmin
+              ? 'Company-wide recruitment overview'
+              : 'Overview of your recruitment pipeline'}
+          </p>
 
-          <div className="grid grid-cols-3 gap-4">
-            {CARD_STYLES.map((card) => (
-              <div key={card.label} className={`${card.bg} rounded-2xl px-6 py-5`}>
-                <p className={`text-sm font-semibold ${card.labelColor}`}>{card.label}</p>
-                <p className={`text-5xl font-extrabold mt-2 ${card.countColor}`}>{summary?.[card.key] ?? 0}</p>
-                <p className={`text-sm font-medium mt-1 ${card.unitColor}`}>interview</p>
-              </div>
-            ))}
-          </div>
+          {isAdmin ? (
+            <div className="grid grid-cols-4 gap-4">
+              {adminCards.map((c) => (
+                <SummaryStatCard key={c.label} {...c} />
+              ))}
+            </div>
+          ) : (
+            <div className="grid grid-cols-3 gap-4">
+              {PERSONAL_CARDS.map((card) => (
+                <SummaryStatCard
+                  key={card.label}
+                  icon={card.icon}
+                  iconTint={card.iconTint}
+                  label={card.label}
+                  value={summary?.[card.key] ?? 0}
+                  deltaText={card.deltaText}
+                  deltaClass="text-neutral-400"
+                />
+              ))}
+            </div>
+          )}
         </section>
 
         <hr className="border-neutral-200 mb-6" />
@@ -333,8 +521,8 @@ export default function DashboardPage() {
                         Candidates: {job.candidates_filled ?? 0}/{job.candidates_total ?? 0}
                       </p>
                     </div>
-                    <span className={`text-xs font-bold px-3 py-1 rounded-pill ${STATUS_STYLES[job.status] ?? 'bg-neutral-100 text-neutral-500'}`}>
-                      {job.status}
+                    <span className={`text-xs font-bold px-3 py-1 rounded-pill ${STATUS_STYLES[job.display_status] ?? 'bg-neutral-100 text-neutral-500'}`}>
+                      {job.display_status}
                     </span>
                   </Link>
                 ))
