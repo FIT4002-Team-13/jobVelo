@@ -7,6 +7,7 @@ import LoginPage from './pages/LoginPage.jsx'
 import SignupPage from './pages/SignupPage.jsx'
 import CreateCompanyPage from './pages/CreateCompanyPage.jsx'
 import DashboardPage from './pages/DashboardPage.jsx'
+import SchedulesPage from './pages/SchedulesPage.jsx'
 import AdminDashboardPage from './pages/AdminDashboardPage.jsx'
 import JobsPage from './pages/JobsPage'
 import JobDetailPage from './pages/JobDetailPage'
@@ -46,6 +47,14 @@ export default function App() {
                 <RequireRole allow={['admin']} fallback="/dashboard">
                   <AdminDashboardPage />
                 </RequireRole>
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/schedules"
+            element={
+              <RequireAuth>
+                <SchedulesPage />
               </RequireAuth>
             }
           />

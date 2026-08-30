@@ -162,8 +162,11 @@ export default function EditCandidateForm({
     if (!formState.job_id) {
       return setError('Please select a job position.')
     }
-    const dateChanged = formState.scheduled_at !== initialScheduledAt
-    if (dateChanged && formState.scheduled_at && !isFutureDateTime(formState.scheduled_at)) {
+    if (
+      formState.scheduled_at &&
+      formState.scheduled_at !== initialScheduledAt &&
+      !isFutureDateTime(formState.scheduled_at)
+    ) {
       return setError('Scheduled date/time must be in the future.')
     }
 

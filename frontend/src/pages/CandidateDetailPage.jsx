@@ -6,7 +6,9 @@ import StartInterviewModal from '../components/job-candidate/StartInterviewModal
 import EditCandidateForm from '../components/candidate/EditCandidateForm'
 import { card, flex, page } from '../styles/layout'
 import { useAuth } from '../lib/AuthContext.jsx'
-import { api, authedFetch } from '../lib/api.js'
+import { api, authedFetch, downloadFileWithAuth, openFileWithAuth } from '../lib/api.js'
+
+import ScoreEvidencePopup from "../components/candidate/ScoreEvidencePopup";
 
 const SECTION_COLORS = [
   { bg: 'bg-primary-50',  border: 'border-primary-200',  dot: 'bg-primary-400',  time: 'text-primary-500' },
@@ -446,45 +448,62 @@ function ScoreBarRow({ label, value, colorClass }) {
   )
 }
 
-function CandidateScorePanel({ jobCand, interview, onViewTranscription }) {
-  const computedFinalScore =
-    jobCand?.communication_score == null ||
-    jobCand?.skill_score == null ||
-    jobCand?.problem_solving_score == null
-      ? null
-      : (
-          (jobCand.communication_score +
-            jobCand.skill_score +
-            jobCand.problem_solving_score) / 3
-        )
+function CandidateScorePanel({ jobCand, interview, onViewEvidence, onViewTranscription, cvAnalysis}) {
+  
+  const ratings = jobCand?.ratings;
+  const hasInterviewRatings = Boolean(ratings);
+  const interviewScores = hasInterviewRatings? [ratings.communication?.score, ratings.technical_skills?.score, ratings.problem_solving?.score].filter((score) => typeof score === "number" && Number.isFinite(score)) : [];
+  const interviewOverallScore = interviewScores.length > 0? interviewScores.reduce((total, score) => total + score, 0) / interviewScores.length : null;
+  const hasCvAnalysis = cvAnalysis?.status === "completed";
+  const hasTranscript = Array.isArray(interview?.intv_transcript) && interview.intv_transcript.length > 0;
+  const cvScores = hasCvAnalysis? [cvAnalysis.position_fit?.relevant_experience, cvAnalysis.position_fit?.technical_fit, cvAnalysis.position_fit?.soft_skills].filter((score) => typeof score === "number" && Number.isFinite(score)) : [];
+  const cvOverallScore = cvScores.length > 0 ? cvScores.reduce((total, score) => total + score, 0) / cvScores.length : null;
+  const finalScoreValue = hasInterviewRatings ? interviewOverallScore : cvOverallScore;
+  const overallScore = finalScoreValue != null ? formatScore(finalScoreValue) : "--";
+  const scoreLabel = hasInterviewRatings ? "FINAL SCORE" : "CV SCORE";
+  const rank = jobCand?.rank == null ? "NA" : `#${jobCand.rank}`;
+  const hasScore = overallScore !== "--";
+  const scoreRows = hasInterviewRatings ? [
+      {
+        label: "COMMUNICATION",
+        value: ratings.communication?.score,
+        colorClass: "bg-sky-500",
+      },
+      {
+        label: "TECHNICAL SKILLS",
+        value: ratings.technical_skills?.score,
+        colorClass: "bg-coral-500",
+      },
+      {
+        label: "PROBLEM SOLVING",
+        value: ratings.problem_solving?.score,
+        colorClass: "bg-mint-400",
+      },
+    ]
+  : [
+      {
+        label: "RELEVANT EXPERIENCE",
+        value:
+          cvAnalysis?.position_fit
+            ?.relevant_experience,
+        colorClass: "bg-coral-500",
+      },
+      {
+        label: "TECHNICAL FIT",
+        value:
+          cvAnalysis?.position_fit
+            ?.technical_fit,
+        colorClass: "bg-primary-500",
+      },
+      {
+        label: "SOFT SKILLS",
+        value:
+          cvAnalysis?.position_fit
+            ?.soft_skills,
+        colorClass: "bg-mint-400",
+      },
 
-  const finalScore =
-    jobCand?.final_score != null
-      ? formatScore(jobCand.final_score)
-      : computedFinalScore != null
-      ? formatScore(computedFinalScore)
-      : '--'
-
-  const rank = jobCand?.rank == null ? 'NA' : `#${jobCand.rank}`
-  const hasScore = finalScore !== '--'
-
-  const scoreRows = [
-    {
-      label: 'COMMUNICATION',
-      value: jobCand?.communication_score,
-      colorClass: 'bg-sky-500',
-    },
-    {
-      label: 'SKILL',
-      value: jobCand?.skill_score,
-      colorClass: 'bg-coral-500',
-    },
-    {
-      label: 'PROBLEM SOLVING',
-      value: jobCand?.problem_solving_score,
-      colorClass: 'bg-mint-400',
-    },
-  ]
+  ];
 
   return (
     <div className={`${card.base} ${flex.col} h-full justify-between`}>
@@ -496,11 +515,11 @@ function CandidateScorePanel({ jobCand, interview, onViewTranscription }) {
         }`}
       >
         <p className={`text-xs uppercase tracking-wide ${hasScore ? 'text-primary-500' : 'text-neutral-500'}`}>
-          FINAL SCORE
+          {scoreLabel}
         </p>
 
         <p className={`mt-1 text-4xl font-extrabold leading-none ${hasScore ? 'text-primary-500' : 'text-neutral-500'}`}>
-          {finalScore}
+          {overallScore}
         </p>
       </div>
 
@@ -519,15 +538,26 @@ function CandidateScorePanel({ jobCand, interview, onViewTranscription }) {
         <p className="text-sm font-medium text-neutral-800">RANK</p>
         <p className="text-sm font-semibold text-neutral-800">{rank}</p>
       </div>
-
+      <button
+        type="button"
+        onClick={onViewEvidence}
+        disabled={!hasInterviewRatings}
+        className={`mt-4 w-full rounded-[18px] px-4 py-1.5 text-sm font-semibold transition-colors ${
+          hasInterviewRatings
+            ? "bg-primary-500 text-white hover:bg-primary-600"
+            : "cursor-not-allowed bg-neutral-300 text-neutral-500"
+        }`}
+      >
+        View Score and Evidence
+      </button>
       <button
         type="button"
         onClick={onViewTranscription}
-        disabled={!interview?.intv_transcript}
+        disabled={!hasTranscript}
         className={`mt-4 w-full rounded-[18px] px-4 py-1.5 text-sm font-semibold text-white transition-colors ${
-          interview?.intv_transcript
+          hasTranscript
             ? 'bg-primary-500 hover:bg-primary-600'
-            : 'bg-neutral-400 cursor-not-allowed'
+            : 'cursor-not-allowed bg-neutral-400'
         }`}
       >
         View Transcription
@@ -794,7 +824,9 @@ function CandidateInfoCard({ candidate, job, interview, onStartInterview, interv
   const statusClass =
     status === 'SCHEDULED'
       ? 'bg-primary-100 text-primary-600'
-      : status === 'EVALUATED'
+      : status === 'IN PROGRESS'
+      ? 'bg-sky-100 text-sky-600'
+      : status === 'COMPLETED' || status === 'EVALUATED'
       ? 'bg-mint-100 text-mint-700'
       : status === 'HIRED'
       ? 'bg-mint-500 text-white'
@@ -961,6 +993,7 @@ export default function CandidateDetailPage() {
   const [showEditModal, setShowEditModal] = useState(false)
   const [refreshKey, setRefreshKey] = useState(0)
   const [cvAnalysis, setCvAnalysis] = useState(null)
+  const [showScoreEvidence, setShowScoreEvidence] = useState(false);
 
   // Load the CV analysis for this application and poll while it's still
   // processing, so the "View" button flips from spinner to available the
@@ -1088,6 +1121,47 @@ export default function CandidateDetailPage() {
     load()
   }, [candId, jobId, user?.comp_id, refreshKey])
 
+  // Mirrors JobDetailPage's onConfirmStart: resume an existing in-progress/
+  // scheduled interview rather than creating a duplicate, otherwise create
+  // one and jump straight into the live session.
+  async function onConfirmStart() {
+    try {
+      const existingRes = await authedFetch(
+        `/api/interviews?cand_id=${candId}&job_id=${jobId}`
+      )
+      if (existingRes.ok) {
+        const existing = await existingRes.json()
+        const resumable = existing.find(
+          (i) => i.intv_status === 'in_progress' || i.intv_status === 'scheduled'
+        )
+        if (resumable) {
+          navigate(`/interview/${resumable.intv_id}`)
+          return
+        }
+      }
+
+      const res = await authedFetch('/api/interviews', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          cand_id: candId,
+          job_id: jobId,
+          intv_date_time: new Date().toISOString(),
+          intv_status: 'in_progress',
+        }),
+      })
+      const interviewRecord = await res.json()
+      if (!res.ok) {
+        throw new Error(interviewRecord?.detail || 'Failed to start interview.')
+      }
+      navigate(`/interview/${interviewRecord.intv_id}`)
+    } catch (err) {
+      console.error('Failed to start interview', err)
+      alert(err.message || 'Failed to start interview.')
+      setStartTarget(null)
+    }
+  }
+
   if (loading) {
     return (
       <div className={page.loading}>
@@ -1112,7 +1186,7 @@ export default function CandidateDetailPage() {
         <div className="mb-6 flex items-start justify-between">
           <div>
             <button
-              onClick={() => navigate(-1)}
+              onClick={() => navigate('/candidates')}
               className={`${flex.row} mb-3 gap-2 rounded-lg border border-neutral-200 bg-neutral-0 px-3 py-1.5 text-sm font-semibold text-neutral-600 transition-colors hover:border-primary-200 hover:bg-primary-500/10 hover:text-primary-600`}
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -1161,10 +1235,16 @@ export default function CandidateDetailPage() {
           <div className="col-span-4">
             <CandidateScorePanel
               jobCand={jobCand}
+              cvAnalysis={cvAnalysis}
               interview={interview}
+              onViewEvidence={() => setShowScoreEvidence(true)}
               onViewTranscription={() => {
-                if (!interview?.intv_transcript) return
-                console.log('Open transcript view')
+                if (!interview?.intv_id) return
+
+                openFileWithAuth(
+                  `/api/interviews/${interview.intv_id}/transcript-pdf`
+                ).catch((error) => {console.error('Failed to open transcript:',error)
+                })
               }}
             />
           </div>
@@ -1178,11 +1258,15 @@ export default function CandidateDetailPage() {
           candidateTableHeight={230}
           onDownloadCandidateReport={() => {
             if (!interview?.intv_id) return
-            window.open(`/api/interviews/${interview.intv_id}/candidate-report`, '_blank')
+            // No filename arg: the server's Content-Disposition carries
+            // "<kind>-report-<candidate>-<interview datetime>.pdf".
+            downloadFileWithAuth(`/api/interviews/${interview.intv_id}/candidate-report`)
+              .catch((err) => window.alert(err.message || 'Failed to download the report.'))
           }}
           onDownloadInterviewerReport={() => {
             if (!interview?.intv_id) return
-            window.open(`/api/interviews/${interview.intv_id}/interviewer-report`, '_blank')
+            downloadFileWithAuth(`/api/interviews/${interview.intv_id}/interviewer-report`)
+              .catch((err) => window.alert(err.message || 'Failed to download the report.'))
           }}
         />
       </main>
@@ -1192,11 +1276,12 @@ export default function CandidateDetailPage() {
           candidate={startTarget}
           jobTitle={job?.title}
           onClose={() => setStartTarget(null)}
+          // Resume-or-create via onConfirmStart - the old inline handler
+          // only navigated when an interview record already existed, so
+          // confirming on a fresh candidate silently did nothing.
           onConfirm={() => {
             setStartTarget(null)
-            if (interview?.intv_id) {
-              navigate(`/interview/${interview.intv_id}`)
-            }
+            onConfirmStart()
           }}
         />
       )}
@@ -1222,6 +1307,11 @@ export default function CandidateDetailPage() {
             setShowEditModal(false)
             setRefreshKey((k) => k + 1)
           }}
+        />
+      )}{showScoreEvidence && (
+        <ScoreEvidencePopup
+          ratings={jobCand?.ratings}
+          onClose={() => setShowScoreEvidence(false)}
         />
       )}
     </div>

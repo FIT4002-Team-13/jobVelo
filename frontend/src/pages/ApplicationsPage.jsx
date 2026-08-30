@@ -38,6 +38,9 @@ function statusClass(status) {
       return 'bg-neutral-100 text-neutral-500'
     case 'SCHEDULED':
       return 'bg-primary-100 text-primary-600'
+    case 'IN PROGRESS':
+      return 'bg-sky-100 text-sky-600'
+    case 'COMPLETED':
     case 'EVALUATED':
       return 'bg-mint-100 text-mint-700'
     case 'HIRED':
@@ -52,6 +55,26 @@ function statusClass(status) {
 function formatScore(score) {
   if (score == null) return '--'
   return Number(score).toFixed(1)
+}
+
+function getCandidateScore(ratings) {
+  if (!ratings) return null
+
+  const scores = [
+    ratings.communication?.score,
+    ratings.technical_skills?.score,
+    ratings.problem_solving?.score,
+  ].filter(
+    (score) =>
+      typeof score === 'number' &&
+      Number.isFinite(score)
+  )
+
+  if (scores.length === 0) return null
+
+  const average = scores.reduce((total, score) => total + score, 0) / scores.length
+
+  return Math.round(average * 10) / 10
 }
 
 function formatShortDate(iso) {
@@ -154,8 +177,8 @@ export default function ApplicationsPage() {
 
     next = [...next].sort((a, b) => {
       switch (sortValue) {
-        case 'score':
-          return (b.score ?? -Infinity) - (a.score ?? -Infinity)
+        case 'score': 
+          return ((getCandidateScore(b.ratings) ?? -Infinity) - (getCandidateScore(a.ratings) ?? -Infinity))
         case 'name_asc':
           return (a.candidate_name || '').localeCompare(b.candidate_name || '')
         case 'name_desc':
@@ -395,7 +418,7 @@ export default function ApplicationsPage() {
                       </td>
 
                       <td className="px-4 py-3 font-semibold text-neutral-700">
-                        {formatScore(row.score)}
+                        {formatScore(getCandidateScore(row.ratings))}
                       </td>
 
                       <td className="px-4 py-3 text-neutral-500 whitespace-nowrap">
