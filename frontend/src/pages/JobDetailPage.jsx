@@ -4,6 +4,7 @@ import Sidebar from "../components/common/Sidebar";
 import JobFormModal from "../components/job-candidate/JobFormModal";
 import StartInterviewModal from "../components/job-candidate/StartInterviewModal";
 import DeleteCandidateModal from "../components/job-candidate/DeleteCandidateModal";
+import AddCandidateForm from "../components/candidate/AddCandidateForm";
 import { flex, card, badge, form, button, modal, page } from "../styles/layout";
 
 import { useAuth } from "../lib/AuthContext.jsx";
@@ -989,9 +990,18 @@ export default function JobDetailPage() {
     setShowEdit(false);
   }
 
-  function handleCandidateAdded({ candidate, job: updatedJob }) {
-    setCandidates((prev) => [...prev, candidate]);
-    setJob(updatedJob);
+  async function handleCandidateAdded() {
+    try {
+      const [jobRes, candsRes] = await Promise.all([
+        authedFetch(`/api/jobs/${id}`),
+        authedFetch(`/api/jobs/${id}/candidates`),
+      ]);
+      if (jobRes.ok) setJob(await jobRes.json());
+      if (candsRes.ok) {
+        const data = await candsRes.json().catch(() => []);
+        setCandidates(Array.isArray(data) ? data : []);
+      }
+    } catch {}
     setShowAddCandidate(false);
   }
 
@@ -1066,9 +1076,8 @@ export default function JobDetailPage() {
     <div className={page.shell}>
       <Sidebar />
 
-      <main className={page.main}>
-        {/* Header */}
-        <div className="flex items-start justify-between mb-6">
+      <div className="flex-1 flex flex-col overflow-hidden">
+        <header className="bg-neutral-0 border-b border-neutral-200 px-10 py-6 shrink-0 flex items-start justify-between">
           <div>
             {/* Back-to-Jobs - upgraded from a tiny grey breadcrumb to a
                 proper chip so users actually notice it. Border + bg make it
@@ -1133,7 +1142,9 @@ export default function JobDetailPage() {
               + Add Candidate
             </button>
           </div>
-        </div>
+        </header>
+
+        <main className="flex-1 overflow-y-auto px-10 py-8">
 
         {/* Top panels */}
         <div className="grid grid-cols-3 gap-5 mb-6">
@@ -1261,7 +1272,8 @@ export default function JobDetailPage() {
             }}
           />
         </div>
-      </main>
+        </main>
+      </div>
 
       {showEdit && (
         <JobFormModal
@@ -1283,10 +1295,11 @@ export default function JobDetailPage() {
       )}
 
       {showAddCandidate && (
-        <AddCandidateModal
-          jobId={id}
+        <AddCandidateForm
+          jobs={job ? [{ ...job, id }] : []}
+          defaultJobId={id}
           onClose={() => setShowAddCandidate(false)}
-          onAdded={handleCandidateAdded}
+          onSaved={handleCandidateAdded}
         />
       )}
 
