@@ -8,7 +8,7 @@ python-dotenv==1.0.1
 email-validator==2.2.0
 bcrypt==4.2.0
 PyJWT==2.9.0
-fpdf2==2.8.8
+fpdf2==2.8.3
 
 # Realtime STT - used by services/deepgram_service.py
 deepgram-sdk==3.7.7
@@ -27,4 +27,4 @@ google-genai==0.3.0
 python-multipart==0.0.12
 
 # PDF rendering for downloadable interview reports (services/report_pdf.py)
-fpdf2==2.8.8
+fpdf2==2.8.3
