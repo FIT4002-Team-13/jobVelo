@@ -18,7 +18,6 @@ from models.interview import (
     InterviewUpdate,
     TranscriptEntry,
 )
-
 from models.job_candidate import (
     CandidateRatings,
     SkillRating,

@@ -19,16 +19,16 @@ from openai import AsyncOpenAI
 
 from config import settings
 from models.interview import TranscriptEntry
+from models.interview_question import (
+    FollowUpQuestionResult,
+    SimilarQuestionResult,
+    SuggestedQuestionsList,
+)
 from models.job_candidate import (
     CandidateRatings,
     RatingEvidence,
     SkillName,
     SkillRating,
-)
-from models.interview_question import (
-    FollowUpQuestionResult,
-    SimilarQuestionResult,
-    SuggestedQuestionsList,
 )
 
 _client: AsyncOpenAI | None = None
@@ -552,6 +552,9 @@ async def rate_candidate_skills(transcript: list[TranscriptEntry], job_title: st
         "Only use skills demonstrated in the candidate's answers."
         "Return each score as a number from 0.0 to 10.0 using exactly one decimal place. "
         "If the candidate didn't demonstrate a skill, give a score of 0 and explain why."
+        "Evaluate each skill using the candidate's entire interview performance."
+        "Determine the score from the full transcript before selecting evidence. "
+        "For commuincation, a few strong answers should not outweigh repeated rambling, unclear or off-topic responses later in the interview. "
         "Score against the target role's expectations; be honest, not generous. A thin or evasive transcript should score low."
         "# Rating rubrics\n\n"
         "Technical Skills:\n"
@@ -586,12 +589,14 @@ async def rate_candidate_skills(transcript: list[TranscriptEntry], job_title: st
         "Use this rubric to help you but you can adjust alittle based on the specific candidate and job. "
         f"Return valid JSON using this format:\n{json_format}\n"
         "Each inner evidence_entry_groups list represents one complete piece of evidence." 
+        "The selected evidence groups are representative examples and must not be treated as the only information used for scoring. "
         "If a candidate answer is accidentally split across consecutive transcript entries, put those IDs together in the same inner list."
         "If two entries express separate answers or separate ideas, keep them in separate inner lists."
         "Only group consecutive entries spoken by the candidate when it seems like one sentence gramatically and logically. "
-        "Ensure you check the next entry before you group or add the current one to make sure you are not cutting mid sentence and what you have is a gramatically and logically correct full sentence otherwise look further. You need to make sure that the next entrie is the end of the sentence otherwise look at whether you need to add the sentence after the next sentence and so on."
+        "Ensure you check the next entry before you group or add the current one to make sure you are not cutting mid sentence and what you have is a gramatically and logically correct full sentence otherwise look further. You need to make sure that the next entrie is the end of the sentence and doesn't have a commar otherwise look at whether you need to add the sentence after the next sentence and so on."
         "Return no more than three evidence groups for each skill. "
         "For each skill, provide the top 3 most relevant transcript entry as evidence for the score. if theres no 3 then provide as many as you can as long as it is relevant. "
+        "Include both strengths and weaknesses when they materially affected the score."
         "Ids that support the rating. "
         "For each skill, provide one short explanation of why the score was given. "
         "Use no more than 30 words and base it only on the transcript evidence. "

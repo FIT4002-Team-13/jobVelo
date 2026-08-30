@@ -109,6 +109,3 @@ class InterviewOut(BaseModel):
     intv_interviewer_report: InterviewFeedback | None = None
     intv_created_at: datetime
     intv_updated_at: datetime
-
-class InterviewCompleteRequest(BaseModel):
-    transcript: list[TranscriptEntry] = Field(default_factory=list)
