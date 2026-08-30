@@ -55,7 +55,7 @@ function avatarColor(name = "") {
   return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
 }
 
-function normaliseQuestion(question, index = 0) {
+function normaliseQuestion(question, index = 0, isFollowUp = false, isNew = false) {
   const isTechnical = question.category === "technical";
 
   return {
@@ -67,6 +67,8 @@ function normaliseQuestion(question, index = 0) {
       : "bg-sky-100 text-sky-700",
     text: question.question,
     why: question.reason,
+    isFollowUp,
+    isNew,
   };
 }
 
@@ -121,9 +123,14 @@ function downsampleBuffer(buffer, inputSampleRate, outputSampleRate = 16000) {
 
 // ── Sub-components ────────────────────────────────────────────────────────────
 
-function TranscriptEntry({ entry }) {
+function TranscriptEntry({ entry, highlighted }) {
   return (
-    <div className={`${flex.row} gap-3 py-2 group`}>
+    <div
+      id={`transcript-entry-${entry.id}`}
+      className={`${flex.row} gap-3 py-2 group rounded-lg transition-colors ${
+        highlighted ? "bg-coral-50 ring-1 ring-coral-200" : ""
+      }`}
+    >
       <div
         className={`w-8 h-8 rounded-pill ${
           flex.rowCenter
@@ -395,10 +402,21 @@ function QuestionCard({ q, onMoreLike, onIgnore, isGeneratingSimilar }) {
   const [whyOpen, setWhyOpen] = useState(false);
   return (
     <div
-      className={`${flex.col} gap-3 bg-neutral-0 border border-neutral-200 rounded-2xl p-4 w-[280px] h-[345px] shrink-0 overflow-y-auto scrollbar-hide`}
+      className={`${flex.col} gap-3 bg-neutral-0 border border-neutral-200 rounded-2xl p-4 w-[280px] h-[345px] shrink-0 overflow-y-auto scrollbar-hide ${
+        q.isNew ? "new-question-glow" : ""
+      }`}
     >
       <div className={`${flex.rowBetween}`}>
-        <span className={`${badge.sm} ${q.categoryColor}`}>{q.category}</span>
+
+        <div className={`${flex.row} gap-2`}>
+          <span className={`${badge.sm} ${q.categoryColor}`}>{q.category}</span>
+          {q.isFollowUp && (
+            <span className="rounded-pill bg-neutral-100 px-2 py-0.5 text-[10px] font-semibold text-neutral-500">
+              Follow-up
+            </span>
+          )}
+        </div>
+
         <div className={`${flex.row} gap-2 text-neutral-400`}>
           <button className="hover:text-mint-500 transition-colors py-1">
             <svg
@@ -682,7 +700,15 @@ export default function InterviewPage() {
   const [questionsLoading, setQuestionsLoading] = useState(false);
   const [questionsError, setQuestionsError] = useState("");
   const [similarQuestionId, setSimilarQuestionId] = useState(null);
+  const [followUpQuestions, setFollowUpQuestions] = useState([]);
+  const [, setFollowUpLoading] = useState(false);
   const [timer, setTimer] = useState(0);
+  // Live bias nudges for questions the interviewer just asked. Capped at 3
+  // and independently dismissible - Deepgram can finalize two flaggable
+  // segments close together, so a single "latest only" slot would silently
+  // drop the first one before it's read.
+  const [biasWarnings, setBiasWarnings] = useState([]);
+  const [highlightedEntryId, setHighlightedEntryId] = useState(null);
 
   const transcriptRef = useRef([]);
   const timerRef = useRef(0);
@@ -708,6 +734,10 @@ export default function InterviewPage() {
   const questionsRequestedJobRef = useRef(null);
   const questionsRef = useRef([]);
   const pendingCategoriesRef = useRef([]);
+  const displayedQuestions = [...followUpQuestions, ...questions].slice(0, 6);
+  const pendingCandidateResponseRef = useRef("");
+  const followUpTimerRef = useRef(null);
+  const followUpGeneratingRef = useRef(false);
 
   useEffect(() => {
     questionsRef.current = questions;
@@ -725,6 +755,8 @@ export default function InterviewPage() {
       Math.floor((Date.now() - startTimeRef.current) / 1000)
     );
 
+    const isCandidate = speaker === (candidateName || "Candidate");
+
     if (isFinal) {
       const entryId = String(entryCounterRef.current++);
       const prevPartialId = partialRef.current;
@@ -739,6 +771,17 @@ export default function InterviewPage() {
         localStorage.setItem(`transcript-${id}`, JSON.stringify(updated));
         return updated;
       });
+
+    // US19: generate follow-up questions from the candidate's
+    // completed response.
+    if (isCandidate && text?.trim()) {
+      pendingCandidateResponseRef.current = [
+        pendingCandidateResponseRef.current,
+        text.trim(),
+        ]
+          .filter(Boolean)
+          .join(" ");
+      }
     } else {
       if (!partialRef.current) {
         partialRef.current = `partial-${entryCounterRef.current++}`;
@@ -751,6 +794,57 @@ export default function InterviewPage() {
         partialEntry,
       ]);
     }
+
+    // US19: reset the silence timer whenever the candidate is still speaking.
+    if (isCandidate && text?.trim()) {
+      if (followUpTimerRef.current) {
+        clearTimeout(followUpTimerRef.current);
+      }
+
+      followUpTimerRef.current = setTimeout(() => {
+        const candidateResponse =
+          pendingCandidateResponseRef.current.trim();
+
+        if (
+          !candidateResponse ||
+          followUpGeneratingRef.current
+        ) {
+          return;
+        }
+
+        pendingCandidateResponseRef.current = "";
+
+        void generateFollowUpQuestions(candidateResponse);
+      }, 2000);
+    }
+  }
+
+  function addBiasWarning(warning) {
+    setBiasWarnings((prev) =>
+      [...prev, { ...warning, id: `bias-${Date.now()}-${Math.random()}` }].slice(-3)
+    );
+  }
+
+  function dismissBiasWarning(warningId) {
+    setBiasWarnings((prev) => prev.filter((w) => w.id !== warningId));
+  }
+
+  // There's no shared id between backend transcript messages and frontend
+  // transcript entries - matching on the echoed quote text against the
+  // interviewer's own lines is the cheapest correct way to find "where did
+  // I just say that" without adding new backend state.
+  function jumpToTranscriptEntry(quote) {
+    const interviewerLabel = user?.full_name || "Interviewer";
+    const match = [...transcriptRef.current]
+      .reverse()
+      .find((entry) => entry.speaker === interviewerLabel && entry.text === quote);
+    if (!match) return;
+
+    document
+      .getElementById(`transcript-entry-${match.id}`)
+      ?.scrollIntoView({ behavior: "smooth", block: "center" });
+    setHighlightedEntryId(match.id);
+    setTimeout(() => setHighlightedEntryId((cur) => (cur === match.id ? null : cur)), 3000);
   }
 
   function togglePause() {
@@ -770,10 +864,10 @@ export default function InterviewPage() {
     isPausedRef.current = isPaused;
   }, [isPaused]);
 
-  function createTranscriptionSocket(speaker, partialRef) {
+  function createTranscriptionSocket(speaker, partialRef, role) {
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     const socket = new WebSocket(
-      `${protocol}//${window.location.host}/api/realtime/transcribe`
+      `${protocol}//${window.location.host}/api/realtime/transcribe?role=${role}`
     );
     socket.binaryType = "arraybuffer";
 
@@ -783,6 +877,8 @@ export default function InterviewPage() {
         const data = JSON.parse(event.data);
         if (data.type === "transcript" && typeof data.text === "string") {
           appendTranscript(data.text, Boolean(data.is_final), speaker, partialRef);
+        } else if (data.type === "bias_warning" && typeof data.quote === "string") {
+          addBiasWarning(data);
         }
       } catch (err) {
         console.error("Failed to parse transcription event", err);
@@ -799,8 +895,10 @@ export default function InterviewPage() {
     const candidateLabel = candidateName || "Candidate";
 
     try {
-      // Mic socket — always created
-      wsRef.current = createTranscriptionSocket(interviewerLabel, partialEntryRef);
+      // Mic socket — always created. Tagged role="interviewer" so the
+      // backend knows this connection carries the interviewer's own speech
+      // and can run bias-checks on it (never on the candidate/display side).
+      wsRef.current = createTranscriptionSocket(interviewerLabel, partialEntryRef, "interviewer");
       setStatus("Requesting screen access...");
 
       const displayStream = await navigator.mediaDevices.getDisplayMedia({
@@ -841,7 +939,7 @@ export default function InterviewPage() {
       // Display audio processor → separate WebSocket (Candidate)
       // macOS getDisplayMedia returns video-only by default — skip if no audio tracks.
       if (displayStream.getAudioTracks().length > 0) {
-        wsDisplayRef.current = createTranscriptionSocket(candidateLabel, displayPartialEntryRef);
+        wsDisplayRef.current = createTranscriptionSocket(candidateLabel, displayPartialEntryRef, "candidate");
 
         const displaySource = audioContext.createMediaStreamSource(displayStream);
         const displayProcessor = audioContext.createScriptProcessor(4096, 1, 1);
@@ -1027,6 +1125,8 @@ export default function InterviewPage() {
             intv_transcript: transcriptRef.current,
             intv_duration_seconds: timerRef.current,
           }),
+        }).then((r) => {
+          if (!r.ok) console.error("Autosave failed:", r.status);
         });
       }
     }, 30000);
@@ -1095,7 +1195,7 @@ export default function InterviewPage() {
           authedFetch(`/api/jobs/${data.job_id}`)
             .then((r) => r.json())
             .then((job) => { if (job.title) setCandidateRole(job.title); })
-            .catch(() => {});
+            .catch((err) => console.error("Failed to load job:", err));
         }
         if (data.cand_id) {
           setCandId(data.cand_id);
@@ -1105,7 +1205,7 @@ export default function InterviewPage() {
               if (cand.cand_full_name) setCandidateName(cand.cand_full_name);
               if (cand.cand_cv_url) setCvUrl(cand.cand_cv_url);
             })
-            .catch(() => {});
+            .catch((err) => console.error("Failed to load candidate:", err));
         }
 
         // Prep briefing: the CV analysis for this (candidate, job) pair.
@@ -1225,24 +1325,12 @@ export default function InterviewPage() {
         );
       }
 
-      const similarQuestion = normaliseQuestion(data);
+      const similarQuestion = normaliseQuestion(data, 0, false, true);
 
-      setQuestions((current) => {
-        const questionIndex = current.findIndex(
-          (item) => item.id === question.id
-        );
-
-        const insertAt =
-          questionIndex === -1
-            ? current.length
-            : questionIndex + 1;
-
-        return [
-          ...current.slice(0, insertAt),
-          similarQuestion,
-          ...current.slice(insertAt),
-        ];
-      });
+      setQuestions((current) => [
+        similarQuestion,
+        ...current,
+      ].slice(0, 6));
     } catch (error) {
       console.error("Similar question generation failed", error);
       setQuestionsError(
@@ -1253,11 +1341,74 @@ export default function InterviewPage() {
     }
   }
 
+  async function generateFollowUpQuestions(candidateResponse) {
+    if (!jobId || !candidateResponse?.trim() || followUpGeneratingRef.current) return;
+
+    followUpGeneratingRef.current = true;
+    setFollowUpLoading(true);
+
+    try {
+      const recentContext = transcript
+        .filter((entry) => entry.text)
+        .slice(-8)
+        .map((entry) => `${entry.speaker}: ${entry.text}`)
+        .join("\n");
+
+      const response = await fetch(
+        `/api/interview-questions/${jobId}/follow-up`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "application/json",
+          },
+          body: JSON.stringify({
+            candidate_response: candidateResponse.trim(),
+            interview_context: recentContext,
+          }),
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          data.detail || "Follow-up question generation failed"
+        );
+      }
+
+      const newFollowUps = (data.questions || [])
+        .slice(0, 2)
+        .map((question, index) =>
+          normaliseQuestion(question, index, true, true),
+        );
+
+      setFollowUpQuestions((prev) => [
+        ...newFollowUps,
+        ...prev,
+      ].slice(0, 2));
+
+    } catch (error) {
+      console.error("Follow-up question generation failed", error);
+    } finally {
+      setFollowUpLoading(false);
+      followUpGeneratingRef.current = false;
+    }
+  }
+
   // Minimum 2 questions, ignore only generate new questions when theres less than 2. 
   const BASE_QUESTION_COUNT = 2;
 
   async function ignoreQuestion(question) {
     if (!jobId) return;
+
+    // US19: if the question being ignored is a follow-up, remove it from the follow-up list only.
+    if (question.isFollowUp) {
+      setFollowUpQuestions((current) =>
+        current.filter((q) => q.id !== question.id)
+      );
+      return;
+    }
 
     // Read + update from the ref so a second click in the same tick sees
     // the freshest list (React state hasn't re-rendered yet).
@@ -1314,7 +1465,8 @@ export default function InterviewPage() {
         );
       }
 
-      const replacement = normaliseQuestion(data);
+      const replacement = normaliseQuestion(data, 0, false, true);      
+      
       setQuestions((current) => {
         const next = [...current, replacement];
         questionsRef.current = next;
@@ -1551,11 +1703,9 @@ export default function InterviewPage() {
         className={`flex-1 ${flex.row} gap-6 p-6 overflow-hidden items-stretch`}
       >
         {/* Left — Live Transcription */}
-        <div
-          className={`${card.base} flex flex-col w-[48%] overflow-hidden p-0`}
-        >
+        <div className={`${card.base} relative isolate flex flex-col w-[48%] overflow-hidden p-0 pt-3`}>
           <div
-            className={`${flex.rowBetween} px-6 pt-5 pb-4 border-b border-neutral-100 shrink-0`}
+            className={`${flex.rowBetween} px-6 pt-1 pb-1 border-b border-neutral-100 shrink-0`}
           >
             <span className="text-base font-semibold text-neutral-800">
               Live Transcription
@@ -1571,9 +1721,22 @@ export default function InterviewPage() {
               {transcriptVisible ? "Hide" : "Show"}
             </button>
           </div>
+          {biasWarnings.length > 0 && (
+            <div className={`${flex.col} gap-2 absolute top-12 bottom-0 left-0 right-0 z-50 overflow-y-auto px-6 pt-4 pb-6 scrollbar-primary`}>
+              {biasWarnings.map((warning, index) => (
+                <BiasWarningBanner
+                  key={warning.id}
+                  warning={warning}
+                  isLatest={index === biasWarnings.length - 1}
+                  onDismiss={() => dismissBiasWarning(warning.id)}
+                  onJumpTo={() => jumpToTranscriptEntry(warning.quote)}
+                />
+              ))}
+            </div>
+          )}
           {transcriptVisible && (
             <div
-              className="flex-1 overflow-y-auto px-6 py-3 scrollbar-primary scroll-auto"
+              className="flex-1 min-h-[200px] overflow-y-auto px-6 py-3 scrollbar-primary scroll-auto"
               ref={transcriptContainerRef}
             >
               {transcript.length === 0 ? (
@@ -1582,13 +1745,17 @@ export default function InterviewPage() {
                 </p>
               ) : (
                 transcript.map((entry) => (
-                  <TranscriptEntry key={entry.id} entry={entry} />
+                  <TranscriptEntry
+                    key={entry.id}
+                    entry={entry}
+                    highlighted={entry.id === highlightedEntryId}
+                  />
                 ))
               )}
             </div>
           )}
           {isScreenSharing && (
-            <div className="shrink-0 border-t border-neutral-100 pt-4 px-6 pb-4">
+            <div className="relative z-0 shrink-0 border-t border-neutral-100 pt-4 px-6 pb-4">
               <p className="text-xs text-neutral-500 mb-2 font-medium">
                 Screen Share
               </p>
@@ -1596,7 +1763,7 @@ export default function InterviewPage() {
                 ref={videoRef}
                 autoPlay
                 muted
-                className="w-full h-40 bg-neutral-900 rounded-lg object-cover"
+                className="relative z-0 w-full h-40 bg-neutral-900 rounded-lg object-cover"
               />
             </div>
           )}
@@ -1634,13 +1801,13 @@ export default function InterviewPage() {
                 <div className={`${flex.rowCenter} h-full`}>
                   <p className="text-sm text-coral-500 text-center">{questionsError}</p>
                 </div>
-              ) : questions.length === 0 ? (
+              ) : displayedQuestions.length === 0 ? (
                 <div className={`${flex.rowCenter} h-full`}>
                   <p className="text-sm text-neutral-400">No suggested questions available.</p>
                 </div>
               ) : (
                 <div className={`${flex.row} gap-4 h-full items-start`}>
-                  {questions.map((q) => (
+                  {displayedQuestions.map((q) => (
                     <QuestionCard
                       key={q.id}
                       q={q}
