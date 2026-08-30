@@ -114,11 +114,11 @@ from datetime import datetime, timezone
 from typing import Any
 
 from bson import ObjectId
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
 from database import get_db
-from dependencies import get_current_comp_id
+from dependencies import get_current_comp_id, get_current_user
 
 router = APIRouter(prefix="/api/applications", tags=["applications"])
 
@@ -146,78 +146,82 @@ def _safe_avg_score(job_candidate: dict[str, Any]) -> float | None:
 
 @router.get("")
 async def list_applications(
-    user_id: str = Query(..., description="Current user's MongoDB _id (string)"),
+    user_id: str | None = Query(
+        None,
+        description="Deprecated - scope now derives from the JWT and this is ignored.",
+    ),
+    user: dict = Depends(get_current_user),
     comp_id: ObjectId = Depends(get_current_comp_id),
 ) -> list[dict[str, Any]]:
+    """List applications, scoped by the caller's ROLE (from the JWT):
+
+    - interviewer: only the applications whose interview they are assigned
+      to (their personal workload).
+    - recruiter / admin / anyone else: every application in the company.
+      Previously the list was interviewer-scoped for all roles, so a
+      recruiter logged in to an empty Applications page and an empty
+      Schedules calendar even when the pipeline was full.
+
+    The legacy `user_id` query param is accepted but ignored - clients used
+    to pass their own id, and deriving scope server-side closes the hole
+    where any company user could enumerate a colleague's assignments.
+    """
     db = get_db()
-
-    if not user_id.strip():
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid user_id.",
-        )
-
-    # Tenant guard: the requested interviewer must belong to the caller's
-    # company. Without this, anyone could pass another company's user_id
-    # and read that interviewer's whole application list.
-    interviewer_user = (
-        await db.users.find_one({"_id": ObjectId(user_id), "comp_id": comp_id})
-        if ObjectId.is_valid(user_id) else None
-    )
-    if not interviewer_user:
-        raise HTTPException(status_code=404, detail="User not found")
-    interviewer_name = (
-        interviewer_user.get("full_name") or interviewer_user.get("username") or ""
-    )
 
     # Set of the company's job ids - used to drop any application row whose
     # job belongs to a different company (defence-in-depth on the join below).
     company_job_ids = {
         str(j["_id"]) async for j in db.jobs.find({"comp_id": comp_id}, {"_id": 1})
     }
-
-    # Find all interview links for this user directly by ID — no name lookup.
-    interview_user_links = await db.interview_users.find(
-        {"user_id": user_id}
-    ).to_list(length=2000)
-
-    interview_ids = [
-        link.get("intv_id")
-        for link in interview_user_links
-        if link.get("intv_id")
-    ]
-
-    interview_oids = [
-        ObjectId(iid)
-        for iid in interview_ids
-        if ObjectId.is_valid(iid)
-    ]
-
-    interviews = []
-    if interview_oids:
-        interviews = await db.interviews.find(
-            {"_id": {"$in": interview_oids}}
-        ).to_list(length=2000)
-
-    # Build a set of assigned candidate-job pairs.
-    assigned_pairs = {
-        (i.get("cand_id"), i.get("job_id"))
-        for i in interviews
-        if i.get("cand_id") and i.get("job_id")
-    }
-
-    if not assigned_pairs:
+    if not company_job_ids:
         return []
 
-    # Pull all job-candidate links, then keep only assigned ones.
-    all_job_candidates = await db.job_candidates.find({}).to_list(length=5000)
+    if user.get("role") == "interviewer":
+        # Interviewer: applications whose interview they're linked to.
+        interview_user_links = await db.interview_users.find(
+            {"user_id": str(user["_id"])}
+        ).to_list(length=2000)
 
-    matched_job_candidates = [
-        jc for jc in all_job_candidates
-        if (jc.get("cand_id"), jc.get("job_id")) in assigned_pairs
-        # Only keep rows whose job is in the caller's company.
-        and jc.get("job_id") in company_job_ids
-    ]
+        interview_oids = [
+            ObjectId(link["intv_id"])
+            for link in interview_user_links
+            if ObjectId.is_valid(link.get("intv_id", ""))
+        ]
+
+        interviews = []
+        if interview_oids:
+            interviews = await db.interviews.find(
+                {"_id": {"$in": interview_oids}}
+            ).to_list(length=2000)
+
+        assigned_pairs = {
+            (i.get("cand_id"), i.get("job_id"))
+            for i in interviews
+            if i.get("cand_id") and i.get("job_id")
+        }
+
+        # Fetch ONLY the links for the (cand, job) pairs this user is
+        # assigned to. The (cand_id, job_id) pair is unique-indexed, so this
+        # returns at most one doc per pair.
+        pair_filters = [
+            {"cand_id": cand_id, "job_id": job_id}
+            for (cand_id, job_id) in assigned_pairs
+            if job_id in company_job_ids
+        ]
+        if not pair_filters:
+            return []
+
+        matched_job_candidates = await db.job_candidates.find(
+            {"$or": pair_filters}
+        ).to_list(length=len(pair_filters))
+    else:
+        # Recruiter / admin / hiring manager: the whole company pipeline.
+        matched_job_candidates = await db.job_candidates.find(
+            {"job_id": {"$in": list(company_job_ids)}}
+        ).to_list(length=2000)
+        interviews = await db.interviews.find(
+            {"job_id": {"$in": list(company_job_ids)}}
+        ).to_list(length=2000)
 
     if not matched_job_candidates:
         return []
@@ -242,6 +246,32 @@ async def list_applications(
         (i.get("cand_id"), i.get("job_id")): i
         for i in interviews
     }
+
+    # Resolve each row's interviewer THROUGH its interview (interview ->
+    # interview_users -> users). The old code stamped the requesting user's
+    # own name on every row, which was only coincidentally right for the
+    # interviewer-scoped view and wrong for the company-wide one.
+    intv_id_strs = [str(i["_id"]) for i in interviews]
+    interviewer_id_by_intv: dict[str, str] = {}
+    if intv_id_strs:
+        async for link in db.interview_users.find(
+            {"intv_id": {"$in": intv_id_strs}}, {"intv_id": 1, "user_id": 1}
+        ):
+            interviewer_id_by_intv[link.get("intv_id")] = link.get("user_id")
+
+    interviewer_oids = [
+        ObjectId(uid)
+        for uid in set(interviewer_id_by_intv.values())
+        if uid and ObjectId.is_valid(uid)
+    ]
+    interviewers_by_id: dict[str, dict] = {}
+    if interviewer_oids:
+        interviewers_by_id = {
+            str(u["_id"]): u
+            for u in await db.users.find(
+                {"_id": {"$in": interviewer_oids}}, {"password_hash": 0}
+            ).to_list(length=2000)
+        }
 
     # CV-analysis status per application, so the list's CV cell can link to
     # the analysis report (completed) or show a progress/failure hint
@@ -270,6 +300,15 @@ async def list_applications(
         if not candidate or not job:
             continue
 
+        intv_id = str(interview["_id"]) if interview else None
+        interviewer_uid = interviewer_id_by_intv.get(intv_id) if intv_id else None
+        interviewer_doc = interviewers_by_id.get(interviewer_uid) if interviewer_uid else None
+        interviewer_name = (
+            interviewer_doc.get("full_name")
+            or interviewer_doc.get("username")
+            or interviewer_doc.get("email")
+        ) if interviewer_doc else None
+
         rows.append(
             {
                 "application_id": str(jc["_id"]),
@@ -279,6 +318,9 @@ async def list_applications(
                 "phone": candidate.get("cand_phone") or "",
                 "job_id": str(job["_id"]),
                 "job_title": job.get("title") or "",
+                # When the candidate profile was created - the dashboard's
+                # admin summary uses it for the "+N this month" delta.
+                "cand_created_at": candidate.get("cand_created_at"),
                 "status": (interview.get("intv_status") or "not_scheduled").replace("_", " ").upper() if interview else "NOT SCHEDULED",
                 "cv_url": candidate.get("cand_cv_url"),
                 "cover_letter_url": candidate.get("cand_cover_letter_url"),
@@ -286,7 +328,10 @@ async def list_applications(
                 "cv_analysis_status": analysis_status_map.get(str(jc["_id"])),
                 "interview_datetime": interview.get("intv_date_time") if interview else None,
                 "interviewer": interviewer_name,
-                "interviewer_user_id": user_id,
+                "interviewer_user_id": interviewer_uid,
+                # Interview id rides along so rows can deep-link to the
+                # interview page without an extra lookup.
+                "intv_id": intv_id,
                 "ratings": jc.get("ratings")
             }
         )

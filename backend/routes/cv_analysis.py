@@ -24,6 +24,7 @@ Endpoints:
 
 from __future__ import annotations
 
+import asyncio
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Annotated
@@ -32,6 +33,7 @@ from bson import ObjectId
 from fastapi import (
     APIRouter,
     BackgroundTasks,
+    Depends,
     File,
     Form,
     HTTPException,
@@ -42,13 +44,14 @@ from fastapi import (
 from pymongo.errors import DuplicateKeyError
 
 from database import get_db
+from dependencies import get_current_comp_id
 from models.cv_analysis import (
     CvAnalysisBullet,
     CvAnalysisOut,
     CvAnalysisPositionFit,
     CvAnalysisQuestion,
 )
-from services.file_storage import delete_upload, save_upload
+from services.file_storage import delete_upload, read_bytes, save_bytes, save_upload
 from services.gemini_service import analyse_cv
 
 router = APIRouter(prefix="/api/cv-analysis", tags=["cv-analysis"])
@@ -62,6 +65,17 @@ _PROCESSING_TIMEOUT = timedelta(minutes=10)
 
 
 _ALLOWED_PDF_MIME = {"application/pdf"}
+
+_FILES_URL_PREFIX = "/api/files/"
+
+
+def _storage_path(url: str | None) -> str | None:
+    """Map a stored `cand_cv_url` ("/api/files/cv_analyses/xxx.pdf") back to
+    the GridFS storage path ("cv_analyses/xxx.pdf"). Returns None for a
+    missing or externally-hosted URL (which we can't read bytes from)."""
+    if not url or not url.startswith(_FILES_URL_PREFIX):
+        return None
+    return url[len(_FILES_URL_PREFIX):] or None
 
 
 def _validate_pdf(upload: UploadFile, label: str) -> None:
@@ -128,6 +142,21 @@ def _serialise(doc: dict, *, cached: bool = False) -> CvAnalysisOut:
     )
 
 
+async def _assert_jobcand_in_company(db, jobcand_id: str, comp_id: ObjectId) -> None:
+    """Tenant guard: 404 unless the job-candidate link's job belongs to the
+    caller's company (404 rather than 403 so link ids can't be probed)."""
+    if not ObjectId.is_valid(jobcand_id):
+        raise HTTPException(status_code=400, detail="Invalid jobcand_id")
+    link = await db.job_candidates.find_one({"_id": ObjectId(jobcand_id)}, {"job_id": 1})
+    job_id = (link or {}).get("job_id")
+    if (
+        not job_id
+        or not ObjectId.is_valid(job_id)
+        or not await db.jobs.find_one({"_id": ObjectId(job_id), "comp_id": comp_id}, {"_id": 1})
+    ):
+        raise HTTPException(status_code=404, detail="Job-candidate link not found")
+
+
 async def _lookup_jobcand_context(jobcand_id: str) -> tuple[dict, dict, dict]:
     """Resolve a jobcand_id to (link, job, candidate). Raises 404 if any
     of the three are missing - the chain has to be intact for an analysis
@@ -178,14 +207,27 @@ async def _run_analysis(
     """
     db = get_db()
     try:
-        result = await analyse_cv(
-            cv_bytes=cv_bytes,
-            cv_mime_type=cv_mime_type,
-            cover_letter_bytes=cover_letter_bytes,
-            cover_letter_mime_type=cover_letter_mime_type,
-            position_title=position_title,
-            job_description=job_description,
+        # Hard cap well inside the UI's 10-minute stale-processing guard -
+        # without it a hung Gemini call could outlive that guard, flip the
+        # doc to "completed" AFTER the UI already reported "failed", and
+        # race a re-upload.
+        result = await asyncio.wait_for(
+            analyse_cv(
+                cv_bytes=cv_bytes,
+                cv_mime_type=cv_mime_type,
+                cover_letter_bytes=cover_letter_bytes,
+                cover_letter_mime_type=cover_letter_mime_type,
+                position_title=position_title,
+                job_description=job_description,
+            ),
+            timeout=300,
         )
+    except asyncio.TimeoutError:
+        await db.cv_analyses.update_one(
+            {"_id": analysis_oid, "status": "processing"},
+            {"$set": {"status": "failed", "error": "Analysis timed out after 5 minutes. Re-upload the CV to retry."}},
+        )
+        return
     except Exception as e:  # RuntimeError from the service, or anything else
         await db.cv_analyses.update_one(
             {"_id": analysis_oid, "status": "processing"},
@@ -224,15 +266,21 @@ async def analyse(
     jobcand_id:  Annotated[str,        Form(min_length=1)],
     cv:          Annotated[UploadFile | None, File(description="Candidate CV PDF")] = None,
     cover_letter: Annotated[UploadFile | None, File()] = None,
+    comp_id: ObjectId = Depends(get_current_comp_id),
 ) -> CvAnalysisOut:
     """See the module docstring for the per-state semantics. The short
     version: no file → read; new file → (re)start; in-flight → no-op.
     """
     db = get_db()
+    await _assert_jobcand_in_company(db, jobcand_id, comp_id)
 
     has_new_cv = cv is not None and bool(cv.filename)
 
     # 1. Existing-doc check. Cheap query, runs before anything destructive.
+    replaced_cl_path: str | None = None
+    # Set when there's no upload but the candidate already has a stored CV we
+    # can reuse for this new job's analysis (no re-upload needed).
+    reuse_cv_path: str | None = None
     existing = await db.cv_analyses.find_one({"jobcand_id": jobcand_id})
     if existing:
         doc_status, _ = _effective_status(existing)
@@ -240,19 +288,30 @@ async def analyse(
         if doc_status == "processing" or not has_new_cv:
             return _serialise(existing, cached=True)
         # New CV over a completed/failed analysis → replace it wholesale.
+        # Remember the old cover-letter path: if the new upload doesn't
+        # bring one, the candidate's cover-letter link would otherwise keep
+        # pointing at the file we're about to delete.
+        replaced_cl_path = existing.get("cover_letter_path")
         await db.cv_analyses.delete_one({"_id": existing["_id"]})
         if existing.get("cv_path"):
-            delete_upload(existing["cv_path"])
+            await delete_upload(existing["cv_path"])
         if existing.get("cover_letter_path"):
-            delete_upload(existing["cover_letter_path"])
+            await delete_upload(existing["cover_letter_path"])
     elif not has_new_cv:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="No existing analysis for this job-candidate. Upload a CV PDF to generate one.",
-        )
+        # No analysis for THIS link and no upload. If the candidate already
+        # has a CV on file (added to another job earlier), reuse it against
+        # this job's description instead of demanding a re-upload.
+        _probe_link, _probe_job, probe_candidate = await _lookup_jobcand_context(jobcand_id)
+        reuse_cv_path = _storage_path(probe_candidate.get("cand_cv_url"))
+        if not reuse_cv_path:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="No CV on file for this candidate. Upload a CV PDF to generate an analysis.",
+            )
 
     # 2. Validate the uploads before anything is written.
-    _validate_pdf(cv, "CV")
+    if has_new_cv:
+        _validate_pdf(cv, "CV")
     if cover_letter is not None and cover_letter.filename:
         _validate_pdf(cover_letter, "Cover letter")
     else:
@@ -265,17 +324,43 @@ async def analyse(
     job_description = job.get("description") or None
     candidate_name  = candidate.get("cand_full_name") or candidate.get("name")
 
-    # 4. Read bytes into memory once for both the disk save and the LLM call.
-    cv_bytes = await cv.read()
-    cl_bytes = await cover_letter.read() if cover_letter else None
-
+    # 4. Gather the CV bytes and persist a fresh copy this analysis OWNS (so a
+    #    later delete of one job's analysis can't orphan another's file).
     request_id = uuid.uuid4().hex
-    await cv.seek(0)
-    cv_path = await save_upload(cv, subdir="cv_analyses", key=f"{request_id}-cv")
+    cv_mime = "application/pdf"
+    if has_new_cv:
+        cv_bytes = await cv.read()
+        cv_mime = cv.content_type or "application/pdf"
+        await cv.seek(0)
+        cv_path = await save_upload(cv, subdir="cv_analyses", key=f"{request_id}-cv")
+    else:
+        cv_bytes = await read_bytes(reuse_cv_path)
+        if not cv_bytes:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="The candidate's stored CV could not be read. Upload a CV PDF to generate an analysis.",
+            )
+        cv_path = await save_bytes(
+            cv_bytes, subdir="cv_analyses", key=f"{request_id}-cv", ext=".pdf", content_type="application/pdf"
+        )
+
+    cl_bytes: bytes | None = None
+    cl_mime: str | None = None
     cl_path: str | None = None
     if cover_letter is not None:
+        cl_bytes = await cover_letter.read()
+        cl_mime = cover_letter.content_type or "application/pdf"
         await cover_letter.seek(0)
         cl_path = await save_upload(cover_letter, subdir="cv_analyses", key=f"{request_id}-cl")
+    elif not has_new_cv:
+        # Reusing the CV - carry over the candidate's stored cover letter too.
+        reuse_cl_path = _storage_path(candidate.get("cand_cover_letter_url"))
+        cl_bytes = await read_bytes(reuse_cl_path)
+        if cl_bytes:
+            cl_mime = "application/pdf"
+            cl_path = await save_bytes(
+                cl_bytes, subdir="cv_analyses", key=f"{request_id}-cl", ext=".pdf", content_type="application/pdf"
+            )
 
     # 5. Insert the doc as "processing". The analysis fields are filled in
     #    by the background task; until then they serialise as empty.
@@ -301,9 +386,9 @@ async def analyse(
     except DuplicateKeyError:
         # A concurrent POST won the unique-index race. Serve their doc and
         # drop our now-orphaned files.
-        delete_upload(cv_path)
+        await delete_upload(cv_path)
         if cl_path:
-            delete_upload(cl_path)
+            await delete_upload(cl_path)
         winner = await db.cv_analyses.find_one({"jobcand_id": jobcand_id})
         if winner:
             return _serialise(winner, cached=True)
@@ -319,7 +404,17 @@ async def analyse(
     }
     if cl_path:
         cand_updates["cand_cover_letter_url"] = f"/api/files/{cl_path}"
-    await db.candidates.update_one({"_id": candidate["_id"]}, {"$set": cand_updates})
+    update_ops: dict = {"$set": cand_updates}
+    # The replaced analysis had a cover letter but the new upload doesn't:
+    # drop the candidate's pointer to the now-deleted file instead of
+    # leaving a dead "PDF" link on the applications table.
+    if (
+        not cl_path
+        and replaced_cl_path
+        and candidate.get("cand_cover_letter_url") == f"/api/files/{replaced_cl_path}"
+    ):
+        update_ops["$unset"] = {"cand_cover_letter_url": ""}
+    await db.candidates.update_one({"_id": candidate["_id"]}, update_ops)
 
     # 7. Hand the heavy Gemini call to a background task and return now -
     #    the frontend polls GET /by-jobcand for completion.
@@ -327,9 +422,9 @@ async def analyse(
         _run_analysis,
         inserted.inserted_id,
         cv_bytes=cv_bytes,
-        cv_mime_type=cv.content_type or "application/pdf",
+        cv_mime_type=cv_mime,
         cover_letter_bytes=cl_bytes,
-        cover_letter_mime_type=(cover_letter.content_type if cover_letter else None),
+        cover_letter_mime_type=cl_mime,
         position_title=position_title,
         job_description=job_description,
     )
@@ -344,11 +439,15 @@ async def analyse(
     response_model=CvAnalysisOut,
     summary="Fetch the existing analysis for a job-candidate link.",
 )
-async def get_by_jobcand(jobcand_id: str) -> CvAnalysisOut:
+async def get_by_jobcand(
+    jobcand_id: str,
+    comp_id: ObjectId = Depends(get_current_comp_id),
+) -> CvAnalysisOut:
     """Pure read. Returns 404 when no analysis has been generated yet -
     the frontend uses this to decide whether to show the upload form or
     the result page directly."""
     db = get_db()
+    await _assert_jobcand_in_company(db, jobcand_id, comp_id)
     doc = await db.cv_analyses.find_one({"jobcand_id": jobcand_id})
     if not doc:
         raise HTTPException(status_code=404, detail="No analysis exists for this job-candidate")
@@ -364,20 +463,72 @@ async def get_by_jobcand(jobcand_id: str) -> CvAnalysisOut:
     response_class=Response,
     summary="Delete an analysis record. The user can then upload a different CV.",
 )
-async def delete_analysis(analysis_id: str):
+async def delete_analysis(
+    analysis_id: str,
+    comp_id: ObjectId = Depends(get_current_comp_id),
+):
     """Removes the analysis doc AND the PDFs it owns. The job-candidate
     link itself is untouched - this is just clearing the analysis."""
     if not ObjectId.is_valid(analysis_id):
         raise HTTPException(status_code=400, detail="Invalid analysis id")
 
     db = get_db()
-    doc = await db.cv_analyses.find_one_and_delete({"_id": ObjectId(analysis_id)})
+    doc = await db.cv_analyses.find_one({"_id": ObjectId(analysis_id)})
     if not doc:
         raise HTTPException(status_code=404, detail="Analysis not found")
+
+    # Tenant guard: walk the link -> job -> comp chain; for orphaned docs
+    # (link already deleted) fall back to the comp_id stamped on the doc.
+    try:
+        await _assert_jobcand_in_company(db, doc.get("jobcand_id") or "", comp_id)
+    except HTTPException:
+        if str(doc.get("comp_id") or "") != str(comp_id):
+            raise HTTPException(status_code=404, detail="Analysis not found")
+
+    await db.cv_analyses.delete_one({"_id": doc["_id"]})
 
     # Best-effort cleanup. We don't fail the request if a file is already
     # gone - the DB row is the source of truth.
     if doc.get("cv_path"):
-        delete_upload(doc["cv_path"])
+        await delete_upload(doc["cv_path"])
     if doc.get("cover_letter_path"):
-        delete_upload(doc["cover_letter_path"])
+        await delete_upload(doc["cover_letter_path"])
+
+    # Safe delete for the candidate's document links too: the analysis
+    # upload pointed cand_cv_url / cand_cover_letter_url at the files we
+    # just removed - clearing them (ONLY when they reference these exact
+    # files, never an externally-supplied URL) stops the candidate and
+    # applications pages from rendering View/PDF buttons that 404.
+    link = (
+        await db.job_candidates.find_one({"_id": ObjectId(doc["jobcand_id"])})
+        if ObjectId.is_valid(doc.get("jobcand_id") or "")
+        else None
+    )
+    cand_oid = (
+        ObjectId(link["cand_id"])
+        if link and ObjectId.is_valid(link.get("cand_id") or "")
+        else None
+    )
+    if cand_oid:
+        candidate = await db.candidates.find_one({"_id": cand_oid})
+        unset: dict = {}
+        if candidate:
+            if (
+                doc.get("cv_path")
+                and candidate.get("cand_cv_url") == f"/api/files/{doc['cv_path']}"
+            ):
+                unset["cand_cv_url"] = ""
+            if (
+                doc.get("cover_letter_path")
+                and candidate.get("cand_cover_letter_url")
+                == f"/api/files/{doc['cover_letter_path']}"
+            ):
+                unset["cand_cover_letter_url"] = ""
+        if unset:
+            await db.candidates.update_one(
+                {"_id": cand_oid},
+                {
+                    "$unset": unset,
+                    "$set": {"cand_updated_at": datetime.now(timezone.utc)},
+                },
+            )
