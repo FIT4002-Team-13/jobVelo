@@ -1292,8 +1292,8 @@ export default function JobDetailPage() {
         {/* Top panels */}
         <div className="grid grid-cols-3 gap-5 mb-6">
           {/* Job Info */}
-          <div className={`col-span-2 ${card.base}`}>
-            <div className="flex items-start justify-between mb-3">
+          <div className={`col-span-2 ${card.base} flex flex-col h-[320px]`}>
+            <div className="shrink-0 flex items-start justify-between mb-3">
               <div>
                 <h2 className="text-lg font-bold text-neutral-800">
                   {job.title}
@@ -1342,17 +1342,17 @@ export default function JobDetailPage() {
               </div>
             </div>
 
-            <div className="mb-3">
-              <p className="text-sm font-bold text-neutral-700 mb-1">
-                Description
-              </p>
-              <p className="text-sm text-neutral-500 leading-relaxed">
+            <p className="shrink-0 text-sm font-bold text-neutral-700 mb-1">
+              Description
+            </p>
+            <div className="flex-1 min-h-0 overflow-y-auto scrollbar-primary mb-4">
+              <p className="text-sm text-neutral-500 leading-relaxed pr-2">
                 {job.description || "—"}
               </p>
             </div>
 
             {job.employment_type?.length > 0 && (
-              <div className="flex flex-wrap gap-2 mb-4">
+              <div className="shrink-0 flex flex-wrap gap-2 mb-4">
                 {job.employment_type.map((t) => (
                   <span
                     key={t}
@@ -1364,7 +1364,7 @@ export default function JobDetailPage() {
               </div>
             )}
 
-            <div className={`${flex.row} gap-8 text-sm text-neutral-500`}>
+            <div className={`shrink-0 ${flex.row} gap-8 text-sm text-neutral-500`}>
               <div>
                 <span className="block text-neutral-400 font-medium uppercase tracking-wide mb-0.5">
                   Start

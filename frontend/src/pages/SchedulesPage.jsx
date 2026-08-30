@@ -360,7 +360,7 @@ export default function SchedulesPage() {
           </p>
         )}
       </main>
-
+    </div>
       {/* Day-detail modal - the full schedule for a crowded day. Google-
           Calendar-style: every interview listed, each row clickable through
           to the candidate page. */}
