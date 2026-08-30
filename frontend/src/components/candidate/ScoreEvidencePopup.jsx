@@ -68,9 +68,20 @@ export default function ScoreEvidencePopup({ ratings, onClose }) {
                             {score.toFixed(1)}/10.0
                         </span>
 
-                        <span className={`text-xl transition-transform ${isOpen ? "rotate-180" : ""}`}>
-                            v
-                        </span>
+                        <svg
+                            width="16"
+                            height="16"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2.5"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            className={`text-neutral-500 transition-transform ${isOpen ? "rotate-180" : ""}`}
+                            aria-hidden="true"
+                        >
+                            <polyline points="6 9 12 15 18 9" />
+                        </svg>
                     </div>
                 </button>
 
