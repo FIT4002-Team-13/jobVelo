@@ -1357,32 +1357,42 @@ export default function InterviewPage() {
     }
   }
 
+
   // Complete = persist the transcript, have the LLM write both reports
   // (candidate + interviewer) and score the candidate, then show them in
   // the popup. Idempotent server-side, so "View Report" after completion
-  // re-uses the stored reports instead of a second LLM run.
+  // re-uses the stored reports instead of a second LLM run.  
   async function completeInterview() {
     if (reportState.phase === "generating") return;
 
     setReportState({ phase: "generating" });
+
     try {
-      // Drop in-flight partial captions - only finalised lines are analysed.
       const finalEntries = transcript.filter(
-        (e) => !String(e.id).startsWith("partial-")
+        (entry) => entry.text?.trim() && !String(entry.id).startsWith("partial-")
       );
-      const res = await authedFetch(`/api/interviews/${id}/complete`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          transcript: finalEntries,
-          duration_seconds: timer,
-        }),
-      });
-      const data = await res.json().catch(() => null);
-      if (!res.ok) {
-        const detail = data?.detail;
+
+      const response = await authedFetch(
+        `/api/interviews/${id}/complete`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            transcript: finalEntries,
+            duration_seconds: timer,
+          }),
+        }
+      );
+
+      const data = await response.json().catch(() => null);
+
+      if (!response.ok) {
         throw new Error(
-          typeof detail === "string" ? detail : "Report generation failed."
+          typeof data?.detail === "string"
+            ? data.detail
+            : "Interview completion failed."
         );
       }
 
@@ -1390,11 +1400,12 @@ export default function InterviewPage() {
       setIsCompleted(true);
       setStatus("Interview completed");
       localStorage.removeItem(`transcript-${id}`);
-      setReportState({ phase: "ready", data });
-    } catch (err) {
+
+      setReportState({phase: "ready", data,});
+    } catch (error) {
       setReportState({
         phase: "error",
-        error: err.message || "Something went wrong.",
+        error: error.message || "Something went wrong.",
       });
     }
   }

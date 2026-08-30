@@ -124,15 +124,24 @@ router = APIRouter(prefix="/api/applications", tags=["applications"])
 
 
 def _safe_avg_score(job_candidate: dict[str, Any]) -> float | None:
+    ratings = job_candidate.get("ratings") or {}
+
     scores = [
-        job_candidate.get("communication_score"),
-        job_candidate.get("skill_score"),
-        job_candidate.get("problem_solving_score"),
+        (ratings.get("communication") or {}).get("score"),
+        (ratings.get("technical_skills") or {}).get("score"),
+        (ratings.get("problem_solving") or {}).get("score"),
     ]
-    valid_scores = [float(s) for s in scores if s is not None]
+
+    valid_scores = [
+        float(score)
+        for score in scores
+        if score is not None
+    ]
+
     if not valid_scores:
         return None
-    return round(sum(valid_scores) / len(valid_scores), 1)
+
+    return round(sum(valid_scores) / len(valid_scores),1)
 
 
 @router.get("")
@@ -275,10 +284,10 @@ async def list_applications(
                 "cover_letter_url": candidate.get("cand_cover_letter_url"),
                 # None when no analysis exists for this application yet.
                 "cv_analysis_status": analysis_status_map.get(str(jc["_id"])),
-                "score": _safe_avg_score(jc),
                 "interview_datetime": interview.get("intv_date_time") if interview else None,
                 "interviewer": interviewer_name,
                 "interviewer_user_id": user_id,
+                "ratings": jc.get("ratings")
             }
         )
 

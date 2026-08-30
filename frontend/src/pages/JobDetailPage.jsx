@@ -887,13 +887,13 @@ function CandidatesTable({
                         {candidateCell}
                         {statusCell}
                         <td className="px-4 py-3 text-neutral-700">
-                          {formatScore(c.communication_score)}
+                          {formatScore(c.ratings?.communication?.score)}
                         </td>
                         <td className="px-4 py-3 text-neutral-700">
-                          {formatScore(c.skill_score)}
+                          {formatScore(c.ratings?.technical_skills?.score)}
                         </td>
                         <td className="px-4 py-3 text-neutral-700">
-                          {formatScore(c.problem_solving_score)}
+                          {formatScore(c.ratings?.problem_solving?.score)}
                         </td>
                         {scoreCell}
                         {actionsCell}
