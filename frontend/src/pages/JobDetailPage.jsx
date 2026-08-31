@@ -5,18 +5,12 @@ import JobFormModal from "../components/job-candidate/JobFormModal";
 import StartInterviewModal from "../components/job-candidate/StartInterviewModal";
 import DeleteCandidateModal from "../components/job-candidate/DeleteCandidateModal";
 import EditCandidateForm from "../components/candidate/EditCandidateForm";
-import { flex, card, badge, form, button, modal, page } from "../styles/layout";
+import AddCandidateForm from "../components/candidate/AddCandidateForm";
+import { flex, card, badge, button, page } from "../styles/layout";
 
 import { useAuth } from "../lib/AuthContext.jsx";
 import { useToast } from "../components/common/ToastContext.jsx";
-import { api, authedFetch } from "../lib/api.js";
-import {
-  isEmail,
-  isHttpUrl,
-  isPhone,
-  isFullName,
-  isFutureDateTime,
-} from "../lib/validators.js";
+import { authedFetch } from "../lib/api.js";
 import {
   SortMenu,
   FilterMenu,
@@ -38,7 +32,7 @@ const STATUS_STYLES = {
 const CANDIDATE_STATUS_STYLES = {
   'NOT SCHEDULED': 'bg-neutral-100 text-neutral-500',
   SCHEDULED:       'bg-primary-100 text-primary-600',
-  'IN PROGRESS':   'bg-sky-100 text-sky-600',
+  'IN PROGRESS':   'bg-amber-100 text-amber-700',
   INCOMPLETE:      'bg-coral-50 text-coral-600',
   COMPLETED:       'bg-mint-100 text-mint-700',
   CANCELLED:       'bg-coral-100 text-coral-700',
@@ -53,6 +47,7 @@ const CANDIDATE_STATUS_STYLES = {
 const CANDIDATE_FILTER_OPTIONS = [
   { value: "NOT SCHEDULED", label: "Not Scheduled" },
   { value: "SCHEDULED",     label: "Scheduled"     },
+  { value: 'IN PROGRESS',     label: 'In Progress' },
   { value: "COMPLETED",     label: "Completed"     },
 ];
 
@@ -124,351 +119,6 @@ function Avatar({ name, size = "md" }) {
   );
 }
 
-// ── Add Candidate Modal ───────────────────────────────────────────────────────
-
-function AddCandidateModal({ jobId, onClose, onAdded }) {
-  const { user } = useAuth();
-  // Mirrors the AddCandidateToJob Pydantic model on the backend:
-  //   name + email are required (so the candidate doc has real identity);
-  //   phone, cv_url, cover_letter_url, interviewer_user_id, scheduled_at
-  //   are optional. `interviewer` is display-only (the combobox text);
-  //   the backend keys the interview off interviewer_user_id.
-  const [form_state, setForm] = useState({
-    name: "",
-    email: "",
-    phone: "",
-    cv_url: "",
-    cover_letter_url: "",
-    interviewer: "",
-    interviewer_user_id: "",
-    scheduled_at: "",
-  });
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState(null);
-  // Interviewers in the caller's company - powers the combobox below.
-  const [interviewers, setInterviewers] = useState([]);
-
-  useEffect(() => {
-    if (!user?.comp_id) return;
-    api
-      .listUsers({ comp_id: user.comp_id, role: "interviewer" })
-      .then(setInterviewers)
-      .catch(() => setInterviewers([])); // empty -> dropdown shows "no interviewers"
-  }, [user?.comp_id]);
-
-  function set(k, v) {
-    setForm((f) => ({ ...f, [k]: v }));
-  }
-
-  async function handleSubmit(e) {
-    e.preventDefault();
-    // Required fields
-    if (!form_state.name.trim()) return setError("Candidate name is required.");
-    if (!isFullName(form_state.name))
-      return setError(
-        "Please enter a real name (2-100 characters, includes letters)."
-      );
-    if (!form_state.email.trim())
-      return setError("Candidate email is required.");
-    if (!isEmail(form_state.email))
-      return setError("Please enter a valid email address.");
-    // Optional fields - only validate format when the user actually filled them in
-    if (form_state.phone.trim() && !isPhone(form_state.phone))
-      return setError(
-        "Phone number looks malformed (digits, +, spaces, dashes only)."
-      );
-    if (form_state.cv_url.trim() && !isHttpUrl(form_state.cv_url))
-      return setError("CV URL must start with http:// or https://");
-    if (
-      form_state.cover_letter_url.trim() &&
-      !isHttpUrl(form_state.cover_letter_url)
-    )
-      return setError("Cover Letter URL must start with http:// or https://");
-    // Booking the past doesn't make sense - even if the candidate showed up
-    // late, you'd update an existing record, not back-date a new one.
-    if (form_state.scheduled_at && !isFutureDateTime(form_state.scheduled_at))
-      return setError("Scheduled date/time must be in the future.");
-
-    setError(null);
-    setSubmitting(true);
-    // Convert empty optional strings to null so EmailStr / URL validators
-    // on the backend don't trip on "".
-    const body = {
-      name: form_state.name.trim(),
-      email: form_state.email.trim().toLowerCase(),
-      phone: form_state.phone.trim() || null,
-      cv_url: form_state.cv_url.trim() || null,
-      cover_letter_url: form_state.cover_letter_url.trim() || null,
-      // The backend keys the interview + interviewer link off the user id -
-      // sending the display name here used to be silently dropped by
-      // Pydantic, so no interview was ever created from this modal.
-      interviewer_user_id: form_state.interviewer_user_id || null,
-      scheduled_at: form_state.scheduled_at || null,
-    };
-    try {
-      const res = await authedFetch(`/api/jobs/${jobId}/candidates`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      if (!res.ok) {
-        // Surface FastAPI's actual error so 422s aren't silently "Failed to add candidate."
-        const data = await res.json().catch(() => null);
-        const detail = data?.detail;
-        const message =
-          typeof detail === "string"
-            ? detail
-            : Array.isArray(detail)
-            ? detail
-                .map((d) => `${d.loc?.slice(1).join(".")}: ${d.msg}`)
-                .join(" • ")
-            : `Request failed (${res.status})`;
-        throw new Error(message);
-      }
-      onAdded(await res.json());
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  return (
-    <div className={modal.overlay}>
-      <div
-        className={`${modal.panel} scrollbar-primary max-w-md max-h-[90vh] overflow-y-auto`}
-      >
-        <button
-          onClick={onClose}
-          className="absolute top-4 right-4 text-neutral-400 hover:text-neutral-700 text-xl leading-none"
-        >
-          ×
-        </button>
-        <h2 className="text-xl font-bold text-neutral-800 mb-1">
-          Add Candidate
-        </h2>
-        <p className="text-xs text-neutral-400 mb-5">
-          Required fields are indicated with an asterisk *
-        </p>
-
-        <form onSubmit={handleSubmit} className={`${flex.col} gap-4`}>
-          <SectionLabel>Candidate</SectionLabel>
-
-          <div>
-            <label className={form.label}>Full Name *</label>
-            <input
-              value={form_state.name}
-              onChange={(e) => set("name", e.target.value)}
-              placeholder="eg. John Doe"
-              className={form.input}
-            />
-          </div>
-          <div>
-            <label className={form.label}>Email *</label>
-            <input
-              type="email"
-              value={form_state.email}
-              onChange={(e) => set("email", e.target.value)}
-              placeholder="eg. john.doe@example.com"
-              className={form.input}
-            />
-          </div>
-          <div>
-            <label className={form.label}>Phone</label>
-            <input
-              value={form_state.phone}
-              onChange={(e) => set("phone", e.target.value)}
-              placeholder="eg. +61 412 345 678"
-              className={form.input}
-            />
-          </div>
-          <div>
-            <label className={form.label}>CV URL</label>
-            <input
-              type="url"
-              value={form_state.cv_url}
-              onChange={(e) => set("cv_url", e.target.value)}
-              placeholder="https://..."
-              className={form.input}
-            />
-          </div>
-          <div>
-            <label className={form.label}>Cover Letter URL</label>
-            <input
-              type="url"
-              value={form_state.cover_letter_url}
-              onChange={(e) => set("cover_letter_url", e.target.value)}
-              placeholder="https://..."
-              className={form.input}
-            />
-          </div>
-
-          <SectionLabel>Interview (optional)</SectionLabel>
-
-          <div>
-            <label className={form.label}>Interviewer</label>
-            <InterviewerCombobox
-              value={form_state.interviewer}
-              onChange={(name, userid) =>
-                setForm((f) => ({
-                  ...f,
-                  interviewer: name,
-                  interviewer_user_id: userid ?? "",
-                }))
-              }
-              options={interviewers}
-            />
-          </div>
-          <div>
-            <label className={form.label}>Scheduled Date & Time</label>
-            <input
-              type="datetime-local"
-              value={form_state.scheduled_at}
-              onChange={(e) => set("scheduled_at", e.target.value)}
-              // Browser-level guard so the picker hides past times.
-              // The submit handler re-checks (browsers can be bypassed).
-              min={new Date().toISOString().slice(0, 16)}
-              className={form.input}
-            />
-          </div>
-
-          {error && <p className={form.error}>{error}</p>}
-
-          <div className="flex justify-end gap-3 pt-1">
-            <button
-              type="button"
-              onClick={onClose}
-              className={`${button.cancel} px-6 py-2`}
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={submitting}
-              className={`${button.primary} disabled:opacity-60`}
-            >
-              {submitting ? "Adding…" : "Add Candidate"}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
-  );
-}
-
-function SectionLabel({ children }) {
-  return (
-    <div className="text-xs font-bold uppercase tracking-wider text-primary-600 pt-1">
-      {children}
-    </div>
-  );
-}
-
-// Searchable dropdown for picking an interviewer from the company roster.
-// Behaviour:
-//   - typing filters the list by full_name / username / email (case-insensitive)
-//   - clicking an option fills the field with the user's full_name
-//   - clicking outside closes the panel
-//   - this is a SELECT (not free-text) - the picker only ever sets values
-//     from the supplied options, so we don't end up with typos in the DB
-function InterviewerCombobox({ value, onChange, options }) {
-  const [query, setQuery] = useState(value || "");
-  const [open, setOpen] = useState(false);
-  const ref = useRef(null);
-
-  // Keep query in sync if the parent clears/sets value externally.
-  useEffect(() => {
-    setQuery(value || "");
-  }, [value]);
-
-  // Close panel on outside click.
-  useEffect(() => {
-    function handler(e) {
-      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
-    }
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, []);
-
-  const q = query.toLowerCase().trim();
-  const filtered = q
-    ? options.filter(
-        (o) =>
-          (o.full_name || "").toLowerCase().includes(q) ||
-          (o.username || "").toLowerCase().includes(q) ||
-          (o.email || "").toLowerCase().includes(q)
-      )
-    : options;
-
-  return (
-    <div ref={ref} className="relative">
-      <input
-        value={query}
-        onChange={(e) => {
-          setQuery(e.target.value);
-          setOpen(true);
-          // Clearing the text un-picks the interviewer - otherwise the
-          // form would silently keep submitting the last selected user id
-          // while the box looks empty.
-          if (e.target.value.trim() === "") onChange("", null);
-        }}
-        onFocus={() => setOpen(true)}
-        placeholder={
-          options.length === 0
-            ? "No interviewers in your company yet"
-            : "Type to search interviewers…"
-        }
-        className={form.input}
-      />
-      {open && (
-        <div className="scrollbar-primary absolute z-10 left-0 right-0 top-full mt-1 max-h-48 overflow-y-auto bg-white border border-neutral-200 rounded-xl shadow-lg">
-          {filtered.length === 0 ? (
-            <div className="px-3 py-2 text-xs text-neutral-400">
-              {options.length === 0
-                ? "No interviewers yet — invite one from the admin dashboard."
-                : `No matches for "${query}".`}
-            </div>
-          ) : (
-            <ul>
-              {filtered.map((o) => (
-                <li key={o.userid}>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const picked = o.full_name || o.username || o.email || "";
-                      // Emit the display name AND the user id - the id is
-                      // what the backend needs to create the interview +
-                      // interviewer link.
-                      onChange(picked, o.userid);
-                      setQuery(picked);
-                      setOpen(false);
-                    }}
-                    className="w-full text-left px-3 py-2 text-sm hover:bg-primary-500/10 transition-colors flex items-center gap-3"
-                  >
-                    <Avatar
-                      name={o.full_name || o.username || o.email || "?"}
-                      size="sm"
-                    />
-                    <div className="min-w-0 flex-1">
-                      <div className="font-medium text-neutral-800 truncate">
-                        {o.full_name || o.username}
-                      </div>
-                      {o.email && (
-                        <div className="text-xs text-neutral-400 truncate">
-                          {o.email}
-                        </div>
-                      )}
-                    </div>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
 
 // ── Interview Status Panel ────────────────────────────────────────────────────
 
@@ -765,6 +415,12 @@ function CandidatesTable({
                     {formatScore(c.score)}
                   </td>
                 );
+                // A candidate is only rankable once they have a real score
+                // (i.e. a completed, rated interview). Without one, a "#N" would
+                // imply a pecking order that hasn't been earned - show N/A and
+                // skip the medal styling instead. Unscored rows already sort to
+                // the bottom, so the scored ones keep contiguous #1..#k ranks.
+                const isRanked = typeof c.score === "number" && Number.isFinite(c.score);
                 // Actions: Start Interview is only meaningful for SCHEDULED rows
                 // (so it stays greyed-out on the RANKINGS tab where everything is
                 // typically EVALUATED), and is interviewer-only - mirrors the
@@ -944,7 +600,9 @@ function CandidatesTable({
                           else renders in plain neutral. All non-bold per spec. */}
                         <td
                           className={`px-4 py-3 w-12 ${
-                            i === 0
+                            !isRanked
+                              ? "text-neutral-400"
+                              : i === 0
                               ? "text-yellow-500"
                               : i === 1
                               ? "text-neutral-400"
@@ -953,7 +611,7 @@ function CandidatesTable({
                               : "text-neutral-500"
                           }`}
                         >
-                          #{i + 1}
+                          {isRanked ? `#${i + 1}` : "N/A"}
                         </td>
                         {candidateCell}
                         {statusCell}
@@ -1077,11 +735,28 @@ export default function JobDetailPage() {
     toast.success(`Job "${updated?.title || "Untitled role"}" updated.`);
   }
 
-  function handleCandidateAdded({ candidate, job: updatedJob }) {
-    setCandidates((prev) => [...prev, candidate]);
-    setJob(updatedJob);
+  // Re-fetch the job (for the updated candidate count) and the enriched
+  // candidate rows (status / ratings / score / interviewer) after an add.
+  // The shared AddCandidateForm returns a bare candidate doc, not a row, so a
+  // reload is what keeps the table + rankings correct rather than an
+  // optimistic append of a half-populated row.
+  async function refreshJobAndCandidates() {
+    const [jobRes, candsRes] = await Promise.all([
+      authedFetch(`/api/jobs/${id}`),
+      authedFetch(`/api/jobs/${id}/candidates`),
+    ]);
+    if (jobRes.ok) setJob(await jobRes.json().catch(() => null));
+    if (candsRes.ok) {
+      const data = await candsRes.json().catch(() => []);
+      setCandidates(Array.isArray(data) ? data : []);
+    }
+  }
+
+  function handleCandidateSaved(saved) {
     setShowAddCandidate(false);
-    toast.success(`${candidate?.name || "Candidate"} added to this job.`);
+    const name = saved?.cand_full_name || saved?.name || "Candidate";
+    toast.success(`${name} added to this job.`);
+    void refreshJobAndCandidates();
   }
 
   async function onConfirmStart() {
@@ -1431,10 +1106,11 @@ export default function JobDetailPage() {
       )}
 
       {showAddCandidate && (
-        <AddCandidateModal
-          jobId={id}
+        <AddCandidateForm
+          fixedJobId={id}
+          jobs={allJobs}
           onClose={() => setShowAddCandidate(false)}
-          onAdded={handleCandidateAdded}
+          onSaved={handleCandidateSaved}
         />
       )}
 

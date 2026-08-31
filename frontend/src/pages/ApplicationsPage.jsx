@@ -41,7 +41,7 @@ function statusClass(status) {
     case 'SCHEDULED':
       return 'bg-primary-100 text-primary-600'
     case 'IN PROGRESS':
-      return 'bg-sky-100 text-sky-600'
+      return 'bg-amber-100 text-amber-700'
     case 'COMPLETED':
     case 'EVALUATED':
       return 'bg-mint-100 text-mint-700'
@@ -104,6 +104,7 @@ const FILTER_OPTIONS = [
   { value: '',              label: 'All'           },
   { value: 'NOT SCHEDULED', label: 'Not Scheduled' },
   { value: 'SCHEDULED',     label: 'Scheduled'     },
+  { value: 'IN PROGRESS',     label: 'In Progress' },
   { value: 'COMPLETED',     label: 'Completed'     },
 ]
 
@@ -429,12 +430,28 @@ export default function ApplicationsPage() {
                             Analysing…
                           </span>
                         ) : row.cv_analysis_status === 'failed' ? (
-                          <span
-                            className="text-coral-500"
-                            title="Analysis failed. Re-upload the CV via Edit to retry."
-                          >
-                            Failed
-                          </span>
+                          // Retry re-runs against the candidate's stored CV
+                          // (server tears down the failed analysis - no
+                          // re-upload). Only offer it when there's a CV to
+                          // reuse; otherwise it stays a plain "Failed" note.
+                          row.cv_url ? (
+                            <button
+                              type="button"
+                              onClick={() => handleAnalyseCv(row)}
+                              disabled={!!analysingId}
+                              title="Analysis failed. Click to retry against the stored CV."
+                              className="font-semibold text-coral-600 hover:underline disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                              Retry
+                            </button>
+                          ) : (
+                            <span
+                              className="text-coral-500"
+                              title="Analysis failed. Re-upload the CV via Edit to retry."
+                            >
+                              Failed
+                            </span>
+                          )
                         ) : row.cv_url ? (
                           <button
                             type="button"

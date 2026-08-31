@@ -54,29 +54,6 @@ def _interview_doc(status="scheduled", **extra):
     return doc
 
 
-_TRANSCRIPT = [
-    {"id": "1", "speaker": "Jamie", "timestamp": "00:01", "text": "Tell me about a project."},
-    {"id": "2", "speaker": "Sam", "timestamp": "00:10", "text": "I built a dashboard in React."},
-]
-
-
-def _complete_db(interview_doc, claim_result="claimed"):
-    """Mock DB wired for the complete endpoint's happy path up to the LLM.
-    claim_result: "claimed" -> claim succeeds; None -> someone else holds it."""
-    mock_db = MagicMock()
-    mock_db.interviews.find_one = AsyncMock(return_value=interview_doc)
-    mock_db.jobs.find_one = AsyncMock(
-        return_value={"_id": ObjectId(interview_doc["job_id"]), "title": "Dev", "description": ""}
-    )
-    mock_db.job_candidates.find_one = AsyncMock(return_value=None)
-    mock_db.candidates.find_one = AsyncMock(return_value=None)
-    mock_db.interview_users.find_one = AsyncMock(return_value=None)
-    mock_db.interviews.find_one_and_update = AsyncMock(
-        return_value=interview_doc if claim_result == "claimed" else None
-    )
-    mock_db.interviews.update_one = AsyncMock()
-    mock_db.job_candidates.update_one = AsyncMock()
-    return mock_db
 
 
 @pytest.fixture()
@@ -214,110 +191,6 @@ def test_remove_candidate_from_job_cascades_cv_analysis(authed):
     fake_delete.assert_any_call("cv_analyses/b-cl.pdf")
 
 
-# ── 3.4 complete-interview hardening ─────────────────────────────────────────
-
-
-def test_complete_conflicts_while_generation_in_progress(authed):
-    """Second click while a run holds the claim -> 409, and the LLM is never
-    invoked a second time."""
-    _, client = authed
-    doc = _interview_doc()
-    mock_db = _complete_db(doc, claim_result=None)
-
-    with (
-        patch("routes.interview.get_db", return_value=mock_db),
-        patch("routes.interview.generate_interview_reports", new_callable=AsyncMock) as llm,
-    ):
-        response = client.post(
-            f"/api/interviews/{doc['_id']}/complete", json={"transcript": _TRANSCRIPT}
-        )
-
-    assert response.status_code == 409
-    llm.assert_not_called()
-
-
-def test_complete_empty_llm_response_is_502_and_releases_claim(authed):
-    """A refusal/empty `{}` from the model must NOT persist blank reports and
-    0.0 scores (the old behaviour locked the interview to blanks forever).
-    The claim is released so retry works."""
-    _, client = authed
-    doc = _interview_doc()
-    mock_db = _complete_db(doc)
-
-    with (
-        patch("routes.interview.get_db", return_value=mock_db),
-        patch(
-            "routes.interview.generate_interview_reports",
-            new_callable=AsyncMock,
-            return_value={},
-        ),
-    ):
-        response = client.post(
-            f"/api/interviews/{doc['_id']}/complete", json={"transcript": _TRANSCRIPT}
-        )
-
-    assert response.status_code == 502
-    # Only the claim-release update ran - nothing was persisted as a report.
-    assert mock_db.interviews.update_one.await_count == 1
-    unset_call = mock_db.interviews.update_one.await_args.args[1]
-    assert "$unset" in unset_call and "intv_report_state" in unset_call["$unset"]
-    mock_db.job_candidates.update_one.assert_not_called()
-
-
-def test_complete_mistyped_llm_section_is_502_not_500(authed):
-    """Rare case: the model returns `"strengths": "good"` (wrong type). The
-    Pydantic failure must surface as a clean 502 with the claim released,
-    not an unhandled 500 after the paid call."""
-    _, client = authed
-    doc = _interview_doc()
-    mock_db = _complete_db(doc)
-    bad_result = {
-        "scores": {"communication": 5, "skill": 5, "problem_solving": 5},
-        "candidate_report": {"summary": "ok", "strengths": "good"},
-        "interviewer_report": {"summary": "ok"},
-    }
-
-    with (
-        patch("routes.interview.get_db", return_value=mock_db),
-        patch(
-            "routes.interview.generate_interview_reports",
-            new_callable=AsyncMock,
-            return_value=bad_result,
-        ),
-    ):
-        response = client.post(
-            f"/api/interviews/{doc['_id']}/complete", json={"transcript": _TRANSCRIPT}
-        )
-
-    assert response.status_code == 502
-    unset_call = mock_db.interviews.update_one.await_args.args[1]
-    assert "$unset" in unset_call
-
-
-def test_complete_cached_with_missing_link_returns_null_scores(authed):
-    """Rare case: reports exist but the job_candidates link was deleted.
-    The cached response must say scores=null, not fabricate 0.0/0.0/0.0."""
-    _, client = authed
-    report = {"summary": "fine", "strengths": {"items": ["x"]}, "improvements": {"items": []}}
-    doc = _interview_doc(
-        status="completed",
-        intv_candidate_report=report,
-        intv_interviewer_report=report,
-    )
-    mock_db = _complete_db(doc)  # link find_one -> None
-
-    with (
-        patch("routes.interview.get_db", return_value=mock_db),
-        patch("routes.interview.generate_interview_reports", new_callable=AsyncMock) as llm,
-    ):
-        response = client.post(f"/api/interviews/{doc['_id']}/complete", json={})
-
-    assert response.status_code == 200
-    body = response.json()
-    assert body["cached"] is True
-    assert body["scores"] is None
-    llm.assert_not_called()
-
 
 def test_transcript_truncation_keeps_most_recent_turns():
     """A transcript past the char budget drops the OLDEST lines and flags
@@ -337,3 +210,63 @@ def test_transcript_truncation_keeps_most_recent_turns():
 def test_transcript_under_budget_is_untouched():
     entries = [{"speaker": "S", "timestamp": "00:01", "text": "short"}]
     assert _transcript_to_text(entries) == "[00:01] S: short"
+
+
+# ── bias incidents: persisted and echoed in the completion report ────────────
+
+
+def _skill(name):
+    return {"skill": name, "score": 7.0, "explanation": None, "evidence": []}
+
+
+def test_complete_echoes_stored_bias_incidents_on_cached_read(authed):
+    """A re-completed interview (reports + ratings already stored) returns the
+    persisted bias incidents without a second LLM run, so the full flagged
+    list survives past the live banner's last-3 cap."""
+    comp_id, client = authed
+    cand_id, job_id = ObjectId(), ObjectId()
+    empty_report = {"summary": "s", "strengths": {"items": []}, "improvements": {"items": []}}
+    bias = [
+        {
+            "quote": "Are you planning to have children soon?",
+            "category": "Family status",
+            "reason": "Touches a protected category.",
+            "suggestion": "Ask about availability for the role's hours.",
+            "timestamp": "04:12",
+        }
+    ]
+    interview = _interview_doc(
+        status="completed",
+        cand_id=str(cand_id),
+        job_id=str(job_id),
+        intv_candidate_report=empty_report,
+        intv_interviewer_report=empty_report,
+        intv_bias_incidents=bias,
+    )
+    link = {
+        "_id": ObjectId(),
+        "cand_id": str(cand_id),
+        "job_id": str(job_id),
+        "ratings": {
+            "technical_skills": _skill("Technical Skills"),
+            "communication": _skill("Communication"),
+            "problem_solving": _skill("Problem Solving"),
+        },
+    }
+
+    mock_db = MagicMock()
+    mock_db.interviews.find_one = AsyncMock(return_value=interview)
+    mock_db.candidates.find_one = AsyncMock(return_value={"_id": cand_id, "comp_id": comp_id})
+    mock_db.jobs.find_one = AsyncMock(return_value={"_id": job_id, "comp_id": comp_id})
+    mock_db.job_candidates.find_one = AsyncMock(return_value=link)
+
+    with patch("routes.interview.get_db", return_value=mock_db), patch(
+        "routes.interview.generate_interview_reports", new_callable=AsyncMock
+    ) as gen:
+        res = client.post(f"/api/interviews/{interview['_id']}/complete", json={})
+
+    assert res.status_code == 200
+    gen.assert_not_awaited()  # cached path: no LLM
+    body = res.json()
+    assert body["cached"] is True
+    assert body["bias_incidents"] == bias

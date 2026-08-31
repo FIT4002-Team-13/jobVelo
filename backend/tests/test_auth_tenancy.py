@@ -269,7 +269,12 @@ def test_complete_interview_cross_tenant_is_404_and_never_calls_llm(authed):
 
     mock_db = MagicMock()
     mock_db.interviews.find_one = AsyncMock(return_value=doc)
+    # The candidate/job/link lookups are all comp_id-scoped; an outside
+    # interviewer's company owns none of them, so each returns None and the
+    # endpoint 404s before any LLM call.
+    mock_db.candidates.find_one = AsyncMock(return_value=None)
     mock_db.jobs.find_one = AsyncMock(return_value=None)
+    mock_db.job_candidates.find_one = AsyncMock(return_value=None)
 
     with (
         patch("routes.interview.get_db", return_value=mock_db),
