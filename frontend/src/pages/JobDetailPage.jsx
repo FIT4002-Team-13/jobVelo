@@ -765,6 +765,12 @@ function CandidatesTable({
                     {formatScore(c.score)}
                   </td>
                 );
+                // A candidate is only rankable once they have a real score
+                // (i.e. a completed, rated interview). Without one, a "#N" would
+                // imply a pecking order that hasn't been earned - show N/A and
+                // skip the medal styling instead. Unscored rows already sort to
+                // the bottom, so the scored ones keep contiguous #1..#k ranks.
+                const isRanked = typeof c.score === "number" && Number.isFinite(c.score);
                 // Actions: Start Interview is only meaningful for SCHEDULED rows
                 // (so it stays greyed-out on the RANKINGS tab where everything is
                 // typically EVALUATED), and is interviewer-only - mirrors the
@@ -944,7 +950,9 @@ function CandidatesTable({
                           else renders in plain neutral. All non-bold per spec. */}
                         <td
                           className={`px-4 py-3 w-12 ${
-                            i === 0
+                            !isRanked
+                              ? "text-neutral-400"
+                              : i === 0
                               ? "text-yellow-500"
                               : i === 1
                               ? "text-neutral-400"
@@ -953,7 +961,7 @@ function CandidatesTable({
                               : "text-neutral-500"
                           }`}
                         >
-                          #{i + 1}
+                          {isRanked ? `#${i + 1}` : "N/A"}
                         </td>
                         {candidateCell}
                         {statusCell}
