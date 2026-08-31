@@ -226,11 +226,13 @@ function FeedbackPanel({
                           : activeTab === 'interviewer' ? interviewerReport
                           : null
   const hasActiveReport   = !!activeReport
-  // Panel grows to full height when either tab has something to show, so
-  // switching between tabs doesn't make the card jump in size if only one
-  // report has been generated so far.
+  // Fixed panel height regardless of tab or whether a report exists. A
+  // variable height used to let a taller empty state (e.g. the bias
+  // "not completed" block) overflow a short min-height and grow the card,
+  // so the same "nothing yet" states rendered at different heights across
+  // tabs. A stable box + flex-1 content makes every state fill identically.
   const hasAnyReport      = !!candidateReport || !!interviewerReport
-  const panelHeight       = hasAnyReport ? candidateTableHeight : candidateTableHeight / 2
+  const panelHeight       = candidateTableHeight
   // Bias is only evaluated once the interview has actually run. Reports are
   // written together with the bias log at completion, so either signal means
   // "the interview happened" - without it we'd claim "no bias" for interviews
@@ -385,11 +387,14 @@ function FeedbackPanel({
 }
 
 // Shared empty/info panel so every "nothing to show" state in the Reports
-// card is the same height and shape (they used to differ between tabs).
+// card is the same height and shape (they used to differ between tabs). The
+// fixed min-height is the key: a one-line message and a taller icon+heading+
+// paragraph block both occupy the same box, so switching tabs never resizes
+// the card.
 function PanelEmptyState({ tone = 'neutral', children }) {
   const bg = tone === 'mint' ? 'bg-mint-50' : 'bg-neutral-50'
   return (
-    <div className={`flex flex-1 flex-col items-center justify-center gap-2 rounded-2xl px-6 py-10 text-center ${bg}`}>
+    <div className={`flex min-h-[190px] flex-1 flex-col items-center justify-center gap-2 rounded-2xl px-6 py-8 text-center ${bg}`}>
       {children}
     </div>
   )
