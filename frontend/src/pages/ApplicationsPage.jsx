@@ -41,7 +41,7 @@ function statusClass(status) {
     case 'SCHEDULED':
       return 'bg-primary-100 text-primary-600'
     case 'IN PROGRESS':
-      return 'bg-sky-100 text-sky-600'
+      return 'bg-amber-100 text-amber-700'
     case 'COMPLETED':
     case 'EVALUATED':
       return 'bg-mint-100 text-mint-700'
@@ -104,6 +104,7 @@ const FILTER_OPTIONS = [
   { value: '',              label: 'All'           },
   { value: 'NOT SCHEDULED', label: 'Not Scheduled' },
   { value: 'SCHEDULED',     label: 'Scheduled'     },
+  { value: 'IN PROGRESS',     label: 'In Progress'     },
   { value: 'COMPLETED',     label: 'Completed'     },
 ]
 

@@ -475,7 +475,7 @@ function CandidateInfoCard({ candidate, job, interview, onStartInterview, interv
     status === 'SCHEDULED'
       ? 'bg-primary-100 text-primary-600'
       : status === 'IN PROGRESS'
-      ? 'bg-sky-100 text-sky-600'
+      ? 'bg-amber-100 text-amber-700'
       : status === 'COMPLETED' || status === 'EVALUATED'
       ? 'bg-mint-100 text-mint-700'
       : status === 'HIRED'
