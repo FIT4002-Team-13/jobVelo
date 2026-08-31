@@ -27,4 +27,3 @@ google-genai==0.3.0
 python-multipart==0.0.12
 
 # PDF rendering for downloadable interview reports (services/report_pdf.py)
-fpdf2==2.8.8

@@ -6,7 +6,9 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 # Interview cycle for scheduling + running + post-interview state.
-InterviewStatus = Literal["not_scheduled", "scheduled", "in_progress", "completed", "cancelled"]
+InterviewStatus = Literal[
+    "not_scheduled", "scheduled", "in_progress", "completed", "cancelled"
+]
 
 
 class TranscriptEntry(BaseModel):
@@ -32,6 +34,7 @@ class BiasIncident(BaseModel):
     suggestion: str | None = Field(default=None, max_length=2000)
     timestamp: str | None = Field(default=None, max_length=20)
 
+
 class InterviewFeedbackSection(BaseModel):
     """
     Create/update payload for one section of the interview feedback report.
@@ -47,8 +50,12 @@ class InterviewFeedback(BaseModel):
     """
 
     summary: str | None = None
-    strengths: InterviewFeedbackSection = Field(default_factory=InterviewFeedbackSection)
-    improvements: InterviewFeedbackSection = Field(default_factory=InterviewFeedbackSection)
+    strengths: InterviewFeedbackSection = Field(
+        default_factory=InterviewFeedbackSection
+    )
+    improvements: InterviewFeedbackSection = Field(
+        default_factory=InterviewFeedbackSection
+    )
 
 
 class InterviewScores(BaseModel):
@@ -116,6 +123,7 @@ class InterviewUpdate(BaseModel):
     intv_duration_seconds: int | None = None
     intv_candidate_report: InterviewFeedback | None = None
     intv_interviewer_report: InterviewFeedback | None = None
+    intv_sections: list[dict] | None = None
 
 
 class InterviewOut(BaseModel):
@@ -134,6 +142,7 @@ class InterviewOut(BaseModel):
     intv_duration_seconds: int | None = None
     intv_candidate_report: InterviewFeedback | None = None
     intv_interviewer_report: InterviewFeedback | None = None
+    intv_sections: list[dict] | None = None
     # Bias questions flagged live during the interview (empty for interviews
     # that predate the feature or had none). Surfaced on the persisted report.
     intv_bias_incidents: list[BiasIncident] = Field(default_factory=list)

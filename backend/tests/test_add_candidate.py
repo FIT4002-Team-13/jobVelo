@@ -239,7 +239,10 @@ def test_add_existing_link_returns_current_status_not_hardcoded_scheduled(authed
     (here: a completed interview)."""
     comp_id, client = authed
     job_oid, cand_oid, link_oid, intv_oid = (
-        ObjectId(), ObjectId(), ObjectId(), ObjectId(),
+        ObjectId(),
+        ObjectId(),
+        ObjectId(),
+        ObjectId(),
     )
 
     job = {"_id": job_oid, "comp_id": comp_id, "title": "Dev", "status": "Pending"}

@@ -19,7 +19,12 @@ from main import app
 @pytest.fixture()
 def authed(client):
     comp_id = ObjectId()
-    user = {"_id": ObjectId(), "comp_id": comp_id, "role": "interviewer", "full_name": "T"}
+    user = {
+        "_id": ObjectId(),
+        "comp_id": comp_id,
+        "role": "interviewer",
+        "full_name": "T",
+    }
     app.dependency_overrides[get_current_user] = lambda: user
     yield comp_id, client
     app.dependency_overrides.clear()
@@ -61,7 +66,9 @@ def test_fileless_post_over_failed_analysis_reruns(authed):
     mock_db.candidates.find_one = AsyncMock(return_value=candidate)
     mock_db.cv_analyses.find_one = AsyncMock(return_value=failed)
     mock_db.cv_analyses.delete_one = AsyncMock()
-    mock_db.cv_analyses.insert_one = AsyncMock(return_value=MagicMock(inserted_id=ObjectId()))
+    mock_db.cv_analyses.insert_one = AsyncMock(
+        return_value=MagicMock(inserted_id=ObjectId())
+    )
     mock_db.candidates.update_one = AsyncMock()
 
     async def fake_read(path):
@@ -74,7 +81,9 @@ def test_fileless_post_over_failed_analysis_reruns(authed):
         patch("routes.cv_analysis.get_db", return_value=mock_db),
         patch("routes.cv_analysis.read_bytes", new=fake_read),
         patch("routes.cv_analysis.save_bytes", new=fake_save),
-        patch("routes.cv_analysis.delete_upload", new_callable=AsyncMock) as fake_delete,
+        patch(
+            "routes.cv_analysis.delete_upload", new_callable=AsyncMock
+        ) as fake_delete,
         patch("routes.cv_analysis._run_analysis", new_callable=AsyncMock),
     ):
         res = client.post("/api/cv-analysis", data={"jobcand_id": str(link["_id"])})
@@ -105,7 +114,9 @@ def test_fileless_post_over_completed_analysis_is_cached_read(authed):
         "position_fit": {},
         "cv_path": "cv_analyses/x.pdf",
         "cover_letter_path": None,
-        "created_at": __import__("datetime").datetime.now(__import__("datetime").timezone.utc),
+        "created_at": __import__("datetime").datetime.now(
+            __import__("datetime").timezone.utc
+        ),
     }
 
     mock_db = MagicMock()

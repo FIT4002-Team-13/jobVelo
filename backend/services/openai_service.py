@@ -215,7 +215,6 @@ async def generate_follow_up_question(
 async def generate_similar_question(
     job_title: str, job_description: str, original_question: str, category: str
 ) -> SimilarQuestionResult:
-
     if not settings.openai_api_key:
         raise RuntimeError("OPENAI_API_KEY not configured")
 
@@ -263,6 +262,7 @@ async def generate_similar_question(
 
     return result
 
+
 async def check_bias(question: str) -> dict[str, Any]:
     """Flag a single interviewer utterance if it risks being a biased or
     legally-risky interview question (age, marital/family status, pregnancy,
@@ -295,7 +295,7 @@ async def check_bias(question: str) -> dict[str, Any]:
                         "generically) are NOT flagged. Reply with valid JSON only: "
                         '{"flagged": bool, "category": string|null, "reason": '
                         'string|null, "suggestion": string|null}. "reason" is a '
-                        "short explanation of the risk. \"suggestion\" is a neutral, "
+                        'short explanation of the risk. "suggestion" is a neutral, '
                         "job-relevant rephrasing that gets at the same underlying "
                         "intent, or null if there isn't a reasonable one."
                     ),
@@ -317,7 +317,6 @@ async def check_bias(question: str) -> dict[str, Any]:
         return fallback
 
 
-
 async def summarise(transcript: str) -> str:
     res = await _get_client().chat.completions.create(
         model=settings.openai_analysis_model,
@@ -334,9 +333,76 @@ async def summarise(transcript: str) -> str:
     return (res.choices[0].message.content or "").strip()
 
 
-# Prompt for the end-of-interview reports. The JSON shape mirrors
-# models.interview.InterviewFeedback + InterviewScores so the route can
-# validate the output 1:1 without remapping.
+async def generate_interview_plan(
+    job_title: str,
+    job_description: str | None,
+    candidate_name: str,
+    cv_analysis: dict | None = None,
+    total_minutes: int | None = None,
+) -> list[dict]:
+    """Return AI-suggested interview sections (name, description, suggested_minutes)."""
+    desc_block = (
+        f"\nJob description:\n{job_description[:1500]}" if job_description else ""
+    )
+
+    cv_block = ""
+    if cv_analysis:
+        parts = []
+        if cv_analysis.get("summary"):
+            parts.append(f"Summary: {cv_analysis['summary']}")
+        if cv_analysis.get("years_experience") is not None:
+            parts.append(f"Years of experience: {cv_analysis['years_experience']}")
+        if cv_analysis.get("skills"):
+            parts.append(f"Skills: {', '.join(cv_analysis['skills'])}")
+        if cv_analysis.get("highlighted_roles"):
+            parts.append(f"Past roles: {', '.join(cv_analysis['highlighted_roles'])}")
+        if cv_analysis.get("strengths"):
+            parts.append(f"Strengths: {', '.join(cv_analysis['strengths'])}")
+        if cv_analysis.get("weaknesses"):
+            parts.append(f"Weaknesses/gaps: {', '.join(cv_analysis['weaknesses'])}")
+        if parts:
+            cv_block = "\n\nCandidate CV analysis:\n" + "\n".join(parts)
+
+    time_constraint = (
+        f" The total of all suggested_minutes values must sum to exactly {total_minutes} minutes."
+        if total_minutes
+        else ""
+    )
+    prompt = (
+        f"You are preparing an interview plan for {candidate_name} applying for the role of {job_title}.{desc_block}{cv_block}\n\n"
+        "Generate 4 to 6 interview sections that a structured interview should cover for this role. "
+        "The first section must always be an Introduction lasting exactly 5 minutes. "
+        "Tailor the remaining sections to probe the candidate's specific background, skills, and any gaps identified above. "
+        "For each section return: a short name (2-4 words), a one-sentence description of what to explore, "
+        f"and a suggested duration in minutes (between 5 and 20).{time_constraint} "
+        'Reply with valid JSON only — an array of objects with keys "name", "description", "suggested_minutes". '
+        'The first object must be {"name": "Introduction", "description": "Welcome the candidate and outline the interview structure.", "suggested_minutes": 5}.'
+    )
+
+    res = await _get_client().chat.completions.create(
+        model=settings.openai_analysis_model,
+        messages=[
+            {
+                "role": "system",
+                "content": "You are an expert interview coach. Reply with valid JSON only.",
+            },
+            {"role": "user", "content": prompt},
+        ],
+        response_format={"type": "json_object"},
+        temperature=0.5,
+        max_tokens=600,
+    )
+
+    raw = json.loads(res.choices[0].message.content or "{}")
+    # The model may wrap the array under a key — unwrap if needed.
+    if isinstance(raw, list):
+        return raw
+    for v in raw.values():
+        if isinstance(v, list):
+            return v
+    return []
+
+
 _REPORT_PROMPT = """
 You are reviewing a completed job interview transcript. Produce a single
 JSON object with EXACTLY this shape:
@@ -398,16 +464,7 @@ async def generate_interview_reports(
     candidate_speaker_label: str | None = None,
     candidate_speech_detected: bool = True,
 ) -> dict[str, Any]:
-    """One call, both post-interview reports + the three 0-10 ratings.
-
-    Optional context sharpens the output: the job description becomes the
-    yardstick for skill scoring, the pre-interview CV analysis frames what
-    the interview was supposed to verify (with an explicit anchoring guard
-    so its scores aren't parroted), and the duration calibrates confidence.
-
-    Returns the parsed JSON dict; the route validates it against the
-    Pydantic models and clamps/rejects anything malformed.
-    """
+    """One call, both post-interview reports + the three 0-10 ratings."""
     context_parts = [f"Target role: {job_title or 'the role'}"]
     if job_description and job_description.strip():
         context_parts.append(
@@ -500,14 +557,18 @@ async def score(transcript: str, job_title: str | None = None) -> dict[str, Any]
     )
     return json.loads(res.choices[0].message.content or "{}")
 
-async def rate_candidate_skills(transcript: list[TranscriptEntry], job_title: str | None = None, job_description: str | None = None, candidate_name: str | None = None) -> CandidateRatings:
 
+async def rate_candidate_skills(
+    transcript: list[TranscriptEntry],
+    job_title: str | None = None,
+    job_description: str | None = None,
+    candidate_name: str | None = None,
+) -> CandidateRatings:
     # remove empty and unfinished live transcript entries.
     final_entries = [
         entry
         for entry in transcript
-        if entry.text.strip()
-        and not entry.id.startswith("partial-")
+        if entry.text.strip() and not entry.id.startswith("partial-")
     ]
 
     if not final_entries:
@@ -518,7 +579,11 @@ async def rate_candidate_skills(transcript: list[TranscriptEntry], job_title: st
     role = job_title or "the advertised role"
     description = (job_description or "No job description was provided.").strip()
     candidate = candidate_name or "Candidate"
-    candidate_labels = {candidate.casefold(), "candidate", "interviewee",}
+    candidate_labels = {
+        candidate.casefold(),
+        "candidate",
+        "interviewee",
+    }
 
     candidate_entries = [
         entry
@@ -527,16 +592,11 @@ async def rate_candidate_skills(transcript: list[TranscriptEntry], job_title: st
     ]
 
     transcript_text = "\n".join(
-        (
-            f"[{entry.id}] "
-            f"{entry.speaker} "
-            f"({entry.timestamp}): "
-            f"{entry.text.strip()}"
-        )
+        (f"[{entry.id}] {entry.speaker} ({entry.timestamp}): {entry.text.strip()}")
         for entry in final_entries
     )
 
-    candidate_entry_ids = (", ".join(entry.id for entry in candidate_entries) or "none")
+    candidate_entry_ids = ", ".join(entry.id for entry in candidate_entries) or "none"
 
     json_format = """
         {
@@ -605,7 +665,7 @@ async def rate_candidate_skills(transcript: list[TranscriptEntry], job_title: st
         "Never infer candidate behaviour from interviewer speech, silence, or transcript formatting."
         "Use this rubric to help you but you can adjust alittle based on the specific candidate and job. "
         f"Return valid JSON using this format:\n{json_format}\n"
-        "Each inner evidence_entry_groups list represents one complete piece of evidence." 
+        "Each inner evidence_entry_groups list represents one complete piece of evidence."
         "The selected evidence groups are representative examples and must not be treated as the only information used for scoring. "
         "If a candidate answer is accidentally split across consecutive transcript entries, put those IDs together in the same inner list."
         "If two entries express separate answers or separate ideas, keep them in separate inner lists."
@@ -619,8 +679,6 @@ async def rate_candidate_skills(transcript: list[TranscriptEntry], job_title: st
         "Use no more than 30 words and base it only on the transcript evidence. "
         f"The candidate entry Ids are: {candidate_entry_ids}.\n\n"
         f"Full interview transcript:\n{transcript_text}"
-        
-        
     )
 
     response = await _get_client().chat.completions.create(
@@ -646,16 +704,9 @@ async def rate_candidate_skills(transcript: list[TranscriptEntry], job_title: st
     )
 
     raw_result = json.loads(response.choices[0].message.content or "{}")
-    candidate_entries_by_id = {
-        entry.id: entry
-        for entry in candidate_entries
-    }
+    candidate_entries_by_id = {entry.id: entry for entry in candidate_entries}
 
-    entry_positions = {
-        entry.id: index
-        for index, entry in enumerate(final_entries)
-    }
-
+    entry_positions = {entry.id: index for index, entry in enumerate(final_entries)}
 
     def build_skill_rating(result_key: str, skill_name: SkillName) -> SkillRating:
         result = raw_result.get(result_key)
@@ -688,27 +739,17 @@ async def rate_candidate_skills(transcript: list[TranscriptEntry], job_title: st
             if not isinstance(group, list):
                 continue
 
-            group_ids = [
-                str(entry_id)
-                for entry_id in group
-            ]
+            group_ids = [str(entry_id) for entry_id in group]
 
             group_entries = [
-                candidate_entries_by_id.get(entry_id)
-                for entry_id in group_ids
+                candidate_entries_by_id.get(entry_id) for entry_id in group_ids
             ]
 
             # Reject empty groups and invented IDs.
-            if not group_entries or any(
-                entry is None
-                for entry in group_entries
-            ):
+            if not group_entries or any(entry is None for entry in group_entries):
                 continue
 
-            positions = [
-                entry_positions[entry.id]
-                for entry in group_entries
-            ]
+            positions = [entry_positions[entry.id] for entry in group_entries]
 
             expected_positions = list(
                 range(
@@ -721,10 +762,7 @@ async def rate_candidate_skills(transcript: list[TranscriptEntry], job_title: st
             if positions != expected_positions:
                 continue
 
-            speakers = {
-                entry.speaker.strip().casefold()
-                for entry in group_entries
-            }
+            speakers = {entry.speaker.strip().casefold() for entry in group_entries}
 
             # All joined entries must belong to the same speaker.
             if len(speakers) != 1:
@@ -735,19 +773,19 @@ async def rate_candidate_skills(transcript: list[TranscriptEntry], job_title: st
                     transcript_entry_id="+".join(group_ids),
                     speaker=group_entries[0].speaker,
                     timestamp=group_entries[0].timestamp,
-                    text=" ".join(
-                        entry.text.strip()
-                        for entry in group_entries
-                    ),
+                    text=" ".join(entry.text.strip() for entry in group_entries),
                 )
             )
 
-        return SkillRating(skill=skill_name, score=score, explanation=explanation[:200] or None, evidence=evidence,)
+        return SkillRating(
+            skill=skill_name,
+            score=score,
+            explanation=explanation[:200] or None,
+            evidence=evidence,
+        )
 
     return CandidateRatings(
         technical_skills=build_skill_rating("technical_skills", "Technical Skills"),
         communication=build_skill_rating("communication", "Communication"),
         problem_solving=build_skill_rating("problem_solving", "Problem Solving"),
     )
-
-

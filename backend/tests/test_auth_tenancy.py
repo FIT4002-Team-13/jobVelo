@@ -80,7 +80,13 @@ _ANON_MATRIX = [
     (
         "post",
         "/api/interviews",
-        {"json": {"cand_id": _OID, "job_id": _OID, "intv_date_time": "2026-01-01T10:00:00Z"}},
+        {
+            "json": {
+                "cand_id": _OID,
+                "job_id": _OID,
+                "intv_date_time": "2026-01-01T10:00:00Z",
+            }
+        },
     ),
     ("post", f"/api/interviews/{_OID}/complete", {"json": {}}),
     ("get", f"/api/interviews/{_OID}/candidate-report", {}),
@@ -98,7 +104,9 @@ _ANON_MATRIX = [
 @pytest.mark.parametrize("method,url,kwargs", _ANON_MATRIX)
 def test_anonymous_request_is_401(client, method, url, kwargs):
     response = getattr(client, method)(url, **kwargs)
-    assert response.status_code == 401, f"{method.upper()} {url} -> {response.status_code}"
+    assert response.status_code == 401, (
+        f"{method.upper()} {url} -> {response.status_code}"
+    )
 
 
 def test_garbage_bearer_token_is_401(client):
@@ -278,11 +286,17 @@ def test_complete_interview_cross_tenant_is_404_and_never_calls_llm(authed):
 
     with (
         patch("routes.interview.get_db", return_value=mock_db),
-        patch("routes.interview.generate_interview_reports", new_callable=AsyncMock) as llm,
+        patch(
+            "routes.interview.generate_interview_reports", new_callable=AsyncMock
+        ) as llm,
     ):
         response = client.post(
             f"/api/interviews/{doc['_id']}/complete",
-            json={"transcript": [{"id": "1", "speaker": "A", "timestamp": "00:01", "text": "hi"}]},
+            json={
+                "transcript": [
+                    {"id": "1", "speaker": "A", "timestamp": "00:01", "text": "hi"}
+                ]
+            },
         )
 
     assert response.status_code == 404
@@ -298,7 +312,11 @@ def test_report_download_cross_tenant_is_404(authed):
     mock_db.interviews.find_one = AsyncMock(return_value=doc)
     # Job exists but is stamped with a different company.
     mock_db.jobs.find_one = AsyncMock(
-        return_value={"_id": ObjectId(doc["job_id"]), "comp_id": ObjectId(), "title": "X"}
+        return_value={
+            "_id": ObjectId(doc["job_id"]),
+            "comp_id": ObjectId(),
+            "title": "X",
+        }
     )
 
     with patch("routes.interview.get_db", return_value=mock_db):
@@ -315,7 +333,9 @@ def test_cv_analysis_get_cross_tenant_is_404(authed):
     jobcand_id = str(ObjectId())
 
     mock_db = MagicMock()
-    mock_db.job_candidates.find_one = AsyncMock(return_value={"job_id": str(ObjectId())})
+    mock_db.job_candidates.find_one = AsyncMock(
+        return_value={"job_id": str(ObjectId())}
+    )
     mock_db.jobs.find_one = AsyncMock(return_value=None)
 
     with patch("routes.cv_analysis.get_db", return_value=mock_db):
@@ -433,7 +453,9 @@ def _interview_users_db(comp_ok: bool = True) -> MagicMock:
     """DB where the interview -> job -> comp walk succeeds (or not)."""
     mock_db = MagicMock()
     mock_db.interviews.find_one = AsyncMock(return_value={"job_id": str(ObjectId())})
-    mock_db.jobs.find_one = AsyncMock(return_value={"_id": ObjectId()} if comp_ok else None)
+    mock_db.jobs.find_one = AsyncMock(
+        return_value={"_id": ObjectId()} if comp_ok else None
+    )
     return mock_db
 
 

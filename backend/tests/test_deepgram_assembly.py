@@ -41,8 +41,8 @@ async def test_fragments_buffer_until_speech_final():
 async def test_interim_streams_growing_sentence_but_is_not_final():
     session, events = _session()
 
-    await session._handle_result("I built", True, False)   # finalized fragment
-    await session._handle_result("a real", False, False)   # interim on top
+    await session._handle_result("I built", True, False)  # finalized fragment
+    await session._handle_result("a real", False, False)  # interim on top
 
     # The interim reflects buffered + live text, still not final.
     assert events[-1] == ("I built a real", False)

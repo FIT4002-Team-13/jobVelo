@@ -75,7 +75,7 @@ def _storage_path(url: str | None) -> str | None:
     missing or externally-hosted URL (which we can't read bytes from)."""
     if not url or not url.startswith(_FILES_URL_PREFIX):
         return None
-    return url[len(_FILES_URL_PREFIX):] or None
+    return url[len(_FILES_URL_PREFIX) :] or None
 
 
 def _validate_pdf(upload: UploadFile, label: str) -> None:
@@ -115,7 +115,7 @@ def _serialise(doc: dict, *, cached: bool = False) -> CvAnalysisOut:
     # Ignore any interview_questions doc entry that doesn't match the
     # enum'd shape (Pydantic would 500 the response on a bad category).
     _valid_questions = []
-    for q in (doc.get("interview_questions") or []):
+    for q in doc.get("interview_questions") or []:
         try:
             _valid_questions.append(CvAnalysisQuestion(**q))
         except Exception:
@@ -133,7 +133,9 @@ def _serialise(doc: dict, *, cached: bool = False) -> CvAnalysisOut:
         position_fit=CvAnalysisPositionFit(**(doc.get("position_fit") or {})),
         key_strengths=[CvAnalysisBullet(**b) for b in (doc.get("key_strengths") or [])],
         improvements=[CvAnalysisBullet(**b) for b in (doc.get("improvements") or [])],
-        inconsistencies=[CvAnalysisBullet(**b) for b in (doc.get("inconsistencies") or [])],
+        inconsistencies=[
+            CvAnalysisBullet(**b) for b in (doc.get("inconsistencies") or [])
+        ],
         interview_questions=_valid_questions,
         cv_path=doc["cv_path"],
         cover_letter_path=doc.get("cover_letter_path"),
@@ -147,12 +149,16 @@ async def _assert_jobcand_in_company(db, jobcand_id: str, comp_id: ObjectId) -> 
     caller's company (404 rather than 403 so link ids can't be probed)."""
     if not ObjectId.is_valid(jobcand_id):
         raise HTTPException(status_code=400, detail="Invalid jobcand_id")
-    link = await db.job_candidates.find_one({"_id": ObjectId(jobcand_id)}, {"job_id": 1})
+    link = await db.job_candidates.find_one(
+        {"_id": ObjectId(jobcand_id)}, {"job_id": 1}
+    )
     job_id = (link or {}).get("job_id")
     if (
         not job_id
         or not ObjectId.is_valid(job_id)
-        or not await db.jobs.find_one({"_id": ObjectId(job_id), "comp_id": comp_id}, {"_id": 1})
+        or not await db.jobs.find_one(
+            {"_id": ObjectId(job_id), "comp_id": comp_id}, {"_id": 1}
+        )
     ):
         raise HTTPException(status_code=404, detail="Job-candidate link not found")
 
@@ -173,16 +179,26 @@ async def _lookup_jobcand_context(jobcand_id: str) -> tuple[dict, dict, dict]:
     # `cand_id` and `job_id` on the link doc are stored as STRINGS (see
     # cand.py's create_candidate_for_job) - we cast to ObjectId here to
     # look up the matching jobs/candidates rows.
-    job_oid = ObjectId(link["job_id"]) if ObjectId.is_valid(link.get("job_id", "")) else None
-    cand_oid = ObjectId(link["cand_id"]) if ObjectId.is_valid(link.get("cand_id", "")) else None
+    job_oid = (
+        ObjectId(link["job_id"]) if ObjectId.is_valid(link.get("job_id", "")) else None
+    )
+    cand_oid = (
+        ObjectId(link["cand_id"])
+        if ObjectId.is_valid(link.get("cand_id", ""))
+        else None
+    )
 
     job = await db.jobs.find_one({"_id": job_oid}) if job_oid else None
     candidate = await db.candidates.find_one({"_id": cand_oid}) if cand_oid else None
 
     if not job:
-        raise HTTPException(status_code=404, detail="Job referenced by this link is missing")
+        raise HTTPException(
+            status_code=404, detail="Job referenced by this link is missing"
+        )
     if not candidate:
-        raise HTTPException(status_code=404, detail="Candidate referenced by this link is missing")
+        raise HTTPException(
+            status_code=404, detail="Candidate referenced by this link is missing"
+        )
 
     return link, job, candidate
 
@@ -225,7 +241,12 @@ async def _run_analysis(
     except asyncio.TimeoutError:
         await db.cv_analyses.update_one(
             {"_id": analysis_oid, "status": "processing"},
-            {"$set": {"status": "failed", "error": "Analysis timed out after 5 minutes. Re-upload the CV to retry."}},
+            {
+                "$set": {
+                    "status": "failed",
+                    "error": "Analysis timed out after 5 minutes. Re-upload the CV to retry.",
+                }
+            },
         )
         return
     except Exception as e:  # RuntimeError from the service, or anything else
@@ -241,13 +262,13 @@ async def _run_analysis(
         {"_id": analysis_oid, "status": "processing"},
         {
             "$set": {
-                "position_fit":        result.get("position_fit") or {},
-                "key_strengths":       result.get("key_strengths") or [],
-                "improvements":        result.get("improvements") or [],
-                "inconsistencies":     result.get("inconsistencies") or [],
+                "position_fit": result.get("position_fit") or {},
+                "key_strengths": result.get("key_strengths") or [],
+                "improvements": result.get("improvements") or [],
+                "inconsistencies": result.get("inconsistencies") or [],
                 "interview_questions": result.get("interview_questions") or [],
-                "status":              "completed",
-                "error":               None,
+                "status": "completed",
+                "error": None,
             }
         },
     )
@@ -263,8 +284,8 @@ async def _run_analysis(
 )
 async def analyse(
     background_tasks: BackgroundTasks,
-    jobcand_id:  Annotated[str,        Form(min_length=1)],
-    cv:          Annotated[UploadFile | None, File(description="Candidate CV PDF")] = None,
+    jobcand_id: Annotated[str, Form(min_length=1)],
+    cv: Annotated[UploadFile | None, File(description="Candidate CV PDF")] = None,
     cover_letter: Annotated[UploadFile | None, File()] = None,
     comp_id: ObjectId = Depends(get_current_comp_id),
 ) -> CvAnalysisOut:
@@ -308,8 +329,12 @@ async def analyse(
         if not has_new_cv:
             # Fileless retry → reuse the candidate's stored CV bytes (falling
             # back to the failed doc's own file if the profile link is gone).
-            _probe_link, _probe_job, probe_candidate = await _lookup_jobcand_context(jobcand_id)
-            reuse_cv_path = _storage_path(probe_candidate.get("cand_cv_url")) or existing.get("cv_path")
+            _probe_link, _probe_job, probe_candidate = await _lookup_jobcand_context(
+                jobcand_id
+            )
+            reuse_cv_path = _storage_path(
+                probe_candidate.get("cand_cv_url")
+            ) or existing.get("cv_path")
             if not reuse_cv_path:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
@@ -317,19 +342,27 @@ async def analyse(
                 )
             keep_paths = {
                 p
-                for p in (reuse_cv_path, _storage_path(probe_candidate.get("cand_cover_letter_url")))
+                for p in (
+                    reuse_cv_path,
+                    _storage_path(probe_candidate.get("cand_cover_letter_url")),
+                )
                 if p
             }
         await db.cv_analyses.delete_one({"_id": existing["_id"]})
         if existing.get("cv_path") and existing["cv_path"] not in keep_paths:
             await delete_upload(existing["cv_path"])
-        if existing.get("cover_letter_path") and existing["cover_letter_path"] not in keep_paths:
+        if (
+            existing.get("cover_letter_path")
+            and existing["cover_letter_path"] not in keep_paths
+        ):
             await delete_upload(existing["cover_letter_path"])
     elif not has_new_cv:
         # No analysis for THIS link and no upload. If the candidate already
         # has a CV on file (added to another job earlier), reuse it against
         # this job's description instead of demanding a re-upload.
-        _probe_link, _probe_job, probe_candidate = await _lookup_jobcand_context(jobcand_id)
+        _probe_link, _probe_job, probe_candidate = await _lookup_jobcand_context(
+            jobcand_id
+        )
         reuse_cv_path = _storage_path(probe_candidate.get("cand_cv_url"))
         if not reuse_cv_path:
             raise HTTPException(
@@ -348,9 +381,9 @@ async def analyse(
     # 3. Look up the job + candidate from the link so the LLM gets a real
     #    position title + job description + has a name to anchor against.
     _link, job, candidate = await _lookup_jobcand_context(jobcand_id)
-    position_title  = job.get("title") or "Untitled role"
+    position_title = job.get("title") or "Untitled role"
     job_description = job.get("description") or None
-    candidate_name  = candidate.get("cand_full_name") or candidate.get("name")
+    candidate_name = candidate.get("cand_full_name") or candidate.get("name")
 
     # 4. Gather the CV bytes and persist a fresh copy this analysis OWNS (so a
     #    later delete of one job's analysis can't orphan another's file).
@@ -369,7 +402,11 @@ async def analyse(
                 detail="The candidate's stored CV could not be read. Upload a CV PDF to generate an analysis.",
             )
         cv_path = await save_bytes(
-            cv_bytes, subdir="cv_analyses", key=f"{request_id}-cv", ext=".pdf", content_type="application/pdf"
+            cv_bytes,
+            subdir="cv_analyses",
+            key=f"{request_id}-cv",
+            ext=".pdf",
+            content_type="application/pdf",
         )
 
     cl_bytes: bytes | None = None
@@ -379,7 +416,9 @@ async def analyse(
         cl_bytes = await cover_letter.read()
         cl_mime = cover_letter.content_type or "application/pdf"
         await cover_letter.seek(0)
-        cl_path = await save_upload(cover_letter, subdir="cv_analyses", key=f"{request_id}-cl")
+        cl_path = await save_upload(
+            cover_letter, subdir="cv_analyses", key=f"{request_id}-cl"
+        )
     elif not has_new_cv:
         # Reusing the CV - carry over the candidate's stored cover letter too.
         reuse_cl_path = _storage_path(candidate.get("cand_cover_letter_url"))
@@ -387,27 +426,31 @@ async def analyse(
         if cl_bytes:
             cl_mime = "application/pdf"
             cl_path = await save_bytes(
-                cl_bytes, subdir="cv_analyses", key=f"{request_id}-cl", ext=".pdf", content_type="application/pdf"
+                cl_bytes,
+                subdir="cv_analyses",
+                key=f"{request_id}-cl",
+                ext=".pdf",
+                content_type="application/pdf",
             )
 
     # 5. Insert the doc as "processing". The analysis fields are filled in
     #    by the background task; until then they serialise as empty.
     now = datetime.now(timezone.utc)
     doc: dict = {
-        "jobcand_id":        jobcand_id,
-        "comp_id":           str(candidate.get("comp_id") or job.get("comp_id") or ""),
-        "candidate_name":    candidate_name,
-        "position_title":    position_title,
-        "position_fit":        {},
-        "key_strengths":       [],
-        "improvements":        [],
-        "inconsistencies":     [],
+        "jobcand_id": jobcand_id,
+        "comp_id": str(candidate.get("comp_id") or job.get("comp_id") or ""),
+        "candidate_name": candidate_name,
+        "position_title": position_title,
+        "position_fit": {},
+        "key_strengths": [],
+        "improvements": [],
+        "inconsistencies": [],
         "interview_questions": [],
-        "cv_path":             cv_path,
-        "cover_letter_path":   cl_path,
-        "status":            "processing",
-        "error":             None,
-        "created_at":        now,
+        "cv_path": cv_path,
+        "cover_letter_path": cl_path,
+        "status": "processing",
+        "error": None,
+        "created_at": now,
     }
     try:
         inserted = await db.cv_analyses.insert_one(doc)
@@ -420,7 +463,10 @@ async def analyse(
         winner = await db.cv_analyses.find_one({"jobcand_id": jobcand_id})
         if winner:
             return _serialise(winner, cached=True)
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Concurrent analysis request. Retry.")
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Concurrent analysis request. Retry.",
+        )
     doc["_id"] = inserted.inserted_id
 
     # 6. Point the candidate profile's document links at the freshly stored
@@ -478,7 +524,9 @@ async def get_by_jobcand(
     await _assert_jobcand_in_company(db, jobcand_id, comp_id)
     doc = await db.cv_analyses.find_one({"jobcand_id": jobcand_id})
     if not doc:
-        raise HTTPException(status_code=404, detail="No analysis exists for this job-candidate")
+        raise HTTPException(
+            status_code=404, detail="No analysis exists for this job-candidate"
+        )
     return _serialise(doc, cached=True)
 
 

@@ -54,7 +54,9 @@ class DeepgramSession:
         # Finalized-but-not-yet-flushed fragments of the current utterance.
         self._buffer: list[str] = []
 
-    async def _handle_result(self, transcript: str, is_final: bool, speech_final: bool) -> None:
+    async def _handle_result(
+        self, transcript: str, is_final: bool, speech_final: bool
+    ) -> None:
         """Assemble Deepgram's phrase fragments into whole sentences.
 
         - interim (not is_final): stream the sentence-so-far so the live
