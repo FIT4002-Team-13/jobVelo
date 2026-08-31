@@ -663,6 +663,98 @@ function PrepPanel({ analysis, scheduledLabel, onBegin, onViewFullAnalysis }) {
   );
 }
 
+// Collapsible bias-warning banner shown over the transcript when the live
+// bias check flags a question. Restored after a merge dropped its definition
+// (the state + handlers survived, only this component was lost).
+function BiasWarningBanner({ warning, onDismiss, onJumpTo, isLatest }) {
+  const [expanded, setExpanded] = useState(isLatest);
+
+  useEffect(() => {
+    setExpanded(isLatest);
+  }, [isLatest]);
+
+  return (
+    <div className="flex shrink-0 items-start gap-3 bg-coral-50 border border-coral-200 rounded-xl px-4 py-3">
+      <svg
+        className="shrink-0 text-coral-500 mt-0.5"
+        width="16"
+        height="16"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+        <line x1="12" y1="9" x2="12" y2="13" />
+        <line x1="12" y1="17" x2="12.01" y2="17" />
+      </svg>
+
+      <div className="flex-1 min-w-0">
+        <button
+          onClick={() => setExpanded((open) => !open)}
+          aria-expanded={expanded}
+          aria-label={expanded ? "Collapse bias warning" : "Expand bias warning"}
+          className="flex w-full items-center justify-between gap-2 text-left"
+        >
+          <p className="text-sm font-semibold text-coral-700">
+            Possibly biased question
+            {warning.category ? ` — ${warning.category}` : ""}
+          </p>
+
+          <svg
+            className={`shrink-0 text-coral-500 transition-transform ${
+              expanded ? "rotate-180" : ""
+            }`}
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <polyline points="6 9 12 15 18 9" />
+          </svg>
+        </button>
+
+        {expanded && (
+          <>
+            <button
+              onClick={onJumpTo}
+              className="text-xs text-coral-600 italic mt-0.5 text-left hover:underline"
+              title="Jump to this line in the transcript"
+            >
+              &ldquo;{warning.quote}&rdquo;
+            </button>
+
+            {warning.reason && (
+              <p className="text-xs text-coral-700 mt-1">{warning.reason}</p>
+            )}
+
+            {warning.suggestion && (
+              <p className="text-xs text-neutral-600 mt-1">
+                <span className="font-medium">Try instead:</span>{" "}
+                {warning.suggestion}
+              </p>
+            )}
+          </>
+        )}
+      </div>
+
+      <button
+        onClick={onDismiss}
+        aria-label="Dismiss"
+        className="shrink-0 text-coral-400 hover:text-coral-700 text-lg leading-none"
+      >
+        ×
+      </button>
+    </div>
+  );
+}
+
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function InterviewPage() {
