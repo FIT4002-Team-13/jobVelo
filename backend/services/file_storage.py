@@ -1,22 +1,36 @@
-"""Local-filesystem file storage for uploaded binaries.
+"""GridFS-backed file storage for uploaded binaries.
 
-Files live under settings.uploads_dir, in subdirectories per resource type.
-Mongo only stores the *relative path* (e.g. "company_logos/68f3a4...png");
-the absolute location is resolved at read-time via resolve().
+Files are stored in MongoDB via GridFS instead of local disk. That's what
+fixes cross-device / cross-instance access: the bytes live in Mongo, so
+every app instance (and every redeploy, and every process behind a load
+balancer) sees the same files - no shared volume required.
 
-Single seam to swap for S3 later: rewrite the four functions in this file
-without touching the routes or the database documents.
+Callers are unaffected in spirit: Mongo documents still store the same
+*relative path* string as before (e.g. "cv_analyses/68f3a4...-cv.pdf").
+That string is now used as the GridFS filename instead of a disk path.
+
+Two function signatures changed from the disk version:
+  - `resolve(path) -> Path` is gone. Streaming a Path via FileResponse
+    doesn't make sense for GridFS, so it's replaced by
+    `open_download_stream(path) -> (GridOut, content_type)`, which the
+    route iterates directly (see routes/files.py).
+  - `delete_upload` is now `async def` (GridFS deletes are async in
+    Motor) - callers must `await` it.
+
+Single seam to swap storage backends again later: rewrite the functions in
+this file without touching the routes or the database documents.
 """
 
 from __future__ import annotations
 
 import logging
 import re
-from pathlib import Path
+from datetime import datetime, timezone
 
 from fastapi import HTTPException, UploadFile
+from motor.motor_asyncio import AsyncIOMotorGridFSBucket
 
-from config import settings
+from database import get_db
 
 logger = logging.getLogger(__name__)
 
@@ -42,19 +56,32 @@ _MAX_BYTES_PER_SUBDIR = {
 }
 _DEFAULT_MAX_BYTES = 5 * 1024 * 1024
 
-_MAX_BYTES = 5 * 1024 * 1024  # 5 MB ceiling for logos.
+_CONTENT_TYPES = {
+    ".pdf": "application/pdf",
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".webp": "image/webp",
+}
+
+_BUCKET_NAME = "uploads"
 
 
-def _root() -> Path:
-    """The configured uploads directory, created if it doesn't yet exist."""
-    root = Path(settings.uploads_dir)
-    root.mkdir(parents=True, exist_ok=True)
-    return root
+def _bucket() -> AsyncIOMotorGridFSBucket:
+    """One GridFS bucket shared by every subdir - the subdir is baked into
+    the stored filename, same as it used to be baked into the disk path.
+    Backs onto `fs.files` / `fs.chunks`-style collections named
+    `uploads.files` / `uploads.chunks` in the same database as everything
+    else, so it's covered by your existing DB backups automatically.
+    """
+    return AsyncIOMotorGridFSBucket(get_db(), bucket_name=_BUCKET_NAME)
 
 
 def _ext_from(file: UploadFile) -> str:
     """Lower-cased extension from the filename, or a mime-type fallback."""
-    suffix = Path(file.filename or "").suffix.lower()
+    suffix = ""
+    if file.filename and "." in file.filename:
+        suffix = "." + file.filename.rsplit(".", 1)[-1].lower()
     if suffix:
         return suffix
     return {
@@ -73,10 +100,11 @@ def _safe_key(key: str) -> str:
 
 
 async def save_upload(file: UploadFile, *, subdir: str, key: str) -> str:
-    """Persist `file` to disk under `<uploads_dir>/<subdir>/<key><ext>`.
+    """Persist `file` into GridFS under filename `<subdir>/<key><ext>`.
 
-    Returns the *relative* path (for storage in Mongo). Raises 4xx HTTPException
-    on validation failure so callers can let it bubble up.
+    Returns the *relative path* string (for storage in Mongo) - same shape
+    as the old disk version, now doubling as the GridFS filename. Raises
+    4xx HTTPException on validation failure so callers can let it bubble up.
     """
     if subdir not in _KNOWN_SUBDIRS:
         raise HTTPException(status_code=500, detail=f"Unknown upload subdir: {subdir}")
@@ -99,34 +127,114 @@ async def save_upload(file: UploadFile, *, subdir: str, key: str) -> str:
         )
 
     rel_path = f"{subdir}/{_safe_key(key)}{ext}"
-    dest = _root() / rel_path
-    dest.parent.mkdir(parents=True, exist_ok=True)
-    dest.write_bytes(data)
+    bucket = _bucket()
+
+    # Clear any earlier revision(s) under this exact filename first. GridFS
+    # allows multiple files with the same filename (newest wins on lookup),
+    # but callers here always pass a fresh uuid-based key per upload, so an
+    # existing entry only shows up on a genuine re-save of the same key -
+    # dropping it up front keeps `uploads.files` from accumulating orphans.
+    async for old in bucket.find({"filename": rel_path}):
+        await bucket.delete(old._id)
+
+    await bucket.upload_from_stream(
+        rel_path,
+        data,
+        metadata={
+            "content_type": file.content_type
+            or _CONTENT_TYPES.get(ext, "application/octet-stream"),
+            "subdir": subdir,
+            "uploaded_at": datetime.now(timezone.utc),
+        },
+    )
     return rel_path
 
 
-def resolve(rel_path: str) -> Path:
-    """Translate a stored relative path into an absolute filesystem path.
+async def save_bytes(
+    data: bytes, *, subdir: str, key: str, ext: str, content_type: str
+) -> str:
+    """Persist raw `data` into GridFS (same validation as save_upload).
 
-    Rejects path-traversal attempts (e.g. "../etc/passwd").
-    """
-    root = _root().resolve()
-    target = (root / rel_path).resolve()
+    Used when there's no UploadFile to hand - e.g. copying a candidate's
+    already-stored CV into a fresh file for a second job's analysis, so each
+    analysis owns its own file and deleting one can't orphan the other."""
+    if subdir not in _KNOWN_SUBDIRS:
+        raise HTTPException(status_code=500, detail=f"Unknown upload subdir: {subdir}")
+    ext = ext.lower()
+    if ext not in _ALLOWED_EXTS[subdir]:
+        raise HTTPException(
+            status_code=415,
+            detail=f"{subdir}: unsupported file type {ext or 'unknown'}",
+        )
+    if not data:
+        raise HTTPException(status_code=400, detail="Empty file")
+    max_bytes = _MAX_BYTES_PER_SUBDIR.get(subdir, _DEFAULT_MAX_BYTES)
+    if len(data) > max_bytes:
+        raise HTTPException(
+            status_code=413,
+            detail=f"File too large (max {max_bytes // 1024 // 1024} MB)",
+        )
+
+    rel_path = f"{subdir}/{_safe_key(key)}{ext}"
+    bucket = _bucket()
+    async for old in bucket.find({"filename": rel_path}):
+        await bucket.delete(old._id)
+    await bucket.upload_from_stream(
+        rel_path,
+        data,
+        metadata={
+            "content_type": content_type
+            or _CONTENT_TYPES.get(ext, "application/octet-stream"),
+            "subdir": subdir,
+            "uploaded_at": datetime.now(timezone.utc),
+        },
+    )
+    return rel_path
+
+
+async def read_bytes(rel_path: str | None) -> bytes | None:
+    """Read the full contents of a stored file, or None if it's missing."""
+    if not rel_path:
+        return None
     try:
-        target.relative_to(root)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid file path")
-    if not target.is_file():
+        grid_out, _ = await open_download_stream(rel_path)
+    except HTTPException:
+        return None
+    return await grid_out.read()
+
+
+async def open_download_stream(rel_path: str):
+    """Open a streamable handle to the newest file stored under `rel_path`.
+
+    Returns (grid_out, content_type). Raises 404 if nothing is stored under
+    that name. Replaces the old `resolve(path) -> Path`; the caller iterates
+    `grid_out` to stream chunks instead of using FileResponse on a disk path.
+    """
+    bucket = _bucket()
+    try:
+        grid_out = await bucket.open_download_stream_by_name(rel_path)
+    except Exception:
         raise HTTPException(status_code=404, detail="File not found")
-    return target
+
+    metadata = grid_out.metadata or {}
+    content_type = metadata.get("content_type") or _CONTENT_TYPES.get(
+        "." + rel_path.rsplit(".", 1)[-1].lower() if "." in rel_path else "",
+        "application/octet-stream",
+    )
+    return grid_out, content_type
 
 
-def delete_upload(rel_path: str | None) -> None:
-    """Best-effort delete. Silently no-ops on missing path or filesystem errors."""
+async def delete_upload(rel_path: str | None) -> None:
+    """Best-effort delete of every revision stored under this filename.
+
+    Now async (GridFS deletes go through Motor) - callers must `await` this.
+    Silently no-ops on a missing path or storage errors, same as before.
+    """
     if not rel_path:
         return
     try:
-        target = (_root() / rel_path).resolve()
-        target.unlink(missing_ok=True)
+        bucket = _bucket()
+        async for doc in bucket.find({"filename": rel_path}):
+            await bucket.delete(doc._id)
     except Exception:
         logger.exception("Failed to delete upload: %s", rel_path)

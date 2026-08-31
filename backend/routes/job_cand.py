@@ -143,26 +143,23 @@ async def list_job_candidates_by_job(
 
 
 @router.get("")
-async def list_job_candidates_flat(comp_id: str | None = None) -> list[dict]:
-    """Flat enumeration of every job-candidate link, optionally scoped to a
-    company, joined with the job title + candidate name.
+async def list_job_candidates_flat(
+    comp_id: ObjectId = Depends(get_current_comp_id),
+) -> list[dict]:
+    """Flat enumeration of the CALLER'S company's job-candidate links,
+    joined with the job title + candidate name.
 
-    Used by the CV Analyser upload page to populate its picker. Each row
-    also carries `has_analysis` so the picker can short-circuit straight
-    to the result screen for links that already have a cached analysis.
+    Tenant scope comes from the JWT - the old client-supplied `comp_id`
+    query param let anonymous callers enumerate every company's data and
+    is gone. Each row also carries `has_analysis` so pickers can
+    short-circuit straight to the result screen for analysed links.
     """
     db = get_db()
 
     # 1. Scope by company: gather the company's job ids first, then filter
     #    links by job_id. (job_candidates docs don't store comp_id directly,
     #    but jobs do.)
-    job_query: dict = {}
-    if comp_id:
-        if not ObjectId.is_valid(comp_id):
-            raise HTTPException(status_code=400, detail="Invalid comp_id")
-        job_query["comp_id"] = ObjectId(comp_id)
-
-    jobs = await db.jobs.find(job_query, {"title": 1}).to_list(length=500)
+    jobs = await db.jobs.find({"comp_id": comp_id}, {"title": 1}).to_list(length=500)
     if not jobs:
         return []
     jobs_by_id = {str(j["_id"]): j for j in jobs}

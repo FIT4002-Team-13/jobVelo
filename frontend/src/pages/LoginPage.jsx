@@ -11,8 +11,9 @@ export default function LoginPage() {
   const { login } = useAuth()
   const justSignedUp = location.state?.justSignedUp
   // Where to send the user post-login. If they were redirected here from
-  // a protected route, send them back. Otherwise pick based on role:
-  // admins → admin dashboard, everyone else → regular dashboard.
+  // a protected route, send them back; otherwise everyone (admins
+  // included) lands on the regular dashboard - admins reach their
+  // invitation-key page via the sidebar's admin-only nav item.
   const fromPath = location.state?.from?.pathname
 
   const [form, setForm] = useState({ identifier: '', password: '' })
@@ -34,21 +35,15 @@ export default function LoginPage() {
     setSubmitting(true)
     try {
       const user = await login(form.identifier.trim(), form.password)
-      // Role-aware redirect.
-      //   - Admins ALWAYS land on /admin/dashboard. Honouring a captured
-      //     fromPath like /dashboard would silently send them past their
-      //     control panel, which surprised people in testing.
-      //   - Non-admins go back to wherever they were trying to reach,
-      //     unless that path is admin-only (in which case we'd just bounce
-      //     them out via RequireRole anyway). Default to /dashboard.
+      // Everyone lands on the shared dashboard - admins use the same app
+      // shell as every other role and reach the invitation-key page via
+      // the admin-only sidebar item. The captured fromPath still wins so
+      // deep links survive the login bounce, except admin-only paths for
+      // non-admins (RequireRole would just bounce them back out).
       const isAdmin = user?.role === 'admin'
-      let target
-      if (isAdmin) {
-        target = '/admin/dashboard'
-      } else {
-        const wantsAdmin = fromPath?.startsWith('/admin')
-        target = fromPath && !wantsAdmin ? fromPath : '/dashboard'
-      }
+      const wantsAdmin = fromPath?.startsWith('/admin')
+      const target =
+        fromPath && (isAdmin || !wantsAdmin) ? fromPath : '/dashboard'
       navigate(target, { replace: true })
     } catch (err) {
       if (err instanceof ApiError) {

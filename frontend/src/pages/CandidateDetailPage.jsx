@@ -6,6 +6,7 @@ import StartInterviewModal from '../components/job-candidate/StartInterviewModal
 import EditCandidateForm from '../components/candidate/EditCandidateForm'
 import { card, flex, page } from '../styles/layout'
 import { useAuth } from '../lib/AuthContext.jsx'
+import { useToast } from '../components/common/ToastContext.jsx'
 import { api, authedFetch, downloadFileWithAuth, openFileWithAuth } from '../lib/api.js'
 
 import ScoreEvidencePopup from "../components/candidate/ScoreEvidencePopup";
@@ -394,7 +395,7 @@ function formatDateTime(iso) {
   const today = new Date()
   const isToday = d.toDateString() === today.toDateString()
 
-  const time = d.toLocaleTimeString('en-US', {
+  const time = d.toLocaleTimeString('en-AU', {
     hour: 'numeric',
     minute: '2-digit',
     hour12: true,
@@ -735,9 +736,10 @@ function FeedbackPanel({
 //   - analysis completed  → solid primary button, opens the analysis report
 //   - analysis processing → disabled button with a spinner ("Analysing…")
 //   - analysis failed     → disabled coral button, error in the tooltip
-//   - no analysis yet     → legacy behaviour: link to cand_cv_url if one
-//                           exists, otherwise the greyed-out disabled state
-function CvViewButton({ cvAnalysis, cvUrl, onViewAnalysis }) {
+//   - no analysis, has CV  → "Analyse CV" (reuses the candidate's stored CV
+//                           for this job, no re-upload) + a raw-PDF link
+//   - no analysis, no CV   → greyed-out disabled state
+function CvViewButton({ cvAnalysis, cvUrl, onViewAnalysis, onAnalyse, analysing }) {
   const base =
     'inline-flex min-w-[98px] items-center justify-center gap-1.5 rounded-xl px-4 py-0.5 text-sm font-semibold transition-colors'
 
@@ -789,26 +791,44 @@ function CvViewButton({ cvAnalysis, cvUrl, onViewAnalysis }) {
     )
   }
 
+  // No analysis for this job yet. If the candidate has a CV on file, offer
+  // to analyse it against THIS job (server reuses the stored PDF - the
+  // candidate was likely analysed for a different job already).
+  if (cvUrl) {
+    return (
+      <button
+        type="button"
+        onClick={onAnalyse}
+        disabled={analysing || !onAnalyse}
+        title="Analyse the candidate's CV against this job"
+        className={`${base} ${
+          analysing
+            ? 'cursor-wait bg-primary-100 text-primary-500'
+            : 'bg-primary-500 text-white hover:bg-primary-600'
+        }`}
+      >
+        {analysing ? (
+          <>
+            <svg className="h-3.5 w-3.5 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round">
+              <path d="M21 12a9 9 0 1 1-6.2-8.56" />
+            </svg>
+            Analysing…
+          </>
+        ) : (
+          'Analyse CV'
+        )}
+      </button>
+    )
+  }
+
   return (
-    <a
-      href={cvUrl || '#'}
-      target="_blank"
-      rel="noreferrer"
-      className={`${base} ${
-        cvUrl
-          ? 'bg-primary-500 text-white hover:bg-primary-600'
-          : 'cursor-not-allowed bg-neutral-300 text-neutral-500'
-      }`}
-      onClick={(e) => {
-        if (!cvUrl) e.preventDefault()
-      }}
-    >
+    <span className={`${base} cursor-not-allowed bg-neutral-300 text-neutral-500`}>
       View
-    </a>
+    </span>
   )
 }
 
-function CandidateInfoCard({ candidate, job, interview, onStartInterview, interviewer, onEdit, cvAnalysis, onViewCvAnalysis }) {
+function CandidateInfoCard({ candidate, job, interview, onStartInterview, interviewer, onEdit, cvAnalysis, onViewCvAnalysis, onAnalyseCv, analysingCv }) {
   const { user } = useAuth()
   const status = (interview?.intv_status ?? 'not_scheduled').replace(/_/g, ' ').toUpperCase()
   // Starting an interview is interviewer-only - mirrors the backend's
@@ -846,7 +866,16 @@ function CandidateInfoCard({ candidate, job, interview, onStartInterview, interv
             <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>
             </svg>
-            Last Update {new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+            {/* Real timestamp from the candidate doc - previously rendered
+                new Date() (always "today"), which quietly lied. */}
+            Last Update{' '}
+            {candidate?.cand_updated_at
+              ? new Date(candidate.cand_updated_at).toLocaleDateString('en-AU', {
+                  month: 'short',
+                  day: 'numeric',
+                  year: 'numeric',
+                })
+              : '--'}
           </p>
         </div>
 
@@ -855,22 +884,39 @@ function CandidateInfoCard({ candidate, job, interview, onStartInterview, interv
               here in the header as a solid CTA (only when the interview is
               actually scheduled) instead of being tucked into the DATE row. */}
           {canStartInterview && (
+            // Same vertical metrics + pill shape as the Edit button and the
+            // status chip beside it (px-4 py-0.5 text-sm rounded-pill), so
+            // the three header controls read as one row of equal-height
+            // pills - only the solid fill marks this one as the CTA.
             <button
               type="button"
               onClick={onStartInterview}
-              className="inline-flex items-center gap-2 rounded-xl bg-primary-500 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-primary-600"
+              className="inline-flex items-center gap-1.5 rounded-pill bg-primary-500 px-4 py-0.5 text-sm font-semibold text-white transition-colors hover:bg-primary-600"
             >
-              <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor">
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor">
                 <polygon points="5 3 19 12 5 21 5 3" />
               </svg>
               {startLabel}
             </button>
           )}
 
+          {/* Editing is locked once the interview is finished - mirrors the
+              backend guard that keeps completed/cancelled interviews
+              immutable (reports, scores, and schedule stay as evaluated). */}
           <button
             type="button"
+            disabled={status === 'COMPLETED' || status === 'CANCELLED'}
             onClick={onEdit}
-            className="rounded-pill border border-neutral-200 hover:bg-neutral-50 bg-white px-4 py-0.5 text-sm font-semibold text-neutral-500"
+            title={
+              status === 'COMPLETED' || status === 'CANCELLED'
+                ? 'This interview is finished - the application can no longer be edited.'
+                : undefined
+            }
+            className={`rounded-pill border px-4 py-0.5 text-sm font-semibold ${
+              status === 'COMPLETED' || status === 'CANCELLED'
+                ? 'cursor-not-allowed border-neutral-100 bg-neutral-50 text-neutral-300'
+                : 'border-neutral-200 bg-white text-neutral-500 hover:bg-neutral-50'
+            }`}
           >
             Edit
           </button>
@@ -944,6 +990,8 @@ function CandidateInfoCard({ candidate, job, interview, onStartInterview, interv
             cvAnalysis={cvAnalysis}
             cvUrl={candidate?.cand_cv_url}
             onViewAnalysis={onViewCvAnalysis}
+            onAnalyse={onAnalyseCv}
+            analysing={analysingCv}
           />
         </div>
 
@@ -978,6 +1026,7 @@ export default function CandidateDetailPage() {
   const { candId, jobId } = useParams()
   const { user } = useAuth()
   const navigate = useNavigate()
+  const toast = useToast()
 
   const [candidate, setCandidate] = useState(null)
   const [jobCand, setJobCand] = useState(null)
@@ -991,9 +1040,29 @@ export default function CandidateDetailPage() {
   const [error, setError] = useState('')
   const [startTarget, setStartTarget] = useState(null)
   const [showEditModal, setShowEditModal] = useState(false)
+  const [showScoreEvidence, setShowScoreEvidence] = useState(false)
   const [refreshKey, setRefreshKey] = useState(0)
   const [cvAnalysis, setCvAnalysis] = useState(null)
-  const [showScoreEvidence, setShowScoreEvidence] = useState(false);
+  const [analysingCv, setAnalysingCv] = useState(false)
+
+  // Analyse the candidate's already-stored CV against THIS job - no
+  // re-upload. The backend reuses the candidate's cand_cv_url file; we set
+  // the returned "processing" doc so the existing poll picks up completion.
+  async function handleAnalyseCv() {
+    if (!jobCand?.jobcand_id || analysingCv) return
+    setAnalysingCv(true)
+    try {
+      const fd = new FormData()
+      fd.append('jobcand_id', jobCand.jobcand_id)
+      const data = await api.analyseCv(fd)
+      setCvAnalysis(data)
+      setRefreshKey((k) => k + 1)
+    } catch (err) {
+      toast.error(err?.message || 'Could not start the CV analysis.')
+    } finally {
+      setAnalysingCv(false)
+    }
+  }
 
   // Load the CV analysis for this application and poll while it's still
   // processing, so the "View" button flips from spinner to available the
@@ -1121,47 +1190,6 @@ export default function CandidateDetailPage() {
     load()
   }, [candId, jobId, user?.comp_id, refreshKey])
 
-  // Mirrors JobDetailPage's onConfirmStart: resume an existing in-progress/
-  // scheduled interview rather than creating a duplicate, otherwise create
-  // one and jump straight into the live session.
-  async function onConfirmStart() {
-    try {
-      const existingRes = await authedFetch(
-        `/api/interviews?cand_id=${candId}&job_id=${jobId}`
-      )
-      if (existingRes.ok) {
-        const existing = await existingRes.json()
-        const resumable = existing.find(
-          (i) => i.intv_status === 'in_progress' || i.intv_status === 'scheduled'
-        )
-        if (resumable) {
-          navigate(`/interview/${resumable.intv_id}`)
-          return
-        }
-      }
-
-      const res = await authedFetch('/api/interviews', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          cand_id: candId,
-          job_id: jobId,
-          intv_date_time: new Date().toISOString(),
-          intv_status: 'in_progress',
-        }),
-      })
-      const interviewRecord = await res.json()
-      if (!res.ok) {
-        throw new Error(interviewRecord?.detail || 'Failed to start interview.')
-      }
-      navigate(`/interview/${interviewRecord.intv_id}`)
-    } catch (err) {
-      console.error('Failed to start interview', err)
-      alert(err.message || 'Failed to start interview.')
-      setStartTarget(null)
-    }
-  }
-
   if (loading) {
     return (
       <div className={page.loading}>
@@ -1230,6 +1258,8 @@ export default function CandidateDetailPage() {
                   state: { analysis: cvAnalysis },
                 })
               }}
+              onAnalyseCv={handleAnalyseCv}
+              analysingCv={analysingCv}
             />
           </div>
           <div className="col-span-4">
@@ -1261,12 +1291,12 @@ export default function CandidateDetailPage() {
             // No filename arg: the server's Content-Disposition carries
             // "<kind>-report-<candidate>-<interview datetime>.pdf".
             downloadFileWithAuth(`/api/interviews/${interview.intv_id}/candidate-report`)
-              .catch((err) => window.alert(err.message || 'Failed to download the report.'))
+              .catch((err) => toast.error(err.message || 'Failed to download the report.'))
           }}
           onDownloadInterviewerReport={() => {
             if (!interview?.intv_id) return
             downloadFileWithAuth(`/api/interviews/${interview.intv_id}/interviewer-report`)
-              .catch((err) => window.alert(err.message || 'Failed to download the report.'))
+              .catch((err) => toast.error(err.message || 'Failed to download the report.'))
           }}
         />
       </main>
@@ -1281,7 +1311,9 @@ export default function CandidateDetailPage() {
           // confirming on a fresh candidate silently did nothing.
           onConfirm={() => {
             setStartTarget(null)
-            onConfirmStart()
+            if (interview?.intv_id) {
+              navigate(`/interview/${interview.intv_id}`, { replace: true })
+            }
           }}
         />
       )}

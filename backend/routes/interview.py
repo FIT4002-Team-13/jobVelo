@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from datetime import datetime, timezone
 
 from bson import ObjectId
@@ -30,6 +31,8 @@ from services.openai_service import (
     rate_candidate_skills,
 )
 from services.transcrip import build_transcript_pdf
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/interviews", tags=["interviews"])
 
@@ -105,23 +108,100 @@ async def generate_plan(payload: PlanRequest) -> list[dict]:
     return sections
 
 
+_VALID_STATUSES = {
+    "not_scheduled",
+    "scheduled",
+    "in_progress",
+    "completed",
+    "cancelled",
+}
+
+
+async def _job_in_company(db, job_id: str | None, comp_id: ObjectId) -> bool:
+    """Tenant guard: an interview belongs to whichever company owns its job."""
+    if not job_id or not ObjectId.is_valid(job_id):
+        return False
+    return (
+        await db.jobs.find_one(
+            {"_id": ObjectId(job_id), "comp_id": comp_id}, {"_id": 1}
+        )
+        is not None
+    )
+
+
+async def _get_interview_in_company(db, intv_id: str, comp_id: ObjectId) -> dict:
+    """Fetch an interview, 404-ing when it doesn't exist OR belongs to a
+    different company (404 rather than 403 so ids can't be probed)."""
+    if not ObjectId.is_valid(intv_id):
+        raise HTTPException(status_code=400, detail="Invalid interview id.")
+    interview = await db.interviews.find_one({"_id": ObjectId(intv_id)})
+    if not interview or not await _job_in_company(db, interview.get("job_id"), comp_id):
+        raise HTTPException(status_code=404, detail="Interview not found.")
+    return interview
+
+
+def _safe_report(raw) -> InterviewFeedback | None:
+    """Validate a stored report, tolerating legacy/partial shapes. A report
+    that no longer matches the model (e.g. written before US28's evidence
+    fields, or with a null section) must not 500 the whole read - we drop it
+    to None and log, so the rest of the interview still loads."""
+    if not raw or not isinstance(raw, dict):
+        return None
+    try:
+        return InterviewFeedback(**raw)
+    except Exception:  # any malformed shape falls back to None
+        logger.warning("Dropping unparseable interview report", exc_info=True)
+        return None
+
+
+def _safe_transcript(raw) -> list[TranscriptEntry] | None:
+    """Validate transcript entries one-by-one, skipping any malformed entry
+    (missing id/speaker/timestamp/text) rather than failing the whole list."""
+    if not isinstance(raw, list):
+        return None
+    out: list[TranscriptEntry] = []
+    for entry in raw:
+        try:
+            out.append(TranscriptEntry(**entry))
+        except Exception:
+            continue
+    return out
+
+
 def interview_helper(interview: dict) -> InterviewOut:
-    """Convert a raw Mongo interview document into the API response model."""
+    """Convert a raw Mongo interview document into the API response model.
+
+    Defensive against legacy / partially-written documents: required
+    timestamps fall back to each other (or now), an unknown status falls
+    back to not_scheduled, and malformed reports/transcripts degrade to
+    None/[] instead of raising - one bad historical doc shouldn't 500 an
+    entire list query (this was the "failed to load candidate page" bug)."""
+    now = datetime.now(timezone.utc)
+    created = interview.get("intv_created_at")
+    updated = interview.get("intv_updated_at")
+    if not isinstance(created, datetime):
+        created = updated if isinstance(updated, datetime) else now
+    if not isinstance(updated, datetime):
+        updated = created
+
+    status_val = interview.get("intv_status")
+    if status_val not in _VALID_STATUSES:
+        status_val = "not_scheduled"
 
     return InterviewOut(
         intv_id=str(interview["_id"]),
-        cand_id=str(interview["cand_id"]),
-        job_id=str(interview["job_id"]),
+        cand_id=str(interview.get("cand_id", "")),
+        job_id=str(interview.get("job_id", "")),
         intv_date_time=interview.get("intv_date_time"),
         intv_location=interview.get("intv_location"),
-        intv_transcript=interview.get("intv_transcript"),
-        intv_status=interview["intv_status"],
+        intv_transcript=_safe_transcript(interview.get("intv_transcript")),
+        intv_status=status_val,
         intv_duration_seconds=interview.get("intv_duration_seconds"),
-        intv_candidate_report=interview.get("intv_candidate_report"),
-        intv_interviewer_report=interview.get("intv_interviewer_report"),
+        intv_candidate_report=_safe_report(interview.get("intv_candidate_report")),
+        intv_interviewer_report=_safe_report(interview.get("intv_interviewer_report")),
         intv_sections=interview.get("intv_sections"),
-        intv_created_at=interview["intv_created_at"],
-        intv_updated_at=interview["intv_updated_at"],
+        intv_created_at=created,
+        intv_updated_at=updated,
     )
 
 
@@ -134,6 +214,7 @@ def interview_helper(interview: dict) -> InterviewOut:
 async def create_interview(
     payload: InterviewCreate,
     _user: dict = Depends(require_role("interviewer")),
+    comp_id: ObjectId = Depends(get_current_comp_id),
 ) -> InterviewOut:
     """Insert a new interview document.
 
@@ -141,9 +222,18 @@ async def create_interview(
     separately through /api/interview-users. Starting an interview is
     interviewer-only - other roles (admin, recruiter, hiring_manager) can
     still view interview data via the GET endpoints below, just not create
-    a new session.
+    a new session. Tenant guard: both the job and the candidate must belong
+    to the caller's company.
     """
     db = get_db()
+
+    if not await _job_in_company(db, payload.job_id, comp_id):
+        raise HTTPException(status_code=404, detail="Job not found.")
+    if not ObjectId.is_valid(payload.cand_id) or not await db.candidates.find_one(
+        {"_id": ObjectId(payload.cand_id), "comp_id": comp_id}, {"_id": 1}
+    ):
+        raise HTTPException(status_code=404, detail="Candidate not found.")
+
     now = datetime.now(timezone.utc)
 
     interview_doc = {
@@ -180,6 +270,7 @@ async def create_interview(
 async def list_interviews(
     cand_id: str | None = None,
     job_id: str | None = None,
+    comp_id: ObjectId = Depends(get_current_comp_id),
 ) -> list[InterviewOut]:
     db = get_db()
 
@@ -188,6 +279,20 @@ async def list_interviews(
         query["cand_id"] = cand_id
     if job_id:
         query["job_id"] = job_id
+
+    # Tenant guard: only interviews whose job belongs to the caller's
+    # company. A company's job set is small, so an $in filter is cheap and
+    # keeps the response scoped even when no cand_id/job_id was given.
+    company_job_ids = [
+        str(j["_id"]) async for j in db.jobs.find({"comp_id": comp_id}, {"_id": 1})
+    ]
+    query["job_id"] = (
+        job_id
+        if job_id and job_id in company_job_ids
+        else {"$in": company_job_ids}
+        if not job_id
+        else "__no_match__"  # asked for another company's job -> empty list
+    )
 
     interviews = await db.interviews.find(query).to_list(length=100)
     return [interview_helper(doc) for doc in interviews]
@@ -198,23 +303,19 @@ async def list_interviews(
     response_model=InterviewOut,
     summary="Get one interview by id.",
 )
-async def get_interview(intv_id: str) -> InterviewOut:
+async def get_interview(
+    intv_id: str,
+    comp_id: ObjectId = Depends(get_current_comp_id),
+) -> InterviewOut:
     db = get_db()
-
-    if not ObjectId.is_valid(intv_id):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid interview id.",
-        )
-
-    interview = await db.interviews.find_one({"_id": ObjectId(intv_id)})
-    if not interview:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Interview not found.",
-        )
-
+    interview = await _get_interview_in_company(db, intv_id, comp_id)
     return interview_helper(interview)
+
+
+# Cap what we send to the LLM: far below the model's context window, but
+# enough for hours of conversation. Past the budget the OLDEST turns are
+# dropped - the recent portion carries the most signal for scoring.
+_TRANSCRIPT_CHAR_BUDGET = 60_000
 
 
 def _transcript_to_text(entries: list[dict]) -> str:
@@ -706,21 +807,13 @@ async def download_interviewer_report(
     response_model=InterviewOut,
     summary="Update mutable interview fields.",
 )
-async def update_interview(intv_id: str, payload: InterviewUpdate) -> InterviewOut:
+async def update_interview(
+    intv_id: str,
+    payload: InterviewUpdate,
+    comp_id: ObjectId = Depends(get_current_comp_id),
+) -> InterviewOut:
     db = get_db()
-
-    if not ObjectId.is_valid(intv_id):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid interview id.",
-        )
-
-    existing_interview = await db.interviews.find_one({"_id": ObjectId(intv_id)})
-    if not existing_interview:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Interview not found.",
-        )
+    existing_interview = await _get_interview_in_company(db, intv_id, comp_id)
 
     update_data = payload.model_dump(exclude_unset=True)
 

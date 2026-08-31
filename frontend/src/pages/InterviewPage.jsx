@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { flex, card, button, badge, modal } from "../styles/layout";
 import { useAuth } from "../lib/AuthContext.jsx";
-import { authedFetch } from "../lib/api.js";
+import { useToast } from "../components/common/ToastContext.jsx";
+import { api, authedFetch } from "../lib/api.js";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -479,8 +480,6 @@ function SectionCard({ section, st, color, onStart, onPause, onResume, onDone, l
   const isPaused  = st.status === "paused";
   const isDone    = st.status === "done";
 
-  // Only the ACTIVE card gets a coloured border + ring; idle/done stay a
-  // quiet neutral so the strip doesn't look like a row of boxed chips.
   const borderClass = isRunning
     ? (over ? "border-coral-300 ring-2 ring-coral-100" : `${color.activeBorder} ring-2 ${color.ring}`)
     : isPaused ? "border-amber-300"
@@ -497,8 +496,6 @@ function SectionCard({ section, st, color, onStart, onPause, onResume, onDone, l
     : "text-neutral-700";
 
   return (
-    // Fixed height + bottom-pinned action (mt-auto) so every card lines up
-    // regardless of state (Start / Pause+Done / Done all differ in height).
     <div className={`shrink-0 w-[190px] h-[186px] flex flex-col border ${borderClass} rounded-2xl overflow-hidden bg-neutral-0 transition-all duration-300 ${isDone ? "opacity-50" : ""}`}>
       <div className="h-1 bg-neutral-100 shrink-0">
         <div className={`h-1 ${barClass} transition-all duration-1000`} style={{ width: `${pct}%` }} />
@@ -573,7 +570,6 @@ function SectionCard({ section, st, color, onStart, onPause, onResume, onDone, l
 
 function BiasWarningBanner({warning, onDismiss, onJumpTo, isLatest}) {
   const [expanded, setExpanded] = useState(isLatest);
-
   useEffect(() => {setExpanded(isLatest)}, [isLatest]);
 
   return (
@@ -598,20 +594,15 @@ function BiasWarningBanner({warning, onDismiss, onJumpTo, isLatest}) {
         <button
           onClick={() => setExpanded((open) => !open)}
           aria-expanded={expanded}
-          aria-label={
-            expanded ? "Collapse bias warning" : "Expand bias warning"
-          }
+          aria-label={expanded ? "Collapse bias warning" : "Expand bias warning"}
           className="flex w-full items-center justify-between gap-2 text-left"
         >
           <p className="text-sm font-semibold text-coral-700">
             Possibly biased question
             {warning.category ? ` — ${warning.category}` : ""}
           </p>
-
           <svg
-            className={`shrink-0 text-coral-500 transition-transform ${
-              expanded ? "rotate-180" : ""
-            }`}
+            className={`shrink-0 text-coral-500 transition-transform ${expanded ? "rotate-180" : ""}`}
             width="16"
             height="16"
             viewBox="0 0 24 24"
@@ -634,13 +625,9 @@ function BiasWarningBanner({warning, onDismiss, onJumpTo, isLatest}) {
             >
               &ldquo;{warning.quote}&rdquo;
             </button>
-
             {warning.reason && (
-              <p className="text-xs text-coral-700 mt-1">
-                {warning.reason}
-              </p>
+              <p className="text-xs text-coral-700 mt-1">{warning.reason}</p>
             )}
-
             {warning.suggestion && (
               <p className="text-xs text-neutral-600 mt-1">
                 <span className="font-medium">Try instead:</span>{" "}
@@ -650,7 +637,6 @@ function BiasWarningBanner({warning, onDismiss, onJumpTo, isLatest}) {
           </>
         )}
       </div>
-
 
       <button
         onClick={onDismiss}
@@ -663,11 +649,186 @@ function BiasWarningBanner({warning, onDismiss, onJumpTo, isLatest}) {
   );
 }
 
+// ── Prep screen ───────────────────────────────────────────────────────────────
+// Shown while the interview is still scheduled: the CV-analysis briefing on
+// the left, the AI-suggested questions on the right, one Begin CTA. The
+// interviewer walks into the call already knowing the candidate's strengths,
+// gaps, and what to ask - instead of discovering the analysis page later.
+
+const PREP_FIT_METRICS = [
+  { key: "relevant_experience", label: "Relevant Experience" },
+  { key: "technical_fit", label: "Technical Fit" },
+  { key: "soft_skills", label: "Soft Skills" },
+];
+
+function PrepVerdictChip({ positionFit }) {
+  const values = PREP_FIT_METRICS.map((m) => positionFit?.[m.key]).filter(
+    (v) => typeof v === "number"
+  );
+  if (values.length === 0) return null;
+  const avg = values.reduce((a, b) => a + b, 0) / values.length;
+  const [label, chipClass] =
+    avg >= 7.5
+      ? ["Strong fit", "bg-mint-50 text-mint-700"]
+      : avg >= 4.5
+      ? ["Moderate fit", "bg-sky-50 text-sky-700"]
+      : ["Weak fit", "bg-coral-50 text-coral-700"];
+  return (
+    <span
+      className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-pill px-3 py-1 text-xs font-bold ${chipClass}`}
+    >
+      <span className="h-1.5 w-1.5 rounded-pill bg-current" aria-hidden />
+      {label}
+      <span className="font-semibold opacity-70 tabular-nums">{avg.toFixed(1)}/10</span>
+    </span>
+  );
+}
+
+// A short, quiet list: tiny tinted dot + the takeaway title only. The
+// evidence and per-metric bars live on the full analysis page - repeating
+// them here buried the CTA under noise.
+function PrepInsightList({ title, items, dot }) {
+  if (!items?.length) return null;
+  return (
+    <div>
+      <p className="mb-2 text-[11px] font-bold uppercase tracking-wider text-neutral-400">
+        {title}
+      </p>
+      <ul className={`${flex.col} gap-1.5`}>
+        {items.slice(0, 3).map((item, i) => (
+          <li
+            key={`${item.title}-${i}`}
+            className={`${flex.row} items-start gap-2`}
+            title={item.detail || undefined}
+          >
+            <span className={`mt-[7px] h-1.5 w-1.5 shrink-0 rounded-pill ${dot}`} aria-hidden />
+            <span className="text-sm leading-snug text-neutral-700">{item.title}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function PrepPanel({ analysis, scheduledLabel, onBegin, onViewFullAnalysis }) {
+  // The prep question plan comes from the CV analysis report (generated
+  // once, tailored to THIS candidate's CV) - not from a fresh OpenAI run.
+  // The generic AI deck only spins up once the interview actually begins.
+  const analysisQuestions = analysis?.interview_questions ?? [];
+  return (
+    <div className="scrollbar-primary flex-1 overflow-y-auto px-6 py-10">
+      <div className={`mx-auto max-w-2xl ${flex.col} gap-6`}>
+        {/* Quiet heading - the candidate/role already live in the page
+            header, so this only carries the when + what-happens-next. */}
+        <div className="text-center">
+          <h2 className="text-xl font-bold text-neutral-800">Interview Prep</h2>
+          <p className="mt-1 text-sm text-neutral-400">
+            {scheduledLabel ? `Scheduled for ${scheduledLabel}` : "Not scheduled yet"}
+          </p>
+        </div>
+
+        {/* Briefing - one calm card, takeaways only */}
+        <div className={`${card.base} ${flex.col} gap-5`}>
+          <div className={flex.rowBetween}>
+            <h3 className="text-sm font-bold uppercase tracking-wide text-neutral-500">
+              Briefing
+            </h3>
+            {analysis && <PrepVerdictChip positionFit={analysis.position_fit} />}
+          </div>
+
+          {analysis ? (
+            <>
+              <div className="grid grid-cols-2 gap-x-8 gap-y-5">
+                <PrepInsightList
+                  title="Strengths"
+                  items={analysis.key_strengths}
+                  dot="bg-mint-500"
+                />
+                <PrepInsightList
+                  title="Areas to probe"
+                  items={[
+                    ...(analysis.improvements ?? []),
+                    ...(analysis.inconsistencies ?? []),
+                  ]}
+                  dot="bg-sky-500"
+                />
+              </div>
+              {onViewFullAnalysis && (
+                <button
+                  type="button"
+                  onClick={onViewFullAnalysis}
+                  className="self-start text-sm font-semibold text-primary-500 hover:text-primary-600"
+                >
+                  View full CV analysis →
+                </button>
+              )}
+            </>
+          ) : (
+            <p className="py-4 text-center text-sm italic text-neutral-400">
+              No CV analysis for this application yet.
+            </p>
+          )}
+        </div>
+
+        {/* Question plan - the CV analysis report's suggested questions,
+            as a plain numbered list. Only renders when a report exists;
+            hover a question for the report's rationale. */}
+        {analysisQuestions.length > 0 && (
+          <div className={`${card.base} ${flex.col} gap-4`}>
+            <h3 className="text-sm font-bold uppercase tracking-wide text-neutral-500">
+              Question Plan
+            </h3>
+            <ol className={`${flex.col} gap-2.5`}>
+              {analysisQuestions.slice(0, 5).map((q, i) => (
+                <li
+                  key={`${q.question}-${i}`}
+                  className={`${flex.row} items-start gap-3`}
+                  title={q.rationale || undefined}
+                >
+                  <span className="w-4 shrink-0 pt-px text-right text-sm font-semibold tabular-nums text-neutral-300">
+                    {i + 1}
+                  </span>
+                  <span className="flex-1 text-sm leading-snug text-neutral-700">
+                    {q.question}
+                  </span>
+                  {q.category && (
+                    <span className="shrink-0 pt-px text-[10px] font-semibold uppercase tracking-wide text-neutral-300">
+                      {q.category}
+                    </span>
+                  )}
+                </li>
+              ))}
+            </ol>
+          </div>
+        )}
+
+        {/* One centered CTA - the only loud element on the screen */}
+        <div className={`${flex.col} items-center gap-2 pt-2`}>
+          <button
+            type="button"
+            onClick={onBegin}
+            className={`${flex.row} gap-2 ${button.primary} !px-8 !py-3 text-base`}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+              <polygon points="5 3 19 12 5 21 5 3" />
+            </svg>
+            Begin Interview
+          </button>
+          <p className="text-xs text-neutral-400">
+            Opens the live transcription workspace and marks the interview In Progress.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function InterviewPage() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const toast = useToast();
 
   const [transcriptVisible, setTranscriptVisible] = useState(true);
   const [, setStatus] = useState("Ready to start recording");
@@ -675,6 +836,13 @@ export default function InterviewPage() {
   const [isScreenSharing, setIsScreenSharing] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
   const [isCompleted, setIsCompleted] = useState(false);
+  // Raw interview status from the server - drives the prep/live/debrief arc.
+  const [intvStatus, setIntvStatus] = useState(null);
+  const [intvDateTime, setIntvDateTime] = useState(null);
+  // CV analysis for this application (candidate+job) - shown on the prep
+  // screen so the interviewer walks in already briefed. null = none/404.
+  const [cvAnalysis, setCvAnalysis] = useState(null);
+  const beginningRef = useRef(false);
 
   const { user } = useAuth();
   const [candidateName, setCandidateName] = useState("");
@@ -706,6 +874,10 @@ export default function InterviewPage() {
   const transcriptRef = useRef([]);
   const timerRef = useRef(0);
   const autoStartedRef = useRef(false);
+  // Seconds actually recorded so far (across visits). The timer only runs
+  // while screen share is live - merely VIEWING an in-progress interview
+  // used to inflate intv_duration_seconds via the 30s autosave.
+  const accumulatedRef = useRef(0);
   const wsRef = useRef(null);
   const wsDisplayRef = useRef(null);
   const audioContextRef = useRef(null);
@@ -1049,6 +1221,9 @@ export default function InterviewPage() {
         });
       }
 
+      // Resume the clock from the recorded total, not from page mount.
+      startTimeRef.current = Date.now() - accumulatedRef.current * 1000;
+
       setIsMicActive(true);
       setIsScreenSharing(true);
       setStatus(
@@ -1319,16 +1494,20 @@ export default function InterviewPage() {
 
   useEffect(() => {
     const interval = setInterval(() => {
-      if (!isPaused && !isCompleted) {
+      // Only count while the interview is actually being recorded. The old
+      // condition ticked from page MOUNT, so opening an in-progress
+      // interview just to look at it silently inflated the duration.
+      if (isScreenSharing && !isPaused && !isCompleted) {
         const elapsedSeconds = Math.floor(
           (Date.now() - startTimeRef.current) / 1000
         );
         setTimer(elapsedSeconds);
+        accumulatedRef.current = elapsedSeconds;
       }
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [isPaused, isCompleted]);
+  }, [isScreenSharing, isPaused, isCompleted]);
 
   useEffect(() => {
     transcriptRef.current = transcript;
@@ -1386,6 +1565,8 @@ export default function InterviewPage() {
         const completed = data.intv_status === "completed";
 
         setIsCompleted(completed);
+        setIntvStatus(data.intv_status ?? null);
+        setIntvDateTime(data.intv_date_time ?? null);
         if (completed) {
           setStatus("Interview completed");
           setTimer(data.intv_duration_seconds ?? 0);
@@ -1400,9 +1581,12 @@ export default function InterviewPage() {
             setTranscript(serverTranscript);
             syncCounterFromEntries(serverTranscript);
           }
-          if (data.intv_duration_seconds) {
-            startTimeRef.current = Date.now() - data.intv_duration_seconds * 1000;
-          }
+          // Seed the clock with what was already recorded; it stays frozen
+          // there until screen share actually starts.
+          const priorSeconds = data.intv_duration_seconds ?? 0;
+          accumulatedRef.current = priorSeconds;
+          timerRef.current = priorSeconds;
+          setTimer(priorSeconds);
           if (!autoStartedRef.current) {
             autoStartedRef.current = true;
             startMicOnly().catch(() => {});
@@ -1460,19 +1644,44 @@ export default function InterviewPage() {
               .catch(() => {});
           }
         }
-      })
-      .catch((err) => {
-        console.error("Failed to load interview:", err);
-        setStatus("Failed to load interview");
+
+        // Prep briefing: the CV analysis for this (candidate, job) pair.
+        if (data.cand_id && data.job_id && !completed) {
+          authedFetch(`/api/job-candidates/by-candidate/${data.cand_id}`)
+            .then((r) => (r.ok ? r.json() : []))
+            .then((links) => {
+              const link = Array.isArray(links)
+                ? links.find((l) => l.job_id === data.job_id)
+                : null;
+              if (!link?.jobcand_id) return;
+              api
+                .getCvAnalysisByJobcand(link.jobcand_id)
+                .then((a) => {
+                  if (a && (a.status === "completed" || a.key_strengths)) {
+                    setCvAnalysis(a);
+                  }
+                })
+                .catch(() => {});
+            })
+            .catch(() => {});
+        }
       });
   }, [id]);
 
   useEffect(() => {
-    // Never (re)generate suggestions for a finished interview - reopening a
-    // completed transcript was silently firing a fresh OpenAI run per visit.
-    // isCompleted lands in the same state batch as jobId, so this effect
-    // sees the final value on first run.
-    if (!jobId || isCompleted || questionsRequestedJobRef.current === jobId) {
+    // Only generate suggestions for a LIVE interview:
+    //  - never for a finished one (reopening a completed transcript was
+    //    silently firing a fresh OpenAI run per visit);
+    //  - never during prep - the prep screen's question plan comes from the
+    //    CV analysis report, so paying for an OpenAI run before the
+    //    interview even starts was pure waste. Generation kicks off the
+    //    moment Begin Interview flips the status to in_progress.
+    if (
+      !jobId ||
+      isCompleted ||
+      intvStatus !== "in_progress" ||
+      questionsRequestedJobRef.current === jobId
+    ) {
       return;
     }
 
@@ -1480,7 +1689,7 @@ export default function InterviewPage() {
     setQuestionsLoading(true);
     setQuestionsError("");
 
-    fetch(`/api/interview-questions/${jobId}`, {
+    authedFetch(`/api/interview-questions/${jobId}`, {
       method: "POST",
       headers: {
         Accept: "application/json",
@@ -1517,7 +1726,7 @@ export default function InterviewPage() {
         setQuestionsError(error.message || "Unable to generate questions");
       })
       .finally(() => {setQuestionsLoading(false);});
-  }, [jobId, isCompleted]);
+  }, [jobId, isCompleted, intvStatus]);
 
   async function generateMoreLike(question) {
     if (!jobId || similarQuestionId) {
@@ -1528,7 +1737,7 @@ export default function InterviewPage() {
     setQuestionsError("");
 
     try {
-      const response = await fetch(
+      const response = await authedFetch(
         `/api/interview-questions/${jobId}/similar`,
         {
           method: "POST",
@@ -1668,7 +1877,7 @@ export default function InterviewPage() {
     ];
 
     try {
-      const response = await fetch(
+      const response = await authedFetch(
         `/api/interview-questions/${jobId}/similar`,
         {
           method: "POST",
@@ -1736,6 +1945,34 @@ export default function InterviewPage() {
     setTimeout(() => setHighlightedEntryIdx(null), 2000);
   }
 
+  // Prep -> live transition: mark the interview in_progress server-side so
+  // status pills across the app flip immediately, then swap to the live
+  // workspace. Double-click guarded.
+  async function beginInterview() {
+    if (beginningRef.current) return;
+    beginningRef.current = true;
+    try {
+      const res = await authedFetch(`/api/interviews/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ intv_status: "in_progress" }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        throw new Error(
+          typeof data?.detail === "string"
+            ? data.detail
+            : "Failed to start the interview."
+        );
+      }
+      setIntvStatus("in_progress");
+    } catch (err) {
+      toast.error(err.message || "Failed to start the interview.");
+    } finally {
+      beginningRef.current = false;
+    }
+  }
+
   // Complete = persist the transcript, have the LLM write both reports
   // (candidate + interviewer) and score the candidate, then show them in
   // the popup. Idempotent server-side, so "View Report" after completion
@@ -1744,33 +1981,24 @@ export default function InterviewPage() {
     if (reportState.phase === "generating") return;
 
     setReportState({ phase: "generating" });
-
     try {
+      // Drop in-flight partial captions - only finalised lines are analysed.
       const finalEntries = transcript.filter(
-        (entry) => entry.text?.trim() && !String(entry.id).startsWith("partial-")
+        (e) => !String(e.id).startsWith("partial-")
       );
-
-      const response = await authedFetch(
-        `/api/interviews/${id}/complete`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            transcript: finalEntries,
-            duration_seconds: timer,
-          }),
-        }
-      );
-
-      const data = await response.json().catch(() => null);
-
-      if (!response.ok) {
+      const res = await authedFetch(`/api/interviews/${id}/complete`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          transcript: finalEntries,
+          duration_seconds: timer,
+        }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        const detail = data?.detail;
         throw new Error(
-          typeof data?.detail === "string"
-            ? data.detail
-            : "Interview completion failed."
+          typeof detail === "string" ? detail : "Report generation failed."
         );
       }
 
@@ -1778,15 +2006,23 @@ export default function InterviewPage() {
       setIsCompleted(true);
       setStatus("Interview completed");
       localStorage.removeItem(`transcript-${id}`);
-
-      setReportState({phase: "ready", data,});
-    } catch (error) {
+      setReportState({ phase: "ready", data });
+    } catch (err) {
       setReportState({
         phase: "error",
-        error: error.message || "Something went wrong.",
+        error: err.message || "Something went wrong.",
       });
     }
   }
+
+  // The page's arc: PREP while the interview is still scheduled (briefing +
+  // question plan + one Begin CTA), LIVE once it's in progress (transcript,
+  // deck, complete), DEBRIEF when completed (read-only transcript + report).
+  const phase = isCompleted
+    ? "debrief"
+    : intvStatus === "scheduled" || intvStatus === "not_scheduled"
+    ? "prep"
+    : "live";
 
   return (
     <div className="h-screen flex flex-col bg-neutral-50 font-sans overflow-hidden">
@@ -1828,33 +2064,95 @@ export default function InterviewPage() {
             >
               View Resume
             </button>
-            {!isCompleted && (
+            {phase !== "prep" && (
               <button
                 className={`${button.outline} ${
                   isScreenSharing
                     ? "bg-sky-100 text-sky-800 hover:bg-sky-200"
-                    : !isMicActive
-                    ? "opacity-50 cursor-not-allowed"
                     : ""
-                }`}
-                onClick={() => isMicActive && void toggleScreenShare()}
-                disabled={!isMicActive}
-                title={!isMicActive ? "Waiting for microphone…" : isScreenSharing ? "Stop sharing screen" : "Share screen to capture computer audio"}
+                } ${isCompleted ? "opacity-60 cursor-not-allowed" : ""}`}
+                onClick={() => !isCompleted && void toggleScreenShare()}
+                disabled={isCompleted}
               >
                 {isScreenSharing ? "Stop screen share" : "Share screen"}
               </button>
             )}
-            <div
-              className={`${flex.row} gap-2 items-center text-neutral-700 font-semibold text-xl`}
-            >
-              <span>{formatTimer(timer)}</span>
-              <span className="w-3 h-3 rounded-pill bg-coral-500 animate-pulse" />
-            </div>
+            {phase !== "prep" && (
+              <div
+                className={`${flex.row} gap-2 items-center text-neutral-700 font-semibold text-xl`}
+              >
+                <span>{formatTimer(timer)}</span>
+                <span
+                  className={`w-3 h-3 rounded-pill ${
+                    isScreenSharing && !isPaused && !isCompleted
+                      ? "bg-coral-500 animate-pulse"
+                      : "bg-neutral-300"
+                  }`}
+                />
+              </div>
+            )}
           </div>
         </div>
       </header>
 
+      {/* ── Debrief banner - completed interviews open in review mode ────── */}
+      {phase === "debrief" && (
+        <div className="mx-6 mt-4 flex items-center justify-between gap-4 rounded-2xl border border-mint-100 bg-mint-50 px-5 py-3">
+          <p className="text-sm text-mint-700">
+            <span className="font-bold">Interview completed.</span>{" "}
+            The transcript below is read-only - open the report for scores,
+            strengths and the summary.
+          </p>
+          <div className={`${flex.row} shrink-0 gap-2`}>
+            <button
+              type="button"
+              onClick={() => completeInterview()}
+              className="rounded-xl bg-mint-500 px-4 py-1.5 text-sm font-semibold text-white transition-colors hover:bg-mint-600"
+            >
+              View Report
+            </button>
+            <button
+              type="button"
+              onClick={() =>
+                navigate(
+                  candId && jobId
+                    ? `/candidates/${candId}/${jobId}`
+                    : `/jobs/${jobId}`,
+                  { replace: true }
+                )
+              }
+              className="rounded-xl border border-mint-200 bg-white px-4 py-1.5 text-sm font-semibold text-mint-700 transition-colors hover:bg-mint-100"
+            >
+              Back to candidate
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* ── Main ───────────────────────────────────────────────────────────── */}
+      {phase === "prep" ? (
+        <PrepPanel
+          analysis={cvAnalysis}
+          scheduledLabel={
+            intvDateTime
+              ? new Date(intvDateTime).toLocaleString("en-AU", {
+                  weekday: "short",
+                  day: "numeric",
+                  month: "short",
+                  hour: "numeric",
+                  minute: "2-digit",
+                  hour12: true,
+                })
+              : null
+          }
+          onBegin={beginInterview}
+          onViewFullAnalysis={
+            cvAnalysis?.jobcand_id
+              ? () => navigate(`/cv-analysis/${cvAnalysis.jobcand_id}`)
+              : null
+          }
+        />
+      ) : (
       <div
         className={`flex-1 ${flex.row} gap-6 p-6 overflow-hidden items-stretch`}
       >
@@ -2062,6 +2360,7 @@ export default function InterviewPage() {
           </div>
         </div>
       </div>
+      )}
 
       {reportState.phase !== "idle" && (
         <InterviewReportModal

@@ -4,9 +4,11 @@ import Sidebar from "../components/common/Sidebar";
 import JobFormModal from "../components/job-candidate/JobFormModal";
 import StartInterviewModal from "../components/job-candidate/StartInterviewModal";
 import DeleteCandidateModal from "../components/job-candidate/DeleteCandidateModal";
+import EditCandidateForm from "../components/candidate/EditCandidateForm";
 import { flex, card, badge, form, button, modal, page } from "../styles/layout";
 
 import { useAuth } from "../lib/AuthContext.jsx";
+import { useToast } from "../components/common/ToastContext.jsx";
 import { api, authedFetch } from "../lib/api.js";
 import {
   isEmail,
@@ -31,26 +33,27 @@ const STATUS_STYLES = {
   Completed: "bg-mint-500 text-white",
 };
 
-// Only SCHEDULED + EVALUATED are surfaced - HIRED / REJECTED removed.
-// Anything else (including legacy data) falls back to the neutral pill style
-// via the `?? 'bg-neutral-100 ...'` guard at the call site.
+// Anything not listed here (including legacy data) falls back to the
+// neutral pill style via the `?? 'bg-neutral-100 ...'` guard at the call site.
 const CANDIDATE_STATUS_STYLES = {
   'NOT SCHEDULED': 'bg-neutral-100 text-neutral-500',
   SCHEDULED:       'bg-primary-100 text-primary-600',
   'IN PROGRESS':   'bg-sky-100 text-sky-600',
   INCOMPLETE:      'bg-coral-50 text-coral-600',
   COMPLETED:       'bg-mint-100 text-mint-700',
+  CANCELLED:       'bg-coral-100 text-coral-700',
   EVALUATED:       'bg-sky-100 text-sky-600',
   HIRED:           'bg-mint-500 text-white',
   REJECTED:        'bg-coral-100 text-coral-700',
 }
 
-// Options shown in the candidates-table FilterMenu. Kept in sync with the
-// CANDIDATE_STATUS_STYLES keys above - any new status pill needs a matching
-// entry here so users can filter by it.
+// Options shown in the candidates-table FilterMenu. These mirror what the
+// rows can actually hold (the interview status, upper-cased) so every pill
+// the table can render is also selectable here.
 const CANDIDATE_FILTER_OPTIONS = [
-  { value: "SCHEDULED", label: "Scheduled" },
-  { value: "EVALUATED", label: "Evaluated" },
+  { value: "NOT SCHEDULED", label: "Not Scheduled" },
+  { value: "SCHEDULED",     label: "Scheduled"     },
+  { value: "COMPLETED",     label: "Completed"     },
 ];
 
 const AVATAR_COLORS = [
@@ -93,7 +96,7 @@ function formatDateTime(iso) {
   const d = new Date(iso);
   const today = new Date();
   const isToday = d.toDateString() === today.toDateString();
-  const time = d.toLocaleTimeString("en-US", {
+  const time = d.toLocaleTimeString("en-AU", {
     hour: "numeric",
     minute: "2-digit",
     hour12: true,
@@ -127,7 +130,9 @@ function AddCandidateModal({ jobId, onClose, onAdded }) {
   const { user } = useAuth();
   // Mirrors the AddCandidateToJob Pydantic model on the backend:
   //   name + email are required (so the candidate doc has real identity);
-  //   phone, cv_url, cover_letter_url, interviewer, scheduled_at are optional.
+  //   phone, cv_url, cover_letter_url, interviewer_user_id, scheduled_at
+  //   are optional. `interviewer` is display-only (the combobox text);
+  //   the backend keys the interview off interviewer_user_id.
   const [form_state, setForm] = useState({
     name: "",
     email: "",
@@ -135,6 +140,7 @@ function AddCandidateModal({ jobId, onClose, onAdded }) {
     cv_url: "",
     cover_letter_url: "",
     interviewer: "",
+    interviewer_user_id: "",
     scheduled_at: "",
   });
   const [submitting, setSubmitting] = useState(false);
@@ -193,7 +199,10 @@ function AddCandidateModal({ jobId, onClose, onAdded }) {
       phone: form_state.phone.trim() || null,
       cv_url: form_state.cv_url.trim() || null,
       cover_letter_url: form_state.cover_letter_url.trim() || null,
-      interviewer: form_state.interviewer.trim() || null,
+      // The backend keys the interview + interviewer link off the user id -
+      // sending the display name here used to be silently dropped by
+      // Pydantic, so no interview was ever created from this modal.
+      interviewer_user_id: form_state.interviewer_user_id || null,
       scheduled_at: form_state.scheduled_at || null,
     };
     try {
@@ -300,7 +309,13 @@ function AddCandidateModal({ jobId, onClose, onAdded }) {
             <label className={form.label}>Interviewer</label>
             <InterviewerCombobox
               value={form_state.interviewer}
-              onChange={(v) => set("interviewer", v)}
+              onChange={(name, userid) =>
+                setForm((f) => ({
+                  ...f,
+                  interviewer: name,
+                  interviewer_user_id: userid ?? "",
+                }))
+              }
               options={interviewers}
             />
           </div>
@@ -392,6 +407,10 @@ function InterviewerCombobox({ value, onChange, options }) {
         onChange={(e) => {
           setQuery(e.target.value);
           setOpen(true);
+          // Clearing the text un-picks the interviewer - otherwise the
+          // form would silently keep submitting the last selected user id
+          // while the box looks empty.
+          if (e.target.value.trim() === "") onChange("", null);
         }}
         onFocus={() => setOpen(true)}
         placeholder={
@@ -417,7 +436,10 @@ function InterviewerCombobox({ value, onChange, options }) {
                     type="button"
                     onClick={() => {
                       const picked = o.full_name || o.username || o.email || "";
-                      onChange(picked);
+                      // Emit the display name AND the user id - the id is
+                      // what the backend needs to create the interview +
+                      // interviewer link.
+                      onChange(picked, o.userid);
                       setQuery(picked);
                       setOpen(false);
                     }}
@@ -452,12 +474,13 @@ function InterviewerCombobox({ value, onChange, options }) {
 
 // Order matches the pipeline progression so the panel reads top-to-bottom
 // from "not started" → "in progress" → "done". The dot colour mirrors the
-// candidate-row pill palette (SCHEDULED = primary, EVALUATED = mint), so
-// users can visually link the count here with the pill on the row.
+// candidate-row pill palette so users can visually link the count here
+// with the pill on the row. Every status a row can hold is bucketed, so
+// the counts always sum to the Total Candidates number above them.
 const INTERVIEW_STATUS_ROWS = [
   { key: 'NOT SCHEDULED', label: 'Not Scheduled', dot: 'bg-neutral-400' },
   { key: 'SCHEDULED',     label: 'Scheduled',     dot: 'bg-primary-500' },
-  { key: 'EVALUATED',     label: 'Evaluated',     dot: 'bg-mint-500'    },
+  { key: 'COMPLETED',     label: 'Completed',     dot: 'bg-mint-500'    }
 ]
 
 function InterviewStatusPanel({ candidates}) {
@@ -546,6 +569,7 @@ function CandidatesTable({
   setTab,
   user,
   onStartInterview,
+  onEditCandidate,
   onDelete,
   onOpenInterview,
   onOpenCandidate,
@@ -650,8 +674,6 @@ function CandidatesTable({
             values={statusFilters}
             onChange={setStatusFilters}
             options={CANDIDATE_FILTER_OPTIONS}
-            // Only two statuses surface (SCHEDULED / EVALUATED) - radio-style
-            // is clearer than multi-select, and matches the dashboard.
             singleSelect
           />
         </div>
@@ -756,8 +778,13 @@ function CandidatesTable({
                   // page on click - without this, the action buttons would
                   // fire AND navigate away (which is why Delete appeared to
                   // do nothing: the confirm modal unmounted immediately).
-                  <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
-                    <div className={`${flex.row} gap-2`}>
+                  // w-[1%] + nowrap shrink-wraps the Actions column to its
+                  // content, so the action cluster stays compact instead of
+                  // stretching across whatever slack width the table has -
+                  // the other columns absorb it. Fixed-width primary button
+                  // (w-[150px]) keeps the icons vertically aligned row-to-row.
+                  <td className="px-4 py-3 w-[1%]" onClick={(e) => e.stopPropagation()}>
+                    <div className={`${flex.row} gap-2 whitespace-nowrap`}>
                       {hasCompletedInterview ? (
                         <button
                           type="button"
@@ -807,6 +834,14 @@ function CandidatesTable({
                           Start Interview
                         </button>
                       )}
+                      {/* Hairline divider visually separates the primary
+                          action from the secondary icon trio while keeping
+                          the whole cluster compact. */}
+                      <span
+                        className="mx-1 w-px self-stretch bg-neutral-200"
+                        aria-hidden
+                      />
+                      <div className={`${flex.row} gap-2`}>
                       <button
                         type="button"
                         title="View candidate details"
@@ -824,6 +859,41 @@ function CandidatesTable({
                         >
                           <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
                           <circle cx="12" cy="12" r="3" />
+                        </svg>
+                      </button>
+                      {/* Edit - same icon trio as the Applications page
+                          (view / edit / delete) so the two candidate tables
+                          read identically. Locked once the interview is
+                          finished, mirroring the backend immutability guard. */}
+                      <button
+                        type="button"
+                        disabled={c.status === "COMPLETED" || c.status === "CANCELLED"}
+                        onClick={() => {
+                          if (c.status === "COMPLETED" || c.status === "CANCELLED") return;
+                          onEditCandidate?.(c);
+                        }}
+                        title={
+                          c.status === "COMPLETED" || c.status === "CANCELLED"
+                            ? "This interview is finished - the application can no longer be edited."
+                            : "Edit candidate"
+                        }
+                        aria-label="Edit candidate"
+                        className={`w-7 h-7 ${flex.rowCenter} rounded-lg transition-colors ${
+                          c.status === "COMPLETED" || c.status === "CANCELLED"
+                            ? "cursor-not-allowed text-neutral-200"
+                            : "text-neutral-400 hover:bg-neutral-100 hover:text-neutral-600"
+                        }`}
+                      >
+                        <svg
+                          width="14"
+                          height="14"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                        >
+                          <path d="M12 20h9" />
+                          <path d="M16.5 3.5a2.121 2.121 0 1 1 3 3L7 19l-4 1 1-4 12.5-12.5z" />
                         </svg>
                       </button>
                       <button
@@ -852,6 +922,7 @@ function CandidatesTable({
                           <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
                         </svg>
                       </button>
+                      </div>
                     </div>
                   </td>
                 );
@@ -939,6 +1010,10 @@ export default function JobDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { user } = useAuth();
+  const toast = useToast();
+  // Double-click guard for Start Interview - two rapid confirms used to
+  // race two POST /api/interviews calls and create duplicate interviews.
+  const startingRef = useRef(false);
 
   const [job, setJob] = useState(null);
   const [candidates, setCandidates] = useState([]);
@@ -951,14 +1026,26 @@ export default function JobDetailPage() {
   const [startTarget, setStartTarget] = useState(null);
   // Candidate row queued for deletion - null when the confirm modal is closed.
   const [deleteTarget, setDeleteTarget] = useState(null);
+  // Candidate row being edited via the pencil icon - null when closed.
+  const [editTarget, setEditTarget] = useState(null);
+  // All company jobs - feeds the Edit Candidate modal's "Assign to Job"
+  // select (shared with the Applications page, which passes the same list).
+  const [allJobs, setAllJobs] = useState([]);
 
   useEffect(() => {
     async function load() {
       try {
-        const [jobRes, candsRes] = await Promise.all([
+        const [jobRes, candsRes, jobsRes] = await Promise.all([
           authedFetch(`/api/jobs/${id}`),
           authedFetch(`/api/jobs/${id}/candidates`),
+          authedFetch(`/api/jobs`),
         ]);
+        // Best-effort: without the list the edit modal's job select just
+        // shows the current job.
+        if (jobsRes.ok) {
+          const jobsData = await jobsRes.json().catch(() => []);
+          setAllJobs(Array.isArray(jobsData) ? jobsData : []);
+        }
         if (!jobRes.ok) throw new Error("Job not found.");
         setJob(await jobRes.json());
 
@@ -984,48 +1071,61 @@ export default function JobDetailPage() {
   function handleJobSaved(updated) {
     setJob(updated);
     setShowEdit(false);
+    toast.success(`Job "${updated?.title || "Untitled role"}" updated.`);
   }
 
   function handleCandidateAdded({ candidate, job: updatedJob }) {
     setCandidates((prev) => [...prev, candidate]);
     setJob(updatedJob);
     setShowAddCandidate(false);
+    toast.success(`${candidate?.name || "Candidate"} added to this job.`);
   }
 
   async function onConfirmStart() {
-    // Resume an existing in-progress or scheduled interview rather than
-    // creating a duplicate every time the button is clicked.
-    const existingRes = await authedFetch(
-      `/api/interviews?cand_id=${startTarget.cand_id}&job_id=${id}`
-    );
-    if (existingRes.ok) {
-      const existing = await existingRes.json();
-      const resumable = existing.find(
-        (i) => i.intv_status === "in_progress" || i.intv_status === "scheduled"
+    if (startingRef.current) return;
+    startingRef.current = true;
+    try {
+      // Resume an existing in-progress or scheduled interview rather than
+      // creating a duplicate every time the button is clicked.
+      const existingRes = await authedFetch(
+        `/api/interviews?cand_id=${startTarget.cand_id}&job_id=${id}`
       );
-      if (resumable) {
-        navigate(`/interview/${resumable.intv_id}`);
+      if (existingRes.ok) {
+        const existing = await existingRes.json();
+        const resumable = existing.find(
+          (i) => i.intv_status === "in_progress" || i.intv_status === "scheduled"
+        );
+        if (resumable) {
+          navigate(`/interview/${resumable.intv_id}`);
+          return;
+        }
+      }
+
+      const res = await authedFetch("/api/interviews", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          cand_id: startTarget.cand_id,
+          job_id: id,
+          intv_date_time: new Date().toISOString(),
+          intv_status: "in_progress",
+        }),
+      });
+      const interview = await res.json();
+      if (!res.ok) {
+        toast.error(interview?.detail || "Failed to start interview.");
+        setStartTarget(null);
         return;
       }
-    }
-
-    const res = await authedFetch("/api/interviews", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        cand_id: startTarget.cand_id,
-        job_id: id,
-        intv_date_time: new Date().toISOString(),
-        intv_status: "in_progress",
-      }),
-    });
-    const interview = await res.json();
-    if (!res.ok) {
-      alert(interview?.detail || "Failed to start interview.");
+      navigate(`/interview/${interview.intv_id}`);
+    } catch {
+      // Network failure used to leave the confirm modal stuck open with an
+      // unhandled rejection in the console.
+      toast.error("Could not reach the server - check your connection and try again.");
       setStartTarget(null);
-      return;
+    } finally {
+      startingRef.current = false;
     }
-    navigate(`/interview/${interview.intv_id}`);
   }
 
   // Delete flow:
@@ -1036,7 +1136,34 @@ export default function JobDetailPage() {
   function handleCandidateDeleted(jobcand_id) {
     setCandidates((rows) => rows.filter((r) => r.id !== jobcand_id));
     setDeleteTarget(null);
+    toast.success("Candidate removed from this job.");
   }
+
+  // Fresh fetch of the candidate rows in the exact GET shape - used after
+  // any server-side change (edit, pipeline drag) so status/interviewer/
+  // schedule are whatever the server now says, not an optimistic guess.
+  async function reloadCandidates() {
+    try {
+      const res = await authedFetch(`/api/jobs/${id}/candidates`);
+      if (res.ok) {
+        const data = await res.json().catch(() => []);
+        setCandidates(Array.isArray(data) ? data : []);
+      }
+    } catch {
+      // Keep the stale rows rather than blanking the table.
+    }
+  }
+
+  // Edit flow: EditCandidateForm PATCHes the candidate + application on the
+  // server. The edit may also have MOVED the candidate to another job, in
+  // which case the row simply disappears from this job's list - which the
+  // refetch handles for free.
+  async function handleCandidateEdited() {
+    setEditTarget(null);
+    toast.success("Candidate updated.");
+    await reloadCandidates();
+  }
+
 
   // Capacity gate. Candidates count comes from the freshly-loaded list
   // (which the AddCandidate flow optimistically appends to), so it always
@@ -1044,6 +1171,22 @@ export default function JobDetailPage() {
   // missing/zero cap as "no cap" so legacy rows aren't locked out.
   const capacity = job?.candidates_total ?? 0;
   const isFull = capacity > 0 && candidates.length >= capacity;
+
+  // Display-status override - same rule as JobsPage/DashboardPage:
+  //   every candidate on the job has completed their interview -> Completed
+  //   some (but not all) have completed -> In Progress
+  //   a job explicitly marked Completed keeps its label either way
+  // Derived from the candidate rows we already load (each carries
+  // intv_completed), so no extra fetch is needed.
+  const completedCount = candidates.filter((c) => c.intv_completed).length;
+  const displayStatus =
+    job?.status === "Completed"
+      ? "Completed"
+      : candidates.length > 0 && completedCount === candidates.length
+      ? "Completed"
+      : completedCount > 0
+      ? "In Progress"
+      : job?.status;
 
   if (loading)
     return (
@@ -1155,12 +1298,16 @@ export default function JobDetailPage() {
                     <circle cx="12" cy="12" r="10" />
                     <path d="M12 6v6l4 2" />
                   </svg>
+                  {/* Real last-update timestamp from the job doc - this used
+                      to render new Date() (always "today"), which quietly
+                      lied about how fresh the posting was. */}
                   Last Update{" "}
-                  {new Date().toLocaleDateString("en-US", {
-                    month: "short",
-                    day: "numeric",
-                    year: "numeric",
-                  })}
+                  {job.job_last_update_datetime
+                    ? new Date(job.job_last_update_datetime).toLocaleDateString(
+                        "en-AU",
+                        { month: "short", day: "numeric", year: "numeric" }
+                      )
+                    : "--"}
                 </p>
               </div>
               <div className={`${flex.row} gap-2`}>
@@ -1172,11 +1319,11 @@ export default function JobDetailPage() {
                 </button>
                 <span
                   className={`text-xs font-bold px-3 py-1 rounded-pill ${
-                    STATUS_STYLES[job.status] ??
+                    STATUS_STYLES[displayStatus] ??
                     "bg-neutral-100 text-neutral-500"
                   }`}
                 >
-                  {job.status}
+                  {displayStatus}
                 </span>
               </div>
             </div>
@@ -1251,6 +1398,7 @@ export default function JobDetailPage() {
             setTab={setTab}
             user={user}
             onStartInterview={(c) => setStartTarget(c)}
+            onEditCandidate={(c) => setEditTarget(c)}
             onDelete={(c) => setDeleteTarget(c)}
             onOpenInterview={(intvId) => navigate(`/interview/${intvId}`)}
             onOpenCandidate={(c) => {
@@ -1293,6 +1441,30 @@ export default function JobDetailPage() {
           jobId={id}
           onClose={() => setDeleteTarget(null)}
           onDeleted={handleCandidateDeleted}
+        />
+      )}
+
+      {editTarget && (
+        <EditCandidateForm
+          // Fall back to just the current job if the jobs list fetch failed -
+          // the select then shows one (valid) option instead of none.
+          jobs={allJobs.length > 0 ? allJobs : job ? [job] : []}
+          // Map this page's GET row shape onto the field names the shared
+          // form expects (it was built against the /api/applications rows).
+          initialData={{
+            cand_id: editTarget.cand_id,
+            application_id: editTarget.id,
+            candidate_name: editTarget.name,
+            email: editTarget.email,
+            phone: editTarget.phone,
+            job_id: id,
+            interviewer: editTarget.interviewer || "",
+            interview_datetime: editTarget.scheduled_at || null,
+            cv_url: editTarget.cv_url,
+            cover_letter_url: editTarget.cover_letter_url,
+          }}
+          onClose={() => setEditTarget(null)}
+          onSaved={handleCandidateEdited}
         />
       )}
     </div>

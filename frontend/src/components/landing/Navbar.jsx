@@ -54,7 +54,7 @@ export default function Navbar() {
               </div>
             </div>
             <Link
-              to={user?.role === 'admin' ? '/admin/dashboard' : '/dashboard'}
+              to="/dashboard"
               className="btn-primary !py-2.5 !px-5 !text-sm"
             >
               Dashboard
