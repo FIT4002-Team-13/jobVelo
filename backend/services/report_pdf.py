@@ -13,23 +13,28 @@ from fpdf import FPDF
 from fpdf.enums import XPos, YPos
 
 # Brand palette (mirrors frontend/tailwind.config.js).
-_INK = (30, 41, 59)        # neutral-800
-_MUTED = (100, 116, 139)   # neutral-500
-_FAINT = (148, 163, 184)   # neutral-400
+_INK = (30, 41, 59)  # neutral-800
+_MUTED = (100, 116, 139)  # neutral-500
+_FAINT = (148, 163, 184)  # neutral-400
 _PRIMARY = (93, 137, 233)  # primary-500
-_TRACK = (241, 245, 249)   # neutral-100
-_MINT = (63, 212, 147)     # mint-500
+_TRACK = (241, 245, 249)  # neutral-100
+_MINT = (63, 212, 147)  # mint-500
 _MINT_INK = (34, 130, 87)  # mint-700 (readable on white)
-_CORAL = (255, 115, 118)   # coral-500
-_AMBER = (217, 119, 6)     # amber-600
+_CORAL = (255, 115, 118)  # coral-500
+_AMBER = (217, 119, 6)  # amber-600
 
 # The built-in Helvetica font is latin-1 only; map the common unicode
 # punctuation LLM output tends to contain, then replace anything left.
 _CHAR_MAP = {
-    "—": "-", "–": "-",         # em/en dash
-    "‘": "'", "’": "'",         # curly single quotes
-    "“": '"', "”": '"',         # curly double quotes
-    "…": "...", "•": "-", "·": "-",
+    "—": "-",
+    "–": "-",  # em/en dash
+    "‘": "'",
+    "’": "'",  # curly single quotes
+    "“": '"',
+    "”": '"',  # curly double quotes
+    "…": "...",
+    "•": "-",
+    "·": "-",
 }
 
 
@@ -68,7 +73,9 @@ def _bullets(pdf: _ReportPDF, items: list[str]) -> None:
     pdf.set_font("Helvetica", "", 10)
     pdf.set_text_color(*_INK)
     for item in items:
-        pdf.multi_cell(0, 5.5, _latin(f"-  {item}"), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+        pdf.multi_cell(
+            0, 5.5, _latin(f"-  {item}"), new_x=XPos.LMARGIN, new_y=YPos.NEXT
+        )
 
 
 def _justification(pdf: _ReportPDF, text: str | None) -> None:
@@ -90,11 +97,21 @@ def _score_bar(pdf: _ReportPDF, label: str, value: float, colour: tuple) -> None
     pdf.cell(48, 6, _latin(label))
 
     pdf.set_fill_color(*_TRACK)
-    pdf.rect(bar_x, y + 1.4, bar_w, bar_h, style="F", round_corners=True, corner_radius=1.6)
+    pdf.rect(
+        bar_x, y + 1.4, bar_w, bar_h, style="F", round_corners=True, corner_radius=1.6
+    )
     filled = max(0.0, min(1.0, value / 10)) * bar_w
     if filled > 0:
         pdf.set_fill_color(*colour)
-        pdf.rect(bar_x, y + 1.4, filled, bar_h, style="F", round_corners=True, corner_radius=1.6)
+        pdf.rect(
+            bar_x,
+            y + 1.4,
+            filled,
+            bar_h,
+            style="F",
+            round_corners=True,
+            corner_radius=1.6,
+        )
 
     pdf.set_xy(bar_x + bar_w + 4, y)
     pdf.set_font("Helvetica", "B", 10)
@@ -121,8 +138,11 @@ def _bias_section(pdf: _ReportPDF, incidents: list[dict]) -> None:
     pdf.set_text_color(*_MUTED)
     noun = "question" if count == 1 else "questions"
     pdf.multi_cell(
-        0, 5, _latin(f"{count} {noun} flagged by the live bias checker."),
-        new_x=XPos.LMARGIN, new_y=YPos.NEXT,
+        0,
+        5,
+        _latin(f"{count} {noun} flagged by the live bias checker."),
+        new_x=XPos.LMARGIN,
+        new_y=YPos.NEXT,
     )
     pdf.ln(1)
 
@@ -145,7 +165,9 @@ def _bias_section(pdf: _ReportPDF, incidents: list[dict]) -> None:
         if quote:
             pdf.set_font("Helvetica", "I", 10)
             pdf.set_text_color(*_INK)
-            pdf.multi_cell(0, 5, _latin(f'"{quote}"'), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+            pdf.multi_cell(
+                0, 5, _latin(f'"{quote}"'), new_x=XPos.LMARGIN, new_y=YPos.NEXT
+            )
 
         # Why it was flagged (muted).
         reason = (incident.get("reason") or "").strip()
@@ -160,8 +182,11 @@ def _bias_section(pdf: _ReportPDF, incidents: list[dict]) -> None:
             pdf.set_font("Helvetica", "", 9)
             pdf.set_text_color(*_MINT_INK)
             pdf.multi_cell(
-                0, 5, _latin(f"Try instead: {suggestion}"),
-                new_x=XPos.LMARGIN, new_y=YPos.NEXT,
+                0,
+                5,
+                _latin(f"Try instead: {suggestion}"),
+                new_x=XPos.LMARGIN,
+                new_y=YPos.NEXT,
             )
 
         pdf.ln(2)
@@ -194,7 +219,13 @@ def build_interview_report_pdf(
     pdf.set_font("Helvetica", "", 10)
     pdf.set_text_color(*_MUTED)
     generated = datetime.now(timezone.utc).strftime("%d %b %Y, %H:%M UTC")
-    pdf.cell(0, 5.5, _latin(f"{subject} - generated {generated}"), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+    pdf.cell(
+        0,
+        5.5,
+        _latin(f"{subject} - generated {generated}"),
+        new_x=XPos.LMARGIN,
+        new_y=YPos.NEXT,
+    )
     pdf.ln(4)
 
     # ── Interview details ────────────────────────────────────────────────
@@ -203,7 +234,9 @@ def build_interview_report_pdf(
         if interview_datetime
         else None
     )
-    duration = f"{max(1, round(duration_seconds / 60))} min" if duration_seconds else None
+    duration = (
+        f"{max(1, round(duration_seconds / 60))} min" if duration_seconds else None
+    )
     details = [
         ("Candidate", candidate_name),
         ("Role", job_title),
@@ -239,9 +272,11 @@ def build_interview_report_pdf(
             pdf.set_font("Helvetica", "B", 11)
             pdf.set_text_color(*_INK)
             pdf.cell(
-                0, 6,
+                0,
+                6,
                 _latin(f"Overall: {sum(values) / len(values):.1f}/10"),
-                new_x=XPos.LMARGIN, new_y=YPos.NEXT,
+                new_x=XPos.LMARGIN,
+                new_y=YPos.NEXT,
             )
 
     # ── Report body ──────────────────────────────────────────────────────
@@ -278,13 +313,19 @@ def build_interview_report_pdf(
         pdf.add_page()
         pdf.set_font("Helvetica", "B", 14)
         pdf.set_text_color(*_INK)
-        pdf.cell(0, 9, _latin("Interview Transcription"), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+        pdf.cell(
+            0, 9, _latin("Interview Transcription"), new_x=XPos.LMARGIN, new_y=YPos.NEXT
+        )
         pdf.set_font("Helvetica", "", 9)
         pdf.set_text_color(*_MUTED)
         pdf.cell(
-            0, 5,
-            _latin(f"{len(entries)} entries - timestamps are minutes:seconds from the start"),
-            new_x=XPos.LMARGIN, new_y=YPos.NEXT,
+            0,
+            5,
+            _latin(
+                f"{len(entries)} entries - timestamps are minutes:seconds from the start"
+            ),
+            new_x=XPos.LMARGIN,
+            new_y=YPos.NEXT,
         )
         pdf.ln(3)
 
@@ -303,7 +344,13 @@ def build_interview_report_pdf(
 
             pdf.set_font("Helvetica", "", 10)
             pdf.set_text_color(*_MUTED)
-            pdf.multi_cell(0, 5, _latin(entry.get("text") or ""), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+            pdf.multi_cell(
+                0,
+                5,
+                _latin(entry.get("text") or ""),
+                new_x=XPos.LMARGIN,
+                new_y=YPos.NEXT,
+            )
             pdf.ln(2)
 
     return bytes(pdf.output())

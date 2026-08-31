@@ -15,11 +15,13 @@ JobCandidateStatus = Literal["SCHEDULED", "EVALUATED", "HIRED", "REJECTED"]
 
 SkillName = Literal["Technical Skills", "Communication", "Problem Solving"]
 
+
 class RatingEvidence(BaseModel):
     transcript_entry_id: str
     speaker: str
     timestamp: str
     text: str
+
 
 class SkillRating(BaseModel):
     skill: SkillName
@@ -27,10 +29,12 @@ class SkillRating(BaseModel):
     explanation: str | None = Field(default=None, max_length=200)
     evidence: list[RatingEvidence] = Field(default_factory=list, max_length=3)
 
+
 class CandidateRatings(BaseModel):
     technical_skills: SkillRating
     communication: SkillRating
     problem_solving: SkillRating
+
 
 class JobCandidateEvaluationOut(BaseModel):
     ratings: CandidateRatings
@@ -49,6 +53,10 @@ class JobCandidateCreate(BaseModel):
     cv_analysis: str | None = None
 
 
+class JobCandidatePlanUpdate(BaseModel):
+    plan_sections: list[dict]
+
+
 class JobCandidateScoreUpdate(BaseModel):
     """Body for PATCH /api/job-candidates/{id}/scores.
 
@@ -62,6 +70,7 @@ class JobCandidateScoreUpdate(BaseModel):
 
     cv_analysis: str | None = None
     ratings: CandidateRatings | None = None
+
 
 class JobCandidateOut(BaseModel):
     """Safe public representation of a job-candidate link document.
@@ -78,6 +87,7 @@ class JobCandidateOut(BaseModel):
     cv_analysis: str | None = None
     ratings: CandidateRatings | None = None
     rank: int | None = None
+    plan_sections: list[dict] | None = None
     created_at: datetime
     updated_at: datetime
 

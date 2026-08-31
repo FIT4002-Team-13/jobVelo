@@ -42,7 +42,7 @@ _KNOWN_SUBDIRS = {"company_logos", "candidate_docs", "cv_analyses"}
 # accidentally allow arbitrary file types through.
 _ALLOWED_EXTS = {
     "company_logos": {".png", ".jpg", ".jpeg", ".webp"},
-    "cv_analyses":   {".pdf"},
+    "cv_analyses": {".pdf"},
     "candidate_docs": {".pdf"},
 }
 
@@ -51,15 +51,15 @@ _ALLOWED_EXTS = {
 # payload size Gemini receives.
 _MAX_BYTES_PER_SUBDIR = {
     "company_logos": 5 * 1024 * 1024,
-    "cv_analyses":   8 * 1024 * 1024,
+    "cv_analyses": 8 * 1024 * 1024,
     "candidate_docs": 20 * 1024 * 1024,  # 20 MB
 }
 _DEFAULT_MAX_BYTES = 5 * 1024 * 1024
 
 _CONTENT_TYPES = {
-    ".pdf":  "application/pdf",
-    ".png":  "image/png",
-    ".jpg":  "image/jpeg",
+    ".pdf": "application/pdf",
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
     ".jpeg": "image/jpeg",
     ".webp": "image/webp",
 }
@@ -85,7 +85,7 @@ def _ext_from(file: UploadFile) -> str:
     if suffix:
         return suffix
     return {
-        "image/png":  ".png",
+        "image/png": ".png",
         "image/jpeg": ".jpg",
         "image/webp": ".webp",
     }.get((file.content_type or "").lower(), "")
@@ -141,7 +141,8 @@ async def save_upload(file: UploadFile, *, subdir: str, key: str) -> str:
         rel_path,
         data,
         metadata={
-            "content_type": file.content_type or _CONTENT_TYPES.get(ext, "application/octet-stream"),
+            "content_type": file.content_type
+            or _CONTENT_TYPES.get(ext, "application/octet-stream"),
             "subdir": subdir,
             "uploaded_at": datetime.now(timezone.utc),
         },
@@ -161,12 +162,18 @@ async def save_bytes(
         raise HTTPException(status_code=500, detail=f"Unknown upload subdir: {subdir}")
     ext = ext.lower()
     if ext not in _ALLOWED_EXTS[subdir]:
-        raise HTTPException(status_code=415, detail=f"{subdir}: unsupported file type {ext or 'unknown'}")
+        raise HTTPException(
+            status_code=415,
+            detail=f"{subdir}: unsupported file type {ext or 'unknown'}",
+        )
     if not data:
         raise HTTPException(status_code=400, detail="Empty file")
     max_bytes = _MAX_BYTES_PER_SUBDIR.get(subdir, _DEFAULT_MAX_BYTES)
     if len(data) > max_bytes:
-        raise HTTPException(status_code=413, detail=f"File too large (max {max_bytes // 1024 // 1024} MB)")
+        raise HTTPException(
+            status_code=413,
+            detail=f"File too large (max {max_bytes // 1024 // 1024} MB)",
+        )
 
     rel_path = f"{subdir}/{_safe_key(key)}{ext}"
     bucket = _bucket()
@@ -176,7 +183,8 @@ async def save_bytes(
         rel_path,
         data,
         metadata={
-            "content_type": content_type or _CONTENT_TYPES.get(ext, "application/octet-stream"),
+            "content_type": content_type
+            or _CONTENT_TYPES.get(ext, "application/octet-stream"),
             "subdir": subdir,
             "uploaded_at": datetime.now(timezone.utc),
         },

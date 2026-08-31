@@ -27,6 +27,7 @@ def safe_text(value) -> str:
 
     return text.encode("latin-1", "replace").decode("latin-1")
 
+
 class TranscriptPDF(FPDF):
     def footer(self):
         self.set_y(-14)
@@ -35,7 +36,14 @@ class TranscriptPDF(FPDF):
 
         self.cell(0, 8, f"Page {self.page_no()}", align="C")
 
-def build_transcript_pdf(*, entries: list[dict], candidate_name: str | None, job_title: str | None, interview_datetime: datetime | None) -> bytes:
+
+def build_transcript_pdf(
+    *,
+    entries: list[dict],
+    candidate_name: str | None,
+    job_title: str | None,
+    interview_datetime: datetime | None,
+) -> bytes:
     pdf = TranscriptPDF()
 
     pdf.set_auto_page_break(auto=True, margin=18)
@@ -81,7 +89,6 @@ def build_transcript_pdf(*, entries: list[dict], candidate_name: str | None, job
     pdf.ln(5)
 
     for entry in entries:
-        
         timestamp = entry.get("timestamp") or "--:--"
         speaker = entry.get("speaker") or "Unknown speaker"
         transcript_text = entry.get("text") or ""
@@ -90,10 +97,18 @@ def build_transcript_pdf(*, entries: list[dict], candidate_name: str | None, job
         with pdf.unbreakable() as block:
             block.set_font("Helvetica", "B", 10)
             block.set_text_color(*PRIMARY)
-            block.multi_cell(0, 6, safe_text(f"{timestamp}   {speaker}"), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+            block.multi_cell(
+                0,
+                6,
+                safe_text(f"{timestamp}   {speaker}"),
+                new_x=XPos.LMARGIN,
+                new_y=YPos.NEXT,
+            )
             block.set_font("Helvetica", "", 10)
             block.set_text_color(*TEXT)
-            block.multi_cell(0, 5.5, safe_text(transcript_text), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+            block.multi_cell(
+                0, 5.5, safe_text(transcript_text), new_x=XPos.LMARGIN, new_y=YPos.NEXT
+            )
             block.ln(3)
 
     return bytes(pdf.output())

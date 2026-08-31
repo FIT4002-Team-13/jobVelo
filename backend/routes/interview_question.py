@@ -33,7 +33,6 @@ async def suggest_questions(
     job_id: str,
     db: AsyncIOMotorDatabase = Depends(get_db),
 ) -> SuggestedQuestionsList:
-
     # check if the job ID is a valid object
     if not ObjectId.is_valid(job_id):
         raise HTTPException(
@@ -79,7 +78,6 @@ async def create_follow_up_question(
     request: FollowUpQuestionRequest,
     db: AsyncIOMotorDatabase = Depends(get_db),
 ) -> FollowUpQuestionResult:
-
     if not ObjectId.is_valid(job_id):
         raise HTTPException(
             status_code=400,
@@ -136,7 +134,6 @@ async def create_follow_up_question(
 async def create_similar_question(
     job_id: str, request: SimilarQuestion, db: AsyncIOMotorDatabase = Depends(get_db)
 ):
-
     if not ObjectId.is_valid(job_id):
         raise HTTPException(
             status_code=400,

@@ -10,7 +10,7 @@ import { flex, card, badge, button, modal, page } from "../styles/layout";
 
 import { useAuth } from "../lib/AuthContext.jsx";
 import { useToast } from "../components/common/ToastContext.jsx";
-import { authedFetch } from "../lib/api.js";
+import { authedFetch, downloadFileWithAuth } from "../lib/api.js";
 import {
   SortMenu,
   FilterMenu,
@@ -223,6 +223,7 @@ function CandidatesTable({
   onDelete,
   onOpenInterview,
   onOpenCandidate,
+  onDownloadTranscript,
 }) {
   const isInterviewer = user?.role === "interviewer";
   const [search, setSearch] = useState("");
@@ -442,9 +443,6 @@ function CandidatesTable({
                   <td className="px-4 py-3 w-[1%]" onClick={(e) => e.stopPropagation()}>
                     <div className={`${flex.row} gap-2 whitespace-nowrap`}>
                       {hasCompletedInterview ? (
-                        // Interview done - the primary action becomes reviewing
-                        // it. The interview page renders the stored transcript
-                        // (and the report via View Report) for completed runs.
                         <button
                           type="button"
                           title="View the completed interview's transcription"
@@ -503,10 +501,15 @@ function CandidatesTable({
                       <div className={`${flex.row} gap-2`}>
                       <button
                         type="button"
-                        title="View candidate details"
-                        aria-label="View candidate details"
-                        onClick={() => onOpenCandidate?.(c)}
-                        className={`w-7 h-7 ${flex.rowCenter} rounded-lg text-neutral-400 hover:bg-neutral-100 hover:text-neutral-600 transition-colors`}
+                        disabled={!hasCompletedInterview}
+                        title={hasCompletedInterview ? "Download transcript" : "No transcript available"}
+                        aria-label="Download transcript"
+                        onClick={() => hasCompletedInterview && onDownloadTranscript?.(c.intv_id)}
+                        className={`w-7 h-7 ${flex.rowCenter} rounded-lg transition-colors ${
+                          hasCompletedInterview
+                            ? "text-neutral-400 hover:bg-neutral-100 hover:text-neutral-600"
+                            : "text-neutral-200 cursor-not-allowed"
+                        }`}
                       >
                         <svg
                           width="14"
@@ -515,9 +518,12 @@ function CandidatesTable({
                           fill="none"
                           stroke="currentColor"
                           strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
                         >
-                          <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
-                          <circle cx="12" cy="12" r="3" />
+                          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                          <polyline points="7 10 12 15 17 10" />
+                          <line x1="12" y1="15" x2="12" y2="3" />
                         </svg>
                       </button>
                       {/* Edit - same icon trio as the Applications page
@@ -555,6 +561,10 @@ function CandidatesTable({
                           <path d="M16.5 3.5a2.121 2.121 0 1 1 3 3L7 19l-4 1 1-4 12.5-12.5z" />
                         </svg>
                       </button>
+                      {/* Edit - same icon trio as the Applications page
+                          (view / edit / delete) so the two candidate tables
+                          read identically. Locked once the interview is
+                          finished, mirroring the backend immutability guard. */}
                       <button
                         type="button"
                         onClick={(event) => {
@@ -1082,6 +1092,10 @@ export default function JobDetailPage() {
             onOpenInterview={(intvId) => navigate(`/interview/${intvId}`)}
             onOpenCandidate={(c) => {
               navigate(`/candidates/${c.cand_id}/${id}`)
+            }}
+            onDownloadTranscript={(intvId) => {
+              downloadFileWithAuth(`/api/interviews/${intvId}/transcript-pdf`)
+                .catch((err) => toast.error(err.message || 'Failed to download transcript.'))
             }}
           />
         </div>

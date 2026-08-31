@@ -132,16 +132,12 @@ def _safe_avg_score(job_candidate: dict[str, Any]) -> float | None:
         (ratings.get("problem_solving") or {}).get("score"),
     ]
 
-    valid_scores = [
-        float(score)
-        for score in scores
-        if score is not None
-    ]
+    valid_scores = [float(score) for score in scores if score is not None]
 
     if not valid_scores:
         return None
 
-    return round(sum(valid_scores) / len(valid_scores),1)
+    return round(sum(valid_scores) / len(valid_scores), 1)
 
 
 @router.get("")
@@ -232,20 +228,41 @@ async def list_applications(
     candidate_oids = [ObjectId(cid) for cid in cand_ids if ObjectId.is_valid(cid)]
     job_oids = [ObjectId(jid) for jid in job_ids if ObjectId.is_valid(jid)]
 
-    candidates = await db.candidates.find(
-        {"_id": {"$in": candidate_oids}}
-    ).to_list(length=2000)
+    candidates = await db.candidates.find({"_id": {"$in": candidate_oids}}).to_list(
+        length=2000
+    )
 
-    jobs = await db.jobs.find(
-        {"_id": {"$in": job_oids}}
-    ).to_list(length=2000)
+    jobs = await db.jobs.find({"_id": {"$in": job_oids}}).to_list(length=2000)
 
     candidate_map = {str(c["_id"]): c for c in candidates}
     job_map = {str(j["_id"]): j for j in jobs}
-    interview_map = {
-        (i.get("cand_id"), i.get("job_id")): i
-        for i in interviews
-    }
+    interview_map = {(i.get("cand_id"), i.get("job_id")): i for i in interviews}
+
+    # Resolve each row's interviewer THROUGH its interview (interview ->
+    # interview_users -> users). The old code stamped the requesting user's
+    # own name on every row, which was only coincidentally right for the
+    # interviewer-scoped view and wrong for the company-wide one.
+    intv_id_strs = [str(i["_id"]) for i in interviews]
+    interviewer_id_by_intv: dict[str, str] = {}
+    if intv_id_strs:
+        async for link in db.interview_users.find(
+            {"intv_id": {"$in": intv_id_strs}}, {"intv_id": 1, "user_id": 1}
+        ):
+            interviewer_id_by_intv[link.get("intv_id")] = link.get("user_id")
+
+    interviewer_oids = [
+        ObjectId(uid)
+        for uid in set(interviewer_id_by_intv.values())
+        if uid and ObjectId.is_valid(uid)
+    ]
+    interviewers_by_id: dict[str, dict] = {}
+    if interviewer_oids:
+        interviewers_by_id = {
+            str(u["_id"]): u
+            for u in await db.users.find(
+                {"_id": {"$in": interviewer_oids}}, {"password_hash": 0}
+            ).to_list(length=2000)
+        }
 
     # Resolve each row's interviewer THROUGH its interview (interview ->
     # interview_users -> users). The old code stamped the requesting user's
@@ -302,12 +319,18 @@ async def list_applications(
 
         intv_id = str(interview["_id"]) if interview else None
         interviewer_uid = interviewer_id_by_intv.get(intv_id) if intv_id else None
-        interviewer_doc = interviewers_by_id.get(interviewer_uid) if interviewer_uid else None
+        interviewer_doc = (
+            interviewers_by_id.get(interviewer_uid) if interviewer_uid else None
+        )
         interviewer_name = (
-            interviewer_doc.get("full_name")
-            or interviewer_doc.get("username")
-            or interviewer_doc.get("email")
-        ) if interviewer_doc else None
+            (
+                interviewer_doc.get("full_name")
+                or interviewer_doc.get("username")
+                or interviewer_doc.get("email")
+            )
+            if interviewer_doc
+            else None
+        )
 
         rows.append(
             {
@@ -321,18 +344,25 @@ async def list_applications(
                 # When the candidate profile was created - the dashboard's
                 # admin summary uses it for the "+N this month" delta.
                 "cand_created_at": candidate.get("cand_created_at"),
-                "status": (interview.get("intv_status") or "not_scheduled").replace("_", " ").upper() if interview else "NOT SCHEDULED",
+                "status": (interview.get("intv_status") or "not_scheduled")
+                .replace("_", " ")
+                .upper()
+                if interview
+                else "NOT SCHEDULED",
                 "cv_url": candidate.get("cand_cv_url"),
                 "cover_letter_url": candidate.get("cand_cover_letter_url"),
                 # None when no analysis exists for this application yet.
                 "cv_analysis_status": analysis_status_map.get(str(jc["_id"])),
-                "interview_datetime": interview.get("intv_date_time") if interview else None,
+                "score": _safe_avg_score(jc),
+                "interview_datetime": interview.get("intv_date_time")
+                if interview
+                else None,
                 "interviewer": interviewer_name,
                 "interviewer_user_id": interviewer_uid,
                 # Interview id rides along so rows can deep-link to the
                 # interview page without an extra lookup.
                 "intv_id": intv_id,
-                "ratings": jc.get("ratings")
+                "ratings": jc.get("ratings"),
             }
         )
 
@@ -343,7 +373,6 @@ async def list_applications(
             return datetime.min.replace(tzinfo=timezone.utc)
 
         return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
-
 
     rows.sort(key=_sort_key, reverse=True)
     return rows
@@ -375,8 +404,12 @@ async def update_application(
     old_job_id = application["job_id"]
     cand_id = application["cand_id"]
     for jid in (old_job_id, payload.job_id):
-        if not jid or not ObjectId.is_valid(jid) or not await db.jobs.find_one(
-            {"_id": ObjectId(jid), "comp_id": comp_id}, {"_id": 1}
+        if (
+            not jid
+            or not ObjectId.is_valid(jid)
+            or not await db.jobs.find_one(
+                {"_id": ObjectId(jid), "comp_id": comp_id}, {"_id": 1}
+            )
         ):
             raise HTTPException(status_code=404, detail="Application not found.")
 
@@ -394,10 +427,12 @@ async def update_application(
     )
 
     # 2. Find or create the interview for this candidate/job.
-    interview = await db.interviews.find_one({
-        "cand_id": cand_id,
-        "job_id": old_job_id,
-    })
+    interview = await db.interviews.find_one(
+        {
+            "cand_id": cand_id,
+            "job_id": old_job_id,
+        }
+    )
 
     scheduled_dt = None
     if payload.scheduled_at:
@@ -406,43 +441,45 @@ async def update_application(
         except ValueError:
             raise HTTPException(status_code=400, detail="Invalid scheduled_at.")
 
-    intv_status = "scheduled" if scheduled_dt else "not_scheduled"
-
     if interview:
-        # A finished (or cancelled) interview is immutable apart from the
-        # job link: recomputing its status/datetime here would silently
-        # downgrade "completed" back to "scheduled" whenever the candidate
-        # profile is edited, orphaning the reports and scores.
-        if interview.get("intv_status") in ("completed", "cancelled"):
-            interview_updates = {
-                "job_id": payload.job_id,
-                "intv_updated_at": now,
-            }
-        else:
-            interview_updates = {
-                "job_id": payload.job_id,
-                "intv_date_time": scheduled_dt,
-                "intv_status": intv_status,
-                "intv_updated_at": now,
-            }
+        existing_status = interview.get("intv_status", "not_scheduled")
+        interview_set: dict = {
+            "job_id": payload.job_id,
+            "intv_updated_at": now,
+        }
+        # Never overwrite the date/status on an interview that has already
+        # progressed past scheduling — editing candidate details (name,
+        # interviewer, etc.) must not reset an in-progress or completed
+        # interview back to not_scheduled and wipe the recorded date.
+        # We only touch date/status when:
+        #   - the interview hasn't started yet (not_scheduled / scheduled), AND
+        #   - a new date is being set, OR the user is explicitly clearing one.
+        if existing_status in ("not_scheduled", "scheduled"):
+            interview_set["intv_date_time"] = scheduled_dt
+            interview_set["intv_status"] = (
+                "scheduled" if scheduled_dt else "not_scheduled"
+            )
         await db.interviews.update_one(
             {"_id": interview["_id"]},
-            {"$set": interview_updates},
+            {"$set": interview_set},
         )
         interview = await db.interviews.find_one({"_id": interview["_id"]})
     else:
-        result = await db.interviews.insert_one({
-            "cand_id": cand_id,
-            "job_id": payload.job_id,
-            "intv_date_time": scheduled_dt,
-            "intv_location": None,
-            "intv_transcript": None,
-            "intv_status": intv_status,
-            "intv_candidate_report": None,
-            "intv_interviewer_report": None,
-            "intv_created_at": now,
-            "intv_updated_at": now,
-        })
+        intv_status = "scheduled" if scheduled_dt else "not_scheduled"
+        result = await db.interviews.insert_one(
+            {
+                "cand_id": cand_id,
+                "job_id": payload.job_id,
+                "intv_date_time": scheduled_dt,
+                "intv_location": None,
+                "intv_transcript": None,
+                "intv_status": intv_status,
+                "intv_candidate_report": None,
+                "intv_interviewer_report": None,
+                "intv_created_at": now,
+                "intv_updated_at": now,
+            }
+        )
         interview = await db.interviews.find_one({"_id": result.inserted_id})
 
     # 3. Update interview_users link only if an interviewer_user_id was provided.
@@ -456,23 +493,28 @@ async def update_application(
 
         # The interviewer being assigned must belong to the caller's company.
         if not await db.users.find_one(
-            {"_id": ObjectId(payload.interviewer_user_id), "comp_id": comp_id}, {"_id": 1}
+            {"_id": ObjectId(payload.interviewer_user_id), "comp_id": comp_id},
+            {"_id": 1},
         ):
             raise HTTPException(status_code=404, detail="Interviewer not found.")
 
-        existing_link = await db.interview_users.find_one({
-            "intv_id": intv_id_str,
-            "user_id": payload.interviewer_user_id,
-        })
+        existing_link = await db.interview_users.find_one(
+            {
+                "intv_id": intv_id_str,
+                "user_id": payload.interviewer_user_id,
+            }
+        )
 
         if not existing_link:
             await db.interview_users.delete_many({"intv_id": intv_id_str})
-            await db.interview_users.insert_one({
-                "user_id": payload.interviewer_user_id,
-                "intv_id": intv_id_str,
-                "intvuser_created_at": now,
-                "intvuser_updated_at": now,
-            })
+            await db.interview_users.insert_one(
+                {
+                    "user_id": payload.interviewer_user_id,
+                    "intv_id": intv_id_str,
+                    "intvuser_created_at": now,
+                    "intvuser_updated_at": now,
+                }
+            )
 
     return {
         "ok": True,

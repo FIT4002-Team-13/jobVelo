@@ -9,7 +9,10 @@ from services.report_pdf import build_interview_report_pdf
 _REPORT = {
     "summary": "Overall a solid interview.",
     "strengths": {"items": ["Asked clear technical questions"], "justification": None},
-    "improvements": {"items": ["Watch phrasing on personal topics"], "justification": None},
+    "improvements": {
+        "items": ["Watch phrasing on personal topics"],
+        "justification": None,
+    },
 }
 
 _BIAS = [
@@ -60,7 +63,9 @@ def test_none_flagged_still_renders():
 def test_candidate_pdf_ignores_bias_incidents():
     """The bias log is interviewer-only: passing incidents to the candidate
     report must not change its output."""
-    baseline = _build("candidate", scores={"communication": 8, "skill": 7, "problem_solving": 9})
+    baseline = _build(
+        "candidate", scores={"communication": 8, "skill": 7, "problem_solving": 9}
+    )
     with_bias = _build(
         "candidate",
         scores={"communication": 8, "skill": 7, "problem_solving": 9},

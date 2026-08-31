@@ -18,24 +18,17 @@ const AVATAR_COLORS = [
   "bg-coral-600",
 ];
 
-// Score bar accent colours — Communication blue, Skill coral, Problem Solving mint.
-const SCORE_COLORS = {
-  Communication: "bg-primary-500",
-  Skill: "bg-coral-500",
-  "Problem Solving": "bg-mint-500",
-};
+const SECTION_COLORS = [
+  { border: "border-primary-200", activeBorder: "border-primary-300", ring: "ring-primary-100", badge: "bg-primary-100 text-primary-700", pauseBg: "bg-primary-100 hover:bg-primary-200 text-primary-600", timer: "text-primary-600" },
+  { border: "border-sky-200",     activeBorder: "border-sky-300",     ring: "ring-sky-100",     badge: "bg-sky-100 text-sky-700",         pauseBg: "bg-sky-100 hover:bg-sky-200 text-sky-600",           timer: "text-sky-600"     },
+  { border: "border-mint-200",    activeBorder: "border-mint-300",    ring: "ring-mint-100",    badge: "bg-mint-100 text-mint-700",       pauseBg: "bg-mint-100 hover:bg-mint-200 text-mint-600",        timer: "text-mint-600"    },
+  { border: "border-coral-200",   activeBorder: "border-coral-300",   ring: "ring-coral-100",   badge: "bg-coral-100 text-coral-700",     pauseBg: "bg-coral-100 hover:bg-coral-200 text-coral-600",     timer: "text-coral-600"   },
+];
 
 // ── Placeholder data — replace with API calls when endpoints are ready ─────────
 
 
 const INITIAL_TRANSCRIPT = [];
-
-const MOCK_SCORES = [
-  { label: "Communication", score: 7.0 },
-  { label: "Skill", score: 7.0 },
-  { label: "Problem Solving", score: 7.0 },
-];
-
 
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -76,6 +69,11 @@ function formatTimer(seconds) {
   const m = String(Math.floor(seconds / 60)).padStart(2, "0");
   const s = String(seconds % 60).padStart(2, "0");
   return `${m}:${s}`;
+}
+
+function parseTimestamp(ts = "") {
+  const [m, s] = ts.split(":").map(Number);
+  return (m || 0) * 60 + (s || 0);
 }
 
 function convertFloat32ToInt16(buffer) {
@@ -147,6 +145,12 @@ function TranscriptEntry({ entry, highlighted }) {
     </div>
   );
 }
+
+const SCORE_COLORS = {
+  Communication: "bg-primary-500",
+  Skill: "bg-mint-500",
+  "Problem Solving": "bg-sky-400",
+};
 
 function ScoreBar({ label, score }) {
   const pct = (score / 10) * 100;
@@ -502,93 +506,249 @@ function InterviewReportModal({
   );
 }
 
+// A single suggested question card in the horizontal strip. It stretches to
+// the strip's height (items-stretch on the row) rather than a fixed 345px,
+// so it never gets clipped; the question scrolls internally if very long and
+// the actions stay pinned at the bottom. Readability bumps: larger question
+// text, roomier spacing.
 function QuestionCard({ q, onMoreLike, onIgnore, isGeneratingSimilar }) {
   const [whyOpen, setWhyOpen] = useState(false);
   return (
-    <div
-      className={`${flex.col} gap-3 bg-neutral-0 border border-neutral-200 rounded-2xl p-4 w-[280px] h-[345px] shrink-0 overflow-y-auto scrollbar-hide ${
-        q.isNew ? "new-question-glow" : ""
-      }`}
-    >
-      <div className={`${flex.rowBetween}`}>
-
-        <div className={`${flex.row} gap-2`}>
-          <span className={`${badge.sm} ${q.categoryColor}`}>{q.category}</span>
-          {q.isFollowUp && (
-            <span className="rounded-pill bg-neutral-100 px-2 py-0.5 text-[10px] font-semibold text-neutral-500">
-              Follow-up
-            </span>
-          )}
-        </div>
-
-        <div className={`${flex.row} gap-2 text-neutral-400`}>
-          <button className="hover:text-mint-500 transition-colors py-1">
-            <svg
-              width="14"
-              height="14"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
+    <div className="flex w-[290px] shrink-0 flex-col rounded-2xl border border-neutral-200 bg-neutral-0 p-4">
+      <div className="mb-3 flex items-center justify-between gap-2 shrink-0">
+        <span className={`${badge.sm} ${q.categoryColor}`}>{q.category}</span>
+        <div className={`${flex.row} gap-1 text-neutral-300`}>
+          <button className="rounded-lg p-1 transition-colors hover:bg-mint-50 hover:text-mint-500">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3z" />
               <path d="M7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3" />
             </svg>
           </button>
-          <button className="hover:text-coral-500 transition-colors">
-            <svg
-              width="14"
-              height="14"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
+          <button className="rounded-lg p-1 transition-colors hover:bg-coral-50 hover:text-coral-500">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M10 15v4a3 3 0 0 0 3 3l4-9V2H5.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0 2 2.3z" />
               <path d="M17 2h2.67A2.31 2.31 0 0 1 22 4v7a2.31 2.31 0 0 1-2.33 2H17" />
             </svg>
           </button>
         </div>
       </div>
-      <p className="text-sm text-neutral-700 leading-snug">{q.text}</p>
-      <div className={`${flex.col} gap-1.5`}>
+
+      {/* Question + rationale - grows to fill, scrolls if it overflows. */}
+      <div className="scrollbar-hide flex-1 overflow-y-auto">
+        <p className="text-base leading-relaxed text-neutral-800">{q.text}</p>
+        {whyOpen && (
+          <p className="mt-3 rounded-xl bg-neutral-50 p-3 text-xs leading-relaxed text-neutral-500">
+            {q.why}
+          </p>
+        )}
+      </div>
+
+      {/* Actions pinned at the bottom - stacked, matching the original card. */}
+      <div className="mt-3 flex flex-col gap-1.5 shrink-0">
         <button
           onClick={() => onIgnore?.(q)}
-          className={`${button.danger} w-full py-1 text-xs font-semibold rounded-lg`}
+          className={`${button.danger} w-full py-1.5 text-xs font-semibold rounded-lg`}
         >
           Ignore
         </button>
-        <button onClick={() => onMoreLike(q)} disabled={isGeneratingSimilar} className="w-full py-1 text-xs font-semibold text-neutral-600 bg-neutral-100 hover:bg-neutral-200 disabled:opacity-60 disabled:cursor-not-allowed rounded-lg transition-colors">
-          {isGeneratingSimilar ? "Generating..." : "More like this"}
+        <button
+          onClick={() => onMoreLike(q)}
+          disabled={isGeneratingSimilar}
+          className="w-full rounded-lg bg-neutral-100 py-1.5 text-xs font-semibold text-neutral-600 transition-colors hover:bg-neutral-200 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {isGeneratingSimilar ? "Generating…" : "More like this"}
+        </button>
+        <button
+          onClick={() => setWhyOpen((o) => !o)}
+          className="flex items-center justify-start gap-1.5 pt-0.5 text-xs font-medium text-neutral-400 transition-colors hover:text-neutral-600"
+        >
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <circle cx="12" cy="12" r="10" />
+            <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
+            <line x1="12" y1="17" x2="12.01" y2="17" />
+          </svg>
+          {whyOpen ? "Hide" : "Why?"}
         </button>
       </div>
-      <button
-        onClick={() => setWhyOpen((o) => !o)}
-        className={`${flex.row} gap-1.5 text-xs text-neutral-400 hover:text-neutral-600 transition-colors`}
+    </div>
+  );
+}
+
+function SectionCard({ section, st, color, onStart, onPause, onResume, onDone, locked }) {
+  const budget = section.suggested_minutes * 60;
+  const pct = Math.min(100, (st.elapsed / budget) * 100);
+  const over = st.elapsed > budget && st.status === "running";
+
+  const isIdle    = st.status === "idle";
+  const isRunning = st.status === "running";
+  const isPaused  = st.status === "paused";
+  const isDone    = st.status === "done";
+
+  const borderClass = isRunning
+    ? (over ? "border-coral-300 ring-2 ring-coral-100" : `${color.activeBorder} ring-2 ${color.ring}`)
+    : isPaused ? "border-amber-300"
+    : "border-neutral-200";
+
+  const barClass = isRunning ? "bg-primary-500"
+    : isPaused ? "bg-amber-400"
+    : isDone   ? "bg-neutral-300"
+    : "bg-neutral-200";
+
+  const timerClass = over
+    ? "text-coral-500 animate-pulse"
+    : isRunning ? color.timer
+    : "text-neutral-700";
+
+  return (
+    <div className={`shrink-0 w-[190px] h-[186px] flex flex-col border ${borderClass} rounded-2xl overflow-hidden bg-neutral-0 transition-all duration-300 ${isDone ? "opacity-50" : ""}`}>
+      <div className="h-1 bg-neutral-100 shrink-0">
+        <div className={`h-1 ${barClass} transition-all duration-1000`} style={{ width: `${pct}%` }} />
+      </div>
+
+      <div className="flex flex-1 flex-col gap-1.5 p-3.5">
+        <div className={`${flex.rowBetween} gap-1.5 shrink-0`}>
+          <span className="font-semibold text-neutral-800 text-sm leading-tight line-clamp-1">{section.name}</span>
+          <span className={`text-xs px-1.5 py-0.5 rounded-full shrink-0 ${isDone ? "bg-neutral-100 text-neutral-400" : color.badge}`}>
+            {section.suggested_minutes}m
+          </span>
+        </div>
+
+        <p className="text-xs text-neutral-400 leading-snug line-clamp-2">{section.description}</p>
+
+        <div className={`${flex.row} items-baseline gap-1 shrink-0`}>
+          <span className={`font-mono text-lg font-bold ${timerClass}`}>{formatTimer(st.elapsed)}</span>
+          <span className="text-xs text-neutral-400">/ {formatTimer(budget)}</span>
+        </div>
+
+        <div className="mt-auto shrink-0">
+          {isIdle && (
+            <button
+              onClick={onStart}
+              disabled={locked}
+              className={`w-full py-1.5 rounded-lg text-sm font-semibold transition-colors ${locked ? "bg-neutral-200 text-neutral-400 cursor-not-allowed" : "bg-primary-500 hover:bg-primary-600 text-white"}`}
+            >
+              Start
+            </button>
+          )}
+
+          {(isRunning || isPaused) && (
+            <div className={`${flex.row} gap-2`}>
+              <button
+                onClick={isRunning ? onPause : onResume}
+                disabled={locked}
+                className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 transition-colors ${locked ? "bg-neutral-100 text-neutral-300 cursor-not-allowed" : color.pauseBg}`}
+              >
+                {isRunning ? (
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor">
+                    <rect x="6" y="4" width="4" height="16" /><rect x="14" y="4" width="4" height="16" />
+                  </svg>
+                ) : (
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor">
+                    <polygon points="5 3 19 12 5 21" />
+                  </svg>
+                )}
+              </button>
+              <button
+                onClick={onDone}
+                disabled={locked}
+                className={`flex-1 py-1.5 rounded-lg text-sm font-semibold transition-colors ${locked ? "bg-neutral-100 text-neutral-300 cursor-not-allowed" : "bg-neutral-100 hover:bg-neutral-200 text-neutral-600"}`}
+              >
+                Done
+              </button>
+            </div>
+          )}
+
+          {isDone && (
+            <div className={`${flex.row} justify-center gap-1.5 py-1.5`}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-neutral-400">
+                <polyline points="20 6 9 17 4 12" />
+              </svg>
+              <span className="text-sm font-semibold text-neutral-400">Done</span>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function BiasWarningBanner({warning, onDismiss, onJumpTo, isLatest}) {
+  const [expanded, setExpanded] = useState(isLatest);
+  useEffect(() => {setExpanded(isLatest)}, [isLatest]);
+
+  return (
+    <div className="flex shrink-0 items-start gap-3 bg-coral-50 border border-coral-200 rounded-xl px-4 py-3">
+      <svg
+        className="shrink-0 text-coral-500 mt-0.5"
+        width="16"
+        height="16"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
       >
-        <svg
-          width="12"
-          height="12"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
+        <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+        <line x1="12" y1="9" x2="12" y2="13" />
+        <line x1="12" y1="17" x2="12.01" y2="17" />
+      </svg>
+
+      <div className="flex-1 min-w-0">
+        <button
+          onClick={() => setExpanded((open) => !open)}
+          aria-expanded={expanded}
+          aria-label={expanded ? "Collapse bias warning" : "Expand bias warning"}
+          className="flex w-full items-center justify-between gap-2 text-left"
         >
-          <circle cx="12" cy="12" r="10" />
-          <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
-          <line x1="12" y1="17" x2="12.01" y2="17" />
-        </svg>
-        Why?
+          <p className="text-sm font-semibold text-coral-700">
+            Possibly biased question
+            {warning.category ? ` — ${warning.category}` : ""}
+          </p>
+          <svg
+            className={`shrink-0 text-coral-500 transition-transform ${expanded ? "rotate-180" : ""}`}
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <polyline points="6 9 12 15 18 9" />
+          </svg>
+        </button>
+
+        {expanded && (
+          <>
+            <button
+              onClick={onJumpTo}
+              className="text-xs text-coral-600 italic mt-0.5 text-left hover:underline"
+              title="Jump to this line in the transcript"
+            >
+              &ldquo;{warning.quote}&rdquo;
+            </button>
+            {warning.reason && (
+              <p className="text-xs text-coral-700 mt-1">{warning.reason}</p>
+            )}
+            {warning.suggestion && (
+              <p className="text-xs text-neutral-600 mt-1">
+                <span className="font-medium">Try instead:</span>{" "}
+                {warning.suggestion}
+              </p>
+            )}
+          </>
+        )}
+      </div>
+
+      <button
+        onClick={onDismiss}
+        aria-label="Dismiss"
+        className="shrink-0 text-coral-400 hover:text-coral-700 text-lg leading-none"
+      >
+        ×
       </button>
-      {whyOpen && (
-        <p className="text-xs text-neutral-500 bg-neutral-50 rounded-xl p-3 leading-relaxed">
-          {q.why}
-        </p>
-      )}
     </div>
   );
 }
@@ -767,98 +927,6 @@ function PrepPanel({ analysis, scheduledLabel, onBegin, onViewFullAnalysis }) {
   );
 }
 
-// Collapsible bias-warning banner shown over the transcript when the live
-// bias check flags a question. Restored after a merge dropped its definition
-// (the state + handlers survived, only this component was lost).
-function BiasWarningBanner({ warning, onDismiss, onJumpTo, isLatest }) {
-  const [expanded, setExpanded] = useState(isLatest);
-
-  useEffect(() => {
-    setExpanded(isLatest);
-  }, [isLatest]);
-
-  return (
-    <div className="flex shrink-0 items-start gap-3 bg-coral-50 border border-coral-200 rounded-xl px-4 py-3">
-      <svg
-        className="shrink-0 text-coral-500 mt-0.5"
-        width="16"
-        height="16"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      >
-        <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
-        <line x1="12" y1="9" x2="12" y2="13" />
-        <line x1="12" y1="17" x2="12.01" y2="17" />
-      </svg>
-
-      <div className="flex-1 min-w-0">
-        <button
-          onClick={() => setExpanded((open) => !open)}
-          aria-expanded={expanded}
-          aria-label={expanded ? "Collapse bias warning" : "Expand bias warning"}
-          className="flex w-full items-center justify-between gap-2 text-left"
-        >
-          <p className="text-sm font-semibold text-coral-700">
-            Possibly biased question
-            {warning.category ? ` — ${warning.category}` : ""}
-          </p>
-
-          <svg
-            className={`shrink-0 text-coral-500 transition-transform ${
-              expanded ? "rotate-180" : ""
-            }`}
-            width="16"
-            height="16"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <polyline points="6 9 12 15 18 9" />
-          </svg>
-        </button>
-
-        {expanded && (
-          <>
-            <button
-              onClick={onJumpTo}
-              className="text-xs text-coral-600 italic mt-0.5 text-left hover:underline"
-              title="Jump to this line in the transcript"
-            >
-              &ldquo;{warning.quote}&rdquo;
-            </button>
-
-            {warning.reason && (
-              <p className="text-xs text-coral-700 mt-1">{warning.reason}</p>
-            )}
-
-            {warning.suggestion && (
-              <p className="text-xs text-neutral-600 mt-1">
-                <span className="font-medium">Try instead:</span>{" "}
-                {warning.suggestion}
-              </p>
-            )}
-          </>
-        )}
-      </div>
-
-      <button
-        onClick={onDismiss}
-        aria-label="Dismiss"
-        className="shrink-0 text-coral-400 hover:text-coral-700 text-lg leading-none"
-      >
-        ×
-      </button>
-    </div>
-  );
-}
-
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function InterviewPage() {
@@ -867,10 +935,8 @@ export default function InterviewPage() {
   const toast = useToast();
 
   const [transcriptVisible, setTranscriptVisible] = useState(true);
-  // Status text used to render under the timer — the header no longer
-  // shows it, but we still call setStatus in various places (screen-share
-  // lifecycle, ws events, complete) so log/dev tooling can trace state.
-  const [, setStatus] = useState("Ready to start screen share");
+  const [, setStatus] = useState("Ready to start recording");
+  const [isMicActive, setIsMicActive] = useState(false);
   const [isScreenSharing, setIsScreenSharing] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
   const [isCompleted, setIsCompleted] = useState(false);
@@ -891,7 +957,6 @@ export default function InterviewPage() {
   // Post-interview report popup: idle -> generating -> ready | error.
   const [reportState, setReportState] = useState({ phase: "idle" });
   const [transcript, setTranscript] = useState(INITIAL_TRANSCRIPT);
-  const [scores] = useState(MOCK_SCORES);
   const [questions, setQuestions] = useState([]);
   const [questionsLoading, setQuestionsLoading] = useState(false);
   const [questionsError, setQuestionsError] = useState("");
@@ -899,10 +964,14 @@ export default function InterviewPage() {
   const [followUpQuestions, setFollowUpQuestions] = useState([]);
   const [, setFollowUpLoading] = useState(false);
   const [timer, setTimer] = useState(0);
-  // Live bias nudges for questions the interviewer just asked. Capped at 3
-  // and independently dismissible - Deepgram can finalize two flaggable
-  // segments close together, so a single "latest only" slot would silently
-  // drop the first one before it's read.
+  const [sections, setSections] = useState([]);
+  const [sectionStates, setSectionStates] = useState([]);
+  const sectionIntervals = useRef([]);
+  const sectionsScrollRef = useRef(null);
+  const sectionCardRefs = useRef([]);
+
+  const [highlightedEntryIdx, setHighlightedEntryIdx] = useState(null);
+  const transcriptEntryRefs = useRef([]);
   const [biasWarnings, setBiasWarnings] = useState([]);
   // Append-only log of EVERY flagged incident this session - unlike the capped,
   // dismissible banner state above, this is never trimmed, so the completion
@@ -912,6 +981,7 @@ export default function InterviewPage() {
 
   const transcriptRef = useRef([]);
   const timerRef = useRef(0);
+  const autoStartedRef = useRef(false);
   // Seconds actually recorded so far (across visits). The timer only runs
   // while screen share is live - merely VIEWING an in-progress interview
   // used to inflate intv_duration_seconds via the 30s autosave.
@@ -1057,6 +1127,102 @@ export default function InterviewPage() {
     setTimeout(() => setHighlightedEntryId((cur) => (cur === match.id ? null : cur)), 3000);
   }
 
+  useEffect(() => {
+    return () => {
+      sectionIntervals.current.forEach((id) => clearInterval(id));
+    };
+  }, []);
+
+  const activeSectionIndex = sectionStates.findIndex(
+    (st) => st.status === "running" || st.status === "paused"
+  );
+
+  useEffect(() => {
+    if (activeSectionIndex === -1) return;
+    const card = sectionCardRefs.current[activeSectionIndex];
+    const container = sectionsScrollRef.current;
+    if (!card || !container) return;
+    const containerRect = container.getBoundingClientRect();
+    const cardRect = card.getBoundingClientRect();
+    const padding = 24; // px-6
+    container.scrollTo({
+      left: container.scrollLeft + cardRect.left - containerRect.left - padding,
+      behavior: "smooth",
+    });
+  }, [activeSectionIndex]);
+
+  function startSection(i) {
+    const startAt = timerRef.current;
+    setSections((prev) => {
+      const updated = prev.map((s, j) =>
+        j === i && s.start_at == null ? { ...s, start_at: startAt } : s
+      );
+      fetch(`/api/interviews/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ intv_sections: updated }),
+      }).catch(() => {});
+      return updated;
+    });
+    setSectionStates((prev) =>
+      prev.map((st, j) => {
+        if (j === i) return { ...st, status: "running" };
+        if (st.status === "running" || st.status === "paused") {
+          clearInterval(sectionIntervals.current[j]);
+          sectionIntervals.current[j] = null;
+          return { ...st, status: "done" };
+        }
+        return st;
+      })
+    );
+    clearInterval(sectionIntervals.current[i]);
+    sectionIntervals.current[i] = setInterval(() => {
+      setSectionStates((prev) => {
+        const next = [...prev];
+        next[i] = { ...next[i], elapsed: next[i].elapsed + 1 };
+        return next;
+      });
+    }, 1000);
+  }
+
+  function pauseSection(i) {
+    clearInterval(sectionIntervals.current[i]);
+    sectionIntervals.current[i] = null;
+    setSectionStates((prev) =>
+      prev.map((st, j) => (j === i ? { ...st, status: "paused" } : st))
+    );
+  }
+
+  function resumeSection(i) {
+    setSectionStates((prev) =>
+      prev.map((st, j) => {
+        if (j === i) return { ...st, status: "running" };
+        if (st.status === "running") {
+          clearInterval(sectionIntervals.current[j]);
+          sectionIntervals.current[j] = null;
+          return { ...st, status: "done" };
+        }
+        return st;
+      })
+    );
+    clearInterval(sectionIntervals.current[i]);
+    sectionIntervals.current[i] = setInterval(() => {
+      setSectionStates((prev) => {
+        const next = [...prev];
+        next[i] = { ...next[i], elapsed: next[i].elapsed + 1 };
+        return next;
+      });
+    }, 1000);
+  }
+
+  function doneSection(i) {
+    clearInterval(sectionIntervals.current[i]);
+    sectionIntervals.current[i] = null;
+    setSectionStates((prev) =>
+      prev.map((st, j) => (j === i ? { ...st, status: "done" } : st))
+    );
+  }
+
   function togglePause() {
     if (isPaused) {
       // Unpause: restore the start time so timer continues from where it was
@@ -1176,11 +1342,12 @@ export default function InterviewPage() {
       // Resume the clock from the recorded total, not from page mount.
       startTimeRef.current = Date.now() - accumulatedRef.current * 1000;
 
+      setIsMicActive(true);
       setIsScreenSharing(true);
       setStatus(
         displayStream.getAudioTracks().length > 0
-          ? "Screen sharing & listening (interviewer + candidate)…"
-          : "Screen sharing & listening (interviewer mic only)…"
+          ? "Listening (interviewer + candidate)…"
+          : "Screen shared — no computer audio detected"
       );
 
       displayStream.getTracks().forEach((track) => {
@@ -1273,16 +1440,159 @@ export default function InterviewPage() {
       wsDisplayRef.current = null;
     }
 
+    setIsMicActive(false);
     setIsScreenSharing(false);
-    setStatus("Screen share stopped");
+    setStatus("Ready to start recording");
   }
 
   async function toggleScreenShare() {
     if (isScreenSharing) {
-      await stopScreenShare();
+      if (isMicActive) {
+        removeDisplayAudio();
+      } else {
+        await stopScreenShare();
+      }
     } else {
-      await startScreenShare();
+      if (isMicActive) {
+        await addDisplayAudio();
+      } else {
+        await startScreenShare();
+      }
     }
+  }
+
+  async function startMicOnly() {
+    const interviewerLabel = user?.full_name || "Interviewer";
+    try {
+      wsRef.current = createTranscriptionSocket(interviewerLabel, partialEntryRef);
+      setStatus("Requesting microphone access...");
+
+      const micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      micStreamRef.current = micStream;
+
+      const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+      await audioContext.resume();
+      audioContextRef.current = audioContext;
+
+      const micSource = audioContext.createMediaStreamSource(micStream);
+      const micProcessor = audioContext.createScriptProcessor(4096, 1, 1);
+      processorRef.current = micProcessor;
+
+      micProcessor.onaudioprocess = (event) => {
+        if (isPausedRef.current) return;
+        const inputBuffer = event.inputBuffer.getChannelData(0);
+        if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
+        wsRef.current.send(downsampleBuffer(inputBuffer, audioContext.sampleRate, 16000));
+      };
+
+      micSource.connect(micProcessor);
+      micProcessor.connect(audioContext.destination);
+
+      setIsMicActive(true);
+      setStatus("Listening (interviewer mic)…");
+    } catch (error) {
+      if (audioContextRef.current) {
+        audioContextRef.current.close().catch(() => {});
+        audioContextRef.current = null;
+      }
+      if (micStreamRef.current) {
+        micStreamRef.current.getTracks().forEach((t) => t.stop());
+        micStreamRef.current = null;
+      }
+      if (wsRef.current) {
+        wsRef.current.close();
+        wsRef.current = null;
+      }
+      if (error.name === "NotAllowedError") {
+        setStatus("Microphone access denied");
+      } else if (error.name === "NotFoundError") {
+        setStatus("No microphone found");
+      } else {
+        setStatus("Unable to start microphone");
+      }
+    }
+  }
+
+  async function addDisplayAudio() {
+    const candidateLabel = candidateName || "Candidate";
+    try {
+      setStatus("Requesting screen access...");
+
+      const displayStream = await navigator.mediaDevices.getDisplayMedia({
+        audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
+        video: { cursor: "always" },
+      });
+      mediaStreamRef.current = displayStream;
+
+      if (displayStream.getAudioTracks().length > 0) {
+        wsDisplayRef.current = createTranscriptionSocket(candidateLabel, displayPartialEntryRef);
+
+        const displaySource = audioContextRef.current.createMediaStreamSource(displayStream);
+        const displayProcessor = audioContextRef.current.createScriptProcessor(4096, 1, 1);
+        displayProcessorRef.current = displayProcessor;
+
+        displayProcessor.onaudioprocess = (event) => {
+          if (isPausedRef.current) return;
+          const inputBuffer = event.inputBuffer.getChannelData(0);
+          if (!wsDisplayRef.current || wsDisplayRef.current.readyState !== WebSocket.OPEN) return;
+          wsDisplayRef.current.send(downsampleBuffer(inputBuffer, audioContextRef.current.sampleRate, 16000));
+        };
+
+        displaySource.connect(displayProcessor);
+        displayProcessor.connect(audioContextRef.current.destination);
+      }
+
+      if (videoRef.current) {
+        videoRef.current.srcObject = displayStream;
+        videoRef.current.play().catch((err) => console.warn("Video play failed", err));
+      }
+
+      setIsScreenSharing(true);
+      setStatus(
+        displayStream.getAudioTracks().length > 0
+          ? "Listening (interviewer + candidate)…"
+          : "Screen shared — no computer audio detected"
+      );
+
+      displayStream.getTracks().forEach((track) => {
+        track.onended = () => { removeDisplayAudio(); };
+      });
+    } catch (error) {
+      if (mediaStreamRef.current) {
+        mediaStreamRef.current.getTracks().forEach((t) => t.stop());
+        mediaStreamRef.current = null;
+      }
+      if (wsDisplayRef.current) {
+        wsDisplayRef.current.close();
+        wsDisplayRef.current = null;
+      }
+      if (error.name === "NotAllowedError") {
+        setStatus("Screen share cancelled — mic still active");
+      } else {
+        setStatus("Unable to share screen — mic still active");
+      }
+    }
+  }
+
+  function removeDisplayAudio() {
+    if (mediaStreamRef.current) {
+      mediaStreamRef.current.getTracks().forEach((t) => t.stop());
+      mediaStreamRef.current = null;
+    }
+    if (displayProcessorRef.current) {
+      displayProcessorRef.current.disconnect();
+      displayProcessorRef.current.onaudioprocess = null;
+      displayProcessorRef.current = null;
+    }
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
+    if (wsDisplayRef.current) {
+      if (wsDisplayRef.current.readyState === WebSocket.OPEN) wsDisplayRef.current.close();
+      wsDisplayRef.current = null;
+    }
+    setIsScreenSharing(false);
+    setStatus("Listening (interviewer mic)…");
   }
 
   useEffect(() => {
@@ -1395,6 +1705,10 @@ export default function InterviewPage() {
           accumulatedRef.current = priorSeconds;
           timerRef.current = priorSeconds;
           setTimer(priorSeconds);
+          if (!autoStartedRef.current) {
+            autoStartedRef.current = true;
+            startMicOnly().catch(() => {});
+          }
         }
 
         // These two endpoints are tenant-scoped (JWT required) - a bare
@@ -1417,10 +1731,39 @@ export default function InterviewPage() {
             })
             .catch((err) => console.error("Failed to load candidate:", err));
         }
+        if (data.job_id && data.cand_id) {
+          if (Array.isArray(data.intv_sections) && data.intv_sections.length > 0) {
+            setSections(data.intv_sections);
+            setSectionStates(data.intv_sections.map(() => ({ status: "idle", elapsed: 0 })));
+            sectionIntervals.current.forEach((intv) => clearInterval(intv));
+            sectionIntervals.current = new Array(data.intv_sections.length).fill(null);
+            if (!completed) startSection(0);
+          } else {
+            fetch("/api/interviews/generate-plan", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ job_id: data.job_id, cand_id: data.cand_id }),
+            })
+              .then((r) => r.json())
+              .then((plan) => {
+                if (Array.isArray(plan) && plan.length > 0) {
+                  setSections(plan);
+                  setSectionStates(plan.map(() => ({ status: "idle", elapsed: 0 })));
+                  sectionIntervals.current.forEach((intv) => clearInterval(intv));
+                  sectionIntervals.current = new Array(plan.length).fill(null);
+                  if (!completed) startSection(0);
+                  fetch(`/api/interviews/${id}`, {
+                    method: "PATCH",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ intv_sections: plan }),
+                  }).catch(() => {});
+                }
+              })
+              .catch(() => {});
+          }
+        }
 
         // Prep briefing: the CV analysis for this (candidate, job) pair.
-        // Walk candidate -> job_candidates link -> analysis; every step is
-        // best-effort (no CV uploaded is a perfectly normal state).
         if (data.cand_id && data.job_id && !completed) {
           authedFetch(`/api/job-candidates/by-candidate/${data.cand_id}`)
             .then((r) => (r.ok ? r.json() : []))
@@ -1698,6 +2041,28 @@ export default function InterviewPage() {
     }
   }
 
+  function jumpToSection(sectionIndex) {
+    const section = sections[sectionIndex];
+    const startSeconds =
+      section?.start_at != null
+        ? section.start_at
+        : sections
+            .slice(0, sectionIndex)
+            .reduce((sum, s) => sum + (s.suggested_minutes || 0) * 60, 0);
+
+    let targetIdx = transcript.findIndex(
+      (entry) => parseTimestamp(entry.timestamp) >= startSeconds
+    );
+    if (targetIdx === -1) targetIdx = transcript.length - 1;
+    if (targetIdx < 0) return;
+
+    const el = transcriptEntryRefs.current[targetIdx];
+    if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+
+    setHighlightedEntryIdx(targetIdx);
+    setTimeout(() => setHighlightedEntryIdx(null), 2000);
+  }
+
   // Prep -> live transition: mark the interview in_progress server-side so
   // status pills across the app flip immediately, then swap to the live
   // workspace. Double-click guarded.
@@ -1836,9 +2201,6 @@ export default function InterviewPage() {
                 className={`${flex.row} gap-2 items-center text-neutral-700 font-semibold text-xl`}
               >
                 <span>{formatTimer(timer)}</span>
-                {/* The dot only pulses while audio is actually being
-                    captured - a pulsing "recording" light on an idle page
-                    was another small lie. */}
                 <span
                   className={`w-3 h-3 rounded-pill ${
                     isScreenSharing && !isPaused && !isCompleted
@@ -1955,12 +2317,14 @@ export default function InterviewPage() {
                   Transcription will appear here once the interview starts.
                 </p>
               ) : (
-                transcript.map((entry) => (
-                  <TranscriptEntry
+                transcript.map((entry, i) => (
+                  <div
                     key={entry.id}
-                    entry={entry}
-                    highlighted={entry.id === highlightedEntryId}
-                  />
+                    ref={(el) => (transcriptEntryRefs.current[i] = el)}
+                    className={`rounded-lg transition-colors duration-700 ${highlightedEntryIdx === i || entry.id === highlightedEntryId ? "bg-yellow-50 ring-1 ring-yellow-300" : ""}`}
+                  >
+                    <TranscriptEntry entry={entry} highlighted={entry.id === highlightedEntryId} />
+                  </div>
                 ))
               )}
             </div>
@@ -1982,42 +2346,90 @@ export default function InterviewPage() {
 
         {/* Right — Assessment + Questions + Actions */}
         <div className={`flex-1 ${flex.col} gap-4 overflow-hidden`}>
-          {/* Live Assessment */}
-          <div className={`${card.base} shrink-0 !py-3`}>
-            <h2 className="text-base font-semibold text-neutral-800 mb-2">
-              Live Assessment
-            </h2>
-            <div className={`${flex.col} gap-1.5`}>
-              {scores.map((s) => (
-                <ScoreBar key={s.label} label={s.label} score={s.score} />
-              ))}
-            </div>
-          </div>
+          {/* Interview Sections */}
+          {sections.length > 0 && (
+            <div className={`${card.flat} flex flex-col shrink-0 overflow-hidden`}>
+              <div className="px-6 pt-3.5 pb-2.5 border-b border-neutral-100 shrink-0">
+                <h2 className="text-base font-semibold text-neutral-800">Interview Sections</h2>
+              </div>
 
-          {/* Suggested Questions */}
+              {isCompleted ? (
+                <div className="px-4 py-3 flex flex-col gap-0.5">
+                  {sections.map((section, i) => {
+                    const hasReal = section.start_at != null;
+                    const startSec = hasReal
+                      ? section.start_at
+                      : sections.slice(0, i).reduce((sum, s) => sum + (s.suggested_minutes || 0) * 60, 0);
+                    const color = SECTION_COLORS[i % SECTION_COLORS.length];
+                    return (
+                      <button
+                        key={i}
+                        onClick={() => jumpToSection(i)}
+                        className="flex items-center gap-3 px-3 py-2 rounded-xl text-left transition-colors hover:bg-neutral-50 group"
+                      >
+                        <span className={`text-xs font-mono px-2 py-0.5 rounded-full shrink-0 ${color.badge}`}>
+                          {hasReal ? "" : "~"}{formatTimer(startSec)}
+                        </span>
+                        <span className="text-sm font-semibold text-neutral-800 group-hover:text-primary-600 transition-colors shrink-0">
+                          {section.name}
+                        </span>
+                        <span className="text-xs text-neutral-400 truncate">{section.description}</span>
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-neutral-300 group-hover:text-primary-400 shrink-0 transition-colors">
+                          <polyline points="9 18 15 12 9 6" />
+                        </svg>
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div ref={sectionsScrollRef} className="overflow-x-auto px-6 py-4" style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}>
+                  <div className={`${flex.row} gap-3 items-stretch`}>
+                    {sections.map((section, i) => (
+                      <div key={i} ref={(el) => (sectionCardRefs.current[i] = el)} className="shrink-0">
+                        <SectionCard
+                          section={section}
+                          st={sectionStates[i] ?? { status: "idle", elapsed: 0 }}
+                          color={SECTION_COLORS[i % SECTION_COLORS.length]}
+                          locked={!isMicActive}
+                          onStart={() => startSection(i)}
+                          onPause={() => pauseSection(i)}
+                          onResume={() => resumeSection(i)}
+                          onDone={() => doneSection(i)}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Suggested Questions - vertical list (was a horizontal strip of
+              fixed-height cards that got squashed when the panel was short). */}
           <div className={`${card.flat} flex flex-col flex-1 overflow-hidden`}>
-            <div className="px-6 pt-3 pb-1 border-b border-neutral-100 shrink-0">
+            <div className="flex items-center justify-between border-b border-neutral-100 px-6 pt-3.5 pb-2.5 shrink-0">
               <h2 className="text-base font-semibold text-neutral-800">
                 Suggested Questions
               </h2>
+              {questions.length > 0 && (
+                <span className="text-xs font-semibold text-neutral-300">{questions.length}</span>
+              )}
             </div>
-            <div
-              className={`flex-1 overflow-x-auto overflow-y-hidden px-6 py-3`}
-            >
-              {questionsLoading ? (
-                <div className={`${flex.rowCenter} h-full`}>
-                  <p className="text-sm text-neutral-400">Generating questions...</p>
-                </div>
-              ) : questionsError && questions.length === 0 ? (
-                <div className={`${flex.rowCenter} h-full`}>
-                  <p className="text-sm text-coral-500 text-center">{questionsError}</p>
-                </div>
-              ) : displayedQuestions.length === 0 ? (
-                <div className={`${flex.rowCenter} h-full`}>
-                  <p className="text-sm text-neutral-400">No suggested questions available.</p>
-                </div>
-              ) : (
-                <div className={`${flex.row} gap-4 h-full items-start`}>
+            {questionsLoading ? (
+              <div className={`${flex.rowCenter} flex-1`}>
+                <p className="text-sm text-neutral-400">Generating questions…</p>
+              </div>
+            ) : questionsError && questions.length === 0 ? (
+              <div className={`${flex.rowCenter} flex-1 px-6`}>
+                <p className="text-sm text-coral-500 text-center">{questionsError}</p>
+              </div>
+            ) : displayedQuestions.length === 0 ? (
+              <div className={`${flex.rowCenter} flex-1`}>
+                <p className="text-sm text-neutral-400">No suggested questions available.</p>
+              </div>
+            ) : (
+              <div className="flex-1 overflow-x-auto overflow-y-hidden px-6 py-4">
+                <div className="flex h-full items-stretch gap-4">
                   {displayedQuestions.map((q) => (
                     <QuestionCard
                       key={q.id}
@@ -2028,11 +2440,11 @@ export default function InterviewPage() {
                     />
                   ))}
                 </div>
-              )}
-            </div>
+              </div>
+            )}
           </div>
 
-          {/* Pause / Complete */}
+          {/* Pause / Complete — or navigation buttons when interview is done */}
           <div className={`${flex.row} gap-4 shrink-0`}>
             <button
               onClick={() => !isCompleted && togglePause()}

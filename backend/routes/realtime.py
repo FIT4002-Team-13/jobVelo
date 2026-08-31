@@ -36,17 +36,19 @@ async def realtime_transcribe(websocket: WebSocket, role: str | None = None) -> 
         # it verbatim as the quote the frontend rendered.
         result = await check_bias(text)
         if result.get("flagged"):
-            await transcript_queue.put({"type": "bias_warning", "quote": text, **result})
+            await transcript_queue.put(
+                {"type": "bias_warning", "quote": text, **result}
+            )
 
     def spawn_bias_check(text: str) -> None:
-        # Hold a strong reference - asyncio only weak-refs tasks, so an
-        # unreferenced task can be garbage-collected mid-flight.
         task = asyncio.create_task(run_bias_check(text))
         bias_tasks.add(task)
         task.add_done_callback(bias_tasks.discard)
 
     async def on_transcript(text: str, is_final: bool) -> None:
-        await transcript_queue.put({"type": "transcript", "text": text, "is_final": is_final})
+        await transcript_queue.put(
+            {"type": "transcript", "text": text, "is_final": is_final}
+        )
         if is_final and role == "interviewer":
             spawn_bias_check(text)
 

@@ -34,15 +34,18 @@ async def get_company(
 ):
     if not ObjectId.is_valid(comp_id):
         raise HTTPException(status_code=400, detail="Invalid comp_id")
-    
+
     company = await db.companies.find_one({"_id": ObjectId(comp_id)})
     if not company:
         raise HTTPException(status_code=404, detail="Company not found")
-    
+
     # Users can only fetch their own company
-    if str(company["_id"]) != current_user.get("comp_id") and str(current_user.get("comp_id")) != comp_id:
+    if (
+        str(company["_id"]) != current_user.get("comp_id")
+        and str(current_user.get("comp_id")) != comp_id
+    ):
         raise HTTPException(status_code=403, detail="Not authorised")
-    
+
     return _company_out(company)
 
 
@@ -58,18 +61,24 @@ async def update_company(
 
     # Only admin can update company profile
     if current_user.get("role") != "admin":
-        raise HTTPException(status_code=403, detail="Only admins can update company profile")
+        raise HTTPException(
+            status_code=403, detail="Only admins can update company profile"
+        )
 
-    allowed_fields = {"comp_name", "comp_email", "comp_industry", "comp_contact", "comp_website", "comp_description"}
+    allowed_fields = {
+        "comp_name",
+        "comp_email",
+        "comp_industry",
+        "comp_contact",
+        "comp_website",
+        "comp_description",
+    }
     update_data = {k: v for k, v in payload.items() if k in allowed_fields}
 
     if not update_data:
         raise HTTPException(status_code=400, detail="No valid fields to update")
 
-    await db.companies.update_one(
-        {"_id": ObjectId(comp_id)},
-        {"$set": update_data}
-    )
+    await db.companies.update_one({"_id": ObjectId(comp_id)}, {"$set": update_data})
 
     company = await db.companies.find_one({"_id": ObjectId(comp_id)})
     return _company_out(company)
@@ -84,15 +93,14 @@ async def update_company_logo(
 ):
     if not ObjectId.is_valid(comp_id):
         raise HTTPException(status_code=400, detail="Invalid comp_id")
-    
+
     if current_user.get("role") != "admin":
         raise HTTPException(status_code=403, detail="Only admins can update logo")
 
     logo_path = await save_upload(logo, subdir="company_logos", key=comp_id)
-    
+
     await db.companies.update_one(
-        {"_id": ObjectId(comp_id)},
-        {"$set": {"comp_logo": logo_path}}
+        {"_id": ObjectId(comp_id)}, {"$set": {"comp_logo": logo_path}}
     )
 
     company = await db.companies.find_one({"_id": ObjectId(comp_id)})
