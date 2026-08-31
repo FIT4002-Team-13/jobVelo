@@ -892,7 +892,7 @@ export default function JobDetailPage() {
                 read as a button; primary hover ties it to the rest of the
                 action palette (Edit, Add Candidate, Start Interview). */}
             <button
-              onClick={() => navigate("/jobs")}
+              onClick={() => navigate(-1)}
               className={`${flex.row} gap-2 mb-3 text-sm font-semibold text-neutral-600 bg-neutral-0 border border-neutral-200 rounded-lg px-3 py-1.5 hover:bg-primary-500/10 hover:border-primary-200 hover:text-primary-600 transition-colors`}
             >
               <svg
@@ -908,7 +908,7 @@ export default function JobDetailPage() {
                 <path d="M19 12H5" />
                 <path d="M12 19l-7-7 7-7" />
               </svg>
-              Back to Jobs
+              Back
             </button>
             <h1 className="text-4xl font-extrabold tracking-tight text-neutral-800">
               Job Posting
