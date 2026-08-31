@@ -10,17 +10,17 @@ import { authedFetch } from '../lib/api.js'
 // Monday-first, matching how people plan a work week.
 const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 
-// Solid event-pill palette (Google-Calendar-style saturated chips). Keyed by
-// the application status that rides on each row; the soft-tint versions of
-// the same colours are used for status chips elsewhere in the app.
+// Tinted event-pill palette (soft chip + coloured left accent). Kept light on
+// purpose so the solid "today" date badge stays the most saturated thing on
+// the grid and is easy to spot. Keyed by the application status on each row.
 const PILL_STYLES = {
-  SCHEDULED:       'bg-primary-500 hover:bg-primary-600 text-white',
-  'IN PROGRESS':   'bg-sky-500 hover:bg-sky-600 text-white',
-  COMPLETED:       'bg-mint-500 hover:bg-mint-600 text-white',
-  EVALUATED:       'bg-mint-500 hover:bg-mint-600 text-white',
-  HIRED:           'bg-mint-600 hover:bg-mint-700 text-white',
-  REJECTED:        'bg-coral-400 hover:bg-coral-500 text-white',
-  CANCELLED:       'bg-neutral-300 hover:bg-neutral-400 text-neutral-600',
+  SCHEDULED:       'bg-primary-100 hover:bg-primary-200 text-primary-700 border-l-2 border-primary-500',
+  'IN PROGRESS':   'bg-amber-100 hover:bg-amber-200 text-amber-700 border-l-2 border-amber-500',
+  COMPLETED:       'bg-mint-100 hover:bg-mint-200 text-mint-700 border-l-2 border-mint-500',
+  EVALUATED:       'bg-mint-100 hover:bg-mint-200 text-mint-700 border-l-2 border-mint-500',
+  HIRED:           'bg-mint-100 hover:bg-mint-200 text-mint-700 border-l-2 border-mint-600',
+  REJECTED:        'bg-coral-100 hover:bg-coral-200 text-coral-700 border-l-2 border-coral-500',
+  CANCELLED:       'bg-neutral-100 hover:bg-neutral-200 text-neutral-500 border-l-2 border-neutral-300',
 }
 
 // Soft-tint chip palette for the hover card - mirrors the status pills on
@@ -28,7 +28,7 @@ const PILL_STYLES = {
 const CHIP_STYLES = {
   'NOT SCHEDULED': 'bg-neutral-100 text-neutral-500',
   SCHEDULED:       'bg-primary-100 text-primary-600',
-  'IN PROGRESS':   'bg-sky-100 text-sky-600',
+  'IN PROGRESS':   'bg-amber-100 text-amber-700',
   COMPLETED:       'bg-mint-100 text-mint-700',
   EVALUATED:       'bg-mint-100 text-mint-700',
   HIRED:           'bg-mint-500 text-white',
@@ -37,7 +37,7 @@ const CHIP_STYLES = {
 
 const LEGEND = [
   { label: 'Scheduled',   dot: 'bg-primary-500' },
-  { label: 'In progress', dot: 'bg-sky-500' },
+  { label: 'In progress', dot: 'bg-amber-500' },
   { label: 'Completed',   dot: 'bg-mint-500' },
 ]
 
@@ -93,7 +93,7 @@ function EventPill({ ev, onOpen, direction = 'down', align = 'center' }) {
         type="button"
         onClick={onOpen}
         className={`w-full truncate rounded-md px-1.5 py-0.5 text-left text-[11px] font-semibold leading-4 transition-colors ${
-          PILL_STYLES[ev.status] ?? 'bg-neutral-400 text-white'
+          PILL_STYLES[ev.status] ?? 'bg-neutral-100 text-neutral-500 border-l-2 border-neutral-300'
         }`}
       >
         {formatTime(ev.when)} · {ev.candidate_name}

@@ -435,6 +435,20 @@ export default function CvAnalysisPage() {
             the same weight as the analysis bullets below. */}
         <div className="flex items-start justify-between mb-6">
           <div>
+            {/* Back chip above the title - matches the JobDetail / Candidate
+                detail pages so the back action reads the same everywhere. */}
+            <button
+              type="button"
+              onClick={() => navigate(-1)}
+              disabled={deleting}
+              className="flex items-center gap-2 mb-3 rounded-lg border border-neutral-200 bg-neutral-0 px-3 py-1.5 text-sm font-semibold text-neutral-600 transition-colors hover:border-primary-200 hover:bg-primary-500/10 hover:text-primary-600 disabled:opacity-60"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M19 12H5" />
+                <path d="M12 19l-7-7 7-7" />
+              </svg>
+              Back
+            </button>
             <h1 className="text-4xl font-extrabold tracking-tight text-neutral-800">
               Candidate CV/Resume
             </h1>
@@ -443,27 +457,15 @@ export default function CvAnalysisPage() {
               <span className="ml-3 text-neutral-500 font-medium">{position_title}</span>
             </p>
           </div>
-          <div className="flex items-center gap-3">
-            {/* Delete first - destructive action sits LEFT of the primary so
-                people don't muscle-memory click through it. */}
-            <button
-              type="button"
-              onClick={() => setShowDeleteConfirm(true)}
-              disabled={deleting}
-              className={`${button.danger} px-5 py-2.5 disabled:opacity-60`}
-              title="Delete this analysis and its stored PDFs (lets you upload a new CV)"
-            >
-              {deleting ? 'Deleting…' : 'Delete'}
-            </button>
-            <button
-              type="button"
-              onClick={() => navigate(-1)}
-              disabled={deleting}
-              className={`${button.primary} disabled:opacity-60`}
-            >
-              Back
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={() => setShowDeleteConfirm(true)}
+            disabled={deleting}
+            className={`${button.danger} px-5 py-2.5 disabled:opacity-60`}
+            title="Delete this analysis and its stored PDFs (lets you upload a new CV)"
+          >
+            {deleting ? 'Deleting…' : 'Delete'}
+          </button>
         </div>
 
         {/* Delete errors live up here at the page level (not inside a card)
