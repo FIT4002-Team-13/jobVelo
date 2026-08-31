@@ -670,6 +670,9 @@ export default function CandidateDetailPage() {
   const [error, setError] = useState('')
   const [startTarget, setStartTarget] = useState(null)
   const [showEditModal, setShowEditModal] = useState(false)
+  // Restored after a merge dropped it: drives the ScoreEvidencePopup opened
+  // from the score panel's "view evidence" control.
+  const [showScoreEvidence, setShowScoreEvidence] = useState(false)
   const [refreshKey, setRefreshKey] = useState(0)
   const [cvAnalysis, setCvAnalysis] = useState(null)
   const [analysingCv, setAnalysingCv] = useState(false)
@@ -975,9 +978,7 @@ export default function CandidateDetailPage() {
           // confirming on a fresh candidate silently did nothing.
           onConfirm={() => {
             setStartTarget(null)
-            if (interview?.intv_id) {
-              navigate(`/interview/${interview.intv_id}`, { replace: true })
-            }
+            onConfirmStart()
           }}
         />
       )}
