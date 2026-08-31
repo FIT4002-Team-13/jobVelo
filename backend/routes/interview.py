@@ -320,7 +320,8 @@ _TRANSCRIPT_CHAR_BUDGET = 60_000
 
 def _transcript_to_text(entries: list[dict]) -> str:
     """Flatten transcript entries into "[mm:ss] Speaker: text" lines for
-    the LLM. Skips empty lines and in-flight partials defensively."""
+    the LLM. Skips empty lines and in-flight partials defensively.
+    Truncates oldest turns when the result exceeds _TRANSCRIPT_CHAR_BUDGET."""
     lines = []
     for e in entries or []:
         text = (e.get("text") or "").strip()
@@ -330,7 +331,15 @@ def _transcript_to_text(entries: list[dict]) -> str:
         timestamp = e.get("timestamp") or ""
         prefix = f"[{timestamp}] " if timestamp else ""
         lines.append(f"{prefix}{speaker}: {text}")
-    return "\n".join(lines)
+
+    full = "\n".join(lines)
+    if len(full) <= _TRANSCRIPT_CHAR_BUDGET:
+        return full
+
+    marker = "[earlier transcript truncated]\n"
+    while lines and len(marker + "\n".join(lines)) > _TRANSCRIPT_CHAR_BUDGET:
+        lines.pop(0)
+    return marker + "\n".join(lines)
 
 
 def _has_non_interviewer_speech(
@@ -486,16 +495,47 @@ async def complete_interview(
     if not ObjectId.is_valid(job_id):
         raise HTTPException(status_code=400, detail="Interview has an invalid job id.")
 
-    candidate = await db.candidates.find_one(
-        {
-            "_id": ObjectId(cand_id),
-            "comp_id": comp_id,
-        }
-    )
-
+    # Tenant check: the job must belong to the caller's company. 404 (not 403)
+    # so that outside interviewers can't probe whether an interview id exists.
     job = await db.jobs.find_one(
         {
             "_id": ObjectId(job_id),
+            "comp_id": comp_id,
+        }
+    )
+    if not job:
+        raise HTTPException(
+            status_code=404, detail="Interview evaluation data not found."
+        )
+
+    # Re-entry: reports already generated -> serve cached result without a
+    # second LLM run. The link may have been deleted in the meantime; if so,
+    # return null scores rather than fabricating 0.0/0.0/0.0.
+    if interview.get("intv_candidate_report") and interview.get(
+        "intv_interviewer_report"
+    ):
+        link = await db.job_candidates.find_one({"cand_id": cand_id, "job_id": job_id})
+        stored_ratings = link.get("ratings") if link else None
+        scores = (
+            _scores_from_ratings(CandidateRatings.model_validate(stored_ratings))
+            if stored_ratings
+            else None
+        )
+        return InterviewCompleteOut(
+            intv_id=intv_id,
+            intv_status="completed",
+            scores=scores,
+            candidate_report=InterviewFeedback(**interview["intv_candidate_report"]),
+            interviewer_report=InterviewFeedback(
+                **interview["intv_interviewer_report"]
+            ),
+            cached=True,
+        )
+
+    # New generation: candidate and link must exist within this tenant.
+    candidate = await db.candidates.find_one(
+        {
+            "_id": ObjectId(cand_id),
             "comp_id": comp_id,
         }
     )
@@ -507,30 +547,20 @@ async def complete_interview(
         }
     )
 
-    if not candidate or not job or not link:
+    if not candidate or not link:
         raise HTTPException(
             status_code=404, detail="Interview evaluation data not found."
         )
 
-    stored_ratings = link.get("ratings")
-
-    # Re-entry: reports and ratings already generated -> serve them, no second LLM run.
-    if (
-        interview.get("intv_candidate_report")
-        and interview.get("intv_interviewer_report")
-        and stored_ratings
-    ):
-        ratings = CandidateRatings.model_validate(stored_ratings)
-
-        return InterviewCompleteOut(
-            intv_id=intv_id,
-            intv_status="completed",
-            scores=_scores_from_ratings(ratings),
-            candidate_report=InterviewFeedback(**interview["intv_candidate_report"]),
-            interviewer_report=InterviewFeedback(
-                **interview["intv_interviewer_report"]
-            ),
-            cached=True,
+    # Concurrency claim: atomically mark the interview as "generating" so a
+    # second simultaneous click doesn't trigger a duplicate LLM run.
+    claimed = await db.interviews.find_one_and_update(
+        {"_id": ObjectId(intv_id), "intv_report_state": {"$ne": "generating"}},
+        {"$set": {"intv_report_state": "generating"}},
+    )
+    if claimed is None:
+        raise HTTPException(
+            status_code=409, detail="Report generation already in progress."
         )
 
     # Prefer the transcript sent with the click (freshest); fall back to
@@ -606,6 +636,22 @@ async def complete_interview(
                 candidate_speech_detected=candidate_speech_detected,
             )
 
+            if not result:
+                raise HTTPException(
+                    status_code=status.HTTP_502_BAD_GATEWAY,
+                    detail="LLM returned an empty response; retry to regenerate.",
+                )
+
+            # Pydantic fills any missing sections with safe empties rather than
+            # 500-ing. ValidationError on malformed LLM output falls through to
+            # the except-Exception clause → 502 with claim released.
+            candidate_report = InterviewFeedback(
+                **(result.get("candidate_report") or {})
+            )
+            interviewer_report = InterviewFeedback(
+                **(result.get("interviewer_report") or {})
+            )
+
             if candidate_speech_detected:
                 ratings = await rate_candidate_skills(
                     transcript=final_entries,
@@ -615,27 +661,27 @@ async def complete_interview(
                 )
             else:
                 ratings = _zero_ratings()
-        except ValueError as error:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=str(error),
-            ) from error
-        except RuntimeError as error:
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="OpenAI is not configured.",
-            ) from error
         except Exception as error:
+            await db.interviews.update_one(
+                {"_id": ObjectId(intv_id)},
+                {"$unset": {"intv_report_state": ""}},
+            )
+            if isinstance(error, HTTPException):
+                raise
+            if isinstance(error, ValueError):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=str(error),
+                ) from error
+            if isinstance(error, RuntimeError):
+                raise HTTPException(
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    detail="OpenAI is not configured.",
+                ) from error
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,
                 detail=f"Interview completion failed: {error}",
             ) from error
-
-        # Pydantic fills any missing sections with safe empties rather than 500-ing.
-        candidate_report = InterviewFeedback(**(result.get("candidate_report") or {}))
-        interviewer_report = InterviewFeedback(
-            **(result.get("interviewer_report") or {})
-        )
 
         # Hard override: no LLM-authored candidate report without evidence.
         if not candidate_speech_detected:

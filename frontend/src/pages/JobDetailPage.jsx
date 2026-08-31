@@ -9,7 +9,7 @@ import { flex, card, badge, form, button, modal, page } from "../styles/layout";
 
 import { useAuth } from "../lib/AuthContext.jsx";
 import { useToast } from "../components/common/ToastContext.jsx";
-import { api, authedFetch } from "../lib/api.js";
+import { api, authedFetch, downloadFileWithAuth } from "../lib/api.js";
 import {
   isEmail,
   isHttpUrl,
@@ -573,6 +573,7 @@ function CandidatesTable({
   onDelete,
   onOpenInterview,
   onOpenCandidate,
+  onDownloadTranscript,
 }) {
   const isInterviewer = user?.role === "interviewer";
   const [search, setSearch] = useState("");
@@ -844,10 +845,15 @@ function CandidatesTable({
                       <div className={`${flex.row} gap-2`}>
                       <button
                         type="button"
-                        title="View candidate details"
-                        aria-label="View candidate details"
-                        onClick={() => onOpenCandidate?.(c)}
-                        className={`w-7 h-7 ${flex.rowCenter} rounded-lg text-neutral-400 hover:bg-neutral-100 hover:text-neutral-600 transition-colors`}
+                        disabled={!hasCompletedInterview}
+                        title={hasCompletedInterview ? "Download transcript" : "No transcript available"}
+                        aria-label="Download transcript"
+                        onClick={() => hasCompletedInterview && onDownloadTranscript?.(c.intv_id)}
+                        className={`w-7 h-7 ${flex.rowCenter} rounded-lg transition-colors ${
+                          hasCompletedInterview
+                            ? "text-neutral-400 hover:bg-neutral-100 hover:text-neutral-600"
+                            : "text-neutral-200 cursor-not-allowed"
+                        }`}
                       >
                         <svg
                           width="14"
@@ -856,9 +862,12 @@ function CandidatesTable({
                           fill="none"
                           stroke="currentColor"
                           strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
                         >
-                          <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
-                          <circle cx="12" cy="12" r="3" />
+                          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                          <polyline points="7 10 12 15 17 10" />
+                          <line x1="12" y1="15" x2="12" y2="3" />
                         </svg>
                       </button>
                       {/* Edit - same icon trio as the Applications page
@@ -1403,6 +1412,10 @@ export default function JobDetailPage() {
             onOpenInterview={(intvId) => navigate(`/interview/${intvId}`)}
             onOpenCandidate={(c) => {
               navigate(`/candidates/${c.cand_id}/${id}`)
+            }}
+            onDownloadTranscript={(intvId) => {
+              downloadFileWithAuth(`/api/interviews/${intvId}/transcript-pdf`)
+                .catch((err) => toast.error(err.message || 'Failed to download transcript.'))
             }}
           />
         </div>

@@ -55,22 +55,49 @@ def _interview_doc(status="scheduled", **extra):
 
 
 _TRANSCRIPT = [
-    {"id": "1", "speaker": "Jamie", "timestamp": "00:01", "text": "Tell me about a project."},
-    {"id": "2", "speaker": "Sam", "timestamp": "00:10", "text": "I built a dashboard in React."},
+    {
+        "id": "1",
+        "speaker": "Jamie",
+        "timestamp": "00:01",
+        "text": "Tell me about a project.",
+    },
+    {
+        "id": "2",
+        "speaker": "Sam",
+        "timestamp": "00:10",
+        "text": "I built a dashboard in React.",
+    },
 ]
 
 
 def _complete_db(interview_doc, claim_result="claimed"):
     """Mock DB wired for the complete endpoint's happy path up to the LLM.
     claim_result: "claimed" -> claim succeeds; None -> someone else holds it."""
+    link_id = ObjectId()
     mock_db = MagicMock()
     mock_db.interviews.find_one = AsyncMock(return_value=interview_doc)
     mock_db.jobs.find_one = AsyncMock(
-        return_value={"_id": ObjectId(interview_doc["job_id"]), "title": "Dev", "description": ""}
+        return_value={
+            "_id": ObjectId(interview_doc["job_id"]),
+            "title": "Dev",
+            "description": "",
+        }
     )
-    mock_db.job_candidates.find_one = AsyncMock(return_value=None)
-    mock_db.candidates.find_one = AsyncMock(return_value=None)
+    mock_db.job_candidates.find_one = AsyncMock(
+        return_value={
+            "_id": link_id,
+            "cand_id": interview_doc["cand_id"],
+            "job_id": interview_doc["job_id"],
+        }
+    )
+    mock_db.candidates.find_one = AsyncMock(
+        return_value={
+            "_id": ObjectId(interview_doc["cand_id"]),
+            "cand_full_name": "Test Candidate",
+        }
+    )
     mock_db.interview_users.find_one = AsyncMock(return_value=None)
+    mock_db.cv_analyses.find_one = AsyncMock(return_value=None)
     mock_db.interviews.find_one_and_update = AsyncMock(
         return_value=interview_doc if claim_result == "claimed" else None
     )
@@ -122,7 +149,9 @@ def test_create_for_job_leaves_completed_interview_untouched(authed):
     mock_db.jobs.find_one = AsyncMock(return_value={"_id": job_id})
     mock_db.candidates.find_one = AsyncMock(return_value=candidate)
     mock_db.job_candidates.find_one = AsyncMock(return_value=link)
-    mock_db.interviews.find_one = AsyncMock(return_value=_interview_doc(status="completed"))
+    mock_db.interviews.find_one = AsyncMock(
+        return_value=_interview_doc(status="completed")
+    )
     mock_db.interviews.update_one = AsyncMock()
     mock_db.interview_users.delete_many = AsyncMock()
     mock_db.interview_users.insert_one = AsyncMock()
@@ -197,7 +226,12 @@ def test_remove_candidate_from_job_cascades_cv_analysis(authed):
     mock_db.job_candidates.find_one = AsyncMock(return_value=link)
     mock_db.job_candidates.delete_one = AsyncMock()
     mock_db.cv_analyses.find.return_value = _aiter(
-        [{"cv_path": "cv_analyses/b-cv.pdf", "cover_letter_path": "cv_analyses/b-cl.pdf"}]
+        [
+            {
+                "cv_path": "cv_analyses/b-cv.pdf",
+                "cover_letter_path": "cv_analyses/b-cl.pdf",
+            }
+        ]
     )
     mock_db.cv_analyses.delete_many = AsyncMock()
     mock_db.interviews.find.return_value = _cursor([])
@@ -226,7 +260,9 @@ def test_complete_conflicts_while_generation_in_progress(authed):
 
     with (
         patch("routes.interview.get_db", return_value=mock_db),
-        patch("routes.interview.generate_interview_reports", new_callable=AsyncMock) as llm,
+        patch(
+            "routes.interview.generate_interview_reports", new_callable=AsyncMock
+        ) as llm,
     ):
         response = client.post(
             f"/api/interviews/{doc['_id']}/complete", json={"transcript": _TRANSCRIPT}
@@ -298,7 +334,11 @@ def test_complete_cached_with_missing_link_returns_null_scores(authed):
     """Rare case: reports exist but the job_candidates link was deleted.
     The cached response must say scores=null, not fabricate 0.0/0.0/0.0."""
     _, client = authed
-    report = {"summary": "fine", "strengths": {"items": ["x"]}, "improvements": {"items": []}}
+    report = {
+        "summary": "fine",
+        "strengths": {"items": ["x"]},
+        "improvements": {"items": []},
+    }
     doc = _interview_doc(
         status="completed",
         intv_candidate_report=report,
@@ -308,7 +348,9 @@ def test_complete_cached_with_missing_link_returns_null_scores(authed):
 
     with (
         patch("routes.interview.get_db", return_value=mock_db),
-        patch("routes.interview.generate_interview_reports", new_callable=AsyncMock) as llm,
+        patch(
+            "routes.interview.generate_interview_reports", new_callable=AsyncMock
+        ) as llm,
     ):
         response = client.post(f"/api/interviews/{doc['_id']}/complete", json={})
 
