@@ -204,6 +204,36 @@ function BulletList({ items = [] }) {
   )
 }
 
+// One strengths/improvements card. When the interview produced no feedback
+// (e.g. it ended with no candidate speech, so the summary explains why), the
+// bullet list and justification are both empty - show a plain "Nothing
+// available." note instead of a bare heading with an empty body, and drop the
+// JUSTIFICATION sub-heading when there's nothing to justify.
+function FeedbackSectionCard({ title, titleColor, bgClass, items, justification }) {
+  const hasItems = items.length > 0
+  const hasJustification = Boolean(justification && justification.trim())
+
+  return (
+    <ReportCard title={title} titleColor={titleColor} bgClass={bgClass}>
+      {hasItems || hasJustification ? (
+        <>
+          <BulletList items={items} />
+          {hasJustification && (
+            <>
+              <h4 className={`mb-2 text-md font-bold uppercase ${titleColor}`}>
+                JUSTIFICATION
+              </h4>
+              <p className="text-sm leading-7 text-neutral-900">{justification}</p>
+            </>
+          )}
+        </>
+      ) : (
+        <p className="text-sm italic leading-7 text-neutral-400">Nothing available.</p>
+      )}
+    </ReportCard>
+  )
+}
+
 function FeedbackPanel({
   interview,
   candidateTableHeight = 230,
@@ -341,35 +371,21 @@ function FeedbackPanel({
             <p className="text-sm leading-7 text-neutral-900">{summary}</p>
           </ReportCard>
 
-          <ReportCard
+          <FeedbackSectionCard
             title="STRENGTHS"
             titleColor="text-mint-700"
             bgClass="bg-mint-50"
-          >
-            <BulletList items={strengthsItems} />
+            items={strengthsItems}
+            justification={strengthsJustification}
+          />
 
-            <h4 className="mb-2 text-md font-bold uppercase text-mint-700">
-              JUSTIFICATION
-            </h4>
-            <p className="text-sm leading-7 text-neutral-900">
-              {strengthsJustification}
-            </p>
-          </ReportCard>
-
-          <ReportCard
+          <FeedbackSectionCard
             title="IMPROVEMENTS"
             titleColor="text-coral-500"
             bgClass="bg-coral-50"
-          >
-            <BulletList items={improvementsItems} />
-
-            <h4 className="mb-2 text-md font-bold uppercase text-coral-500">
-              JUSTIFICATION
-            </h4>
-            <p className="text-sm leading-7 text-neutral-900">
-              {improvementsJustification}
-            </p>
-          </ReportCard>
+            items={improvementsItems}
+            justification={improvementsJustification}
+          />
         </div>
       ) : (
         // Per-tab empty state - shows on whichever tab is active when that
