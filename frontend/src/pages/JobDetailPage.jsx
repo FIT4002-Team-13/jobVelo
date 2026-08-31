@@ -905,6 +905,10 @@ function CandidatesTable({
                           <path d="M16.5 3.5a2.121 2.121 0 1 1 3 3L7 19l-4 1 1-4 12.5-12.5z" />
                         </svg>
                       </button>
+                      {/* Edit - same icon trio as the Applications page
+                          (view / edit / delete) so the two candidate tables
+                          read identically. Locked once the interview is
+                          finished, mirroring the backend immutability guard. */}
                       <button
                         type="button"
                         onClick={(event) => {

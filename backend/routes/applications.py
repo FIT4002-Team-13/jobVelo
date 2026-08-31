@@ -264,6 +264,32 @@ async def list_applications(
             ).to_list(length=2000)
         }
 
+    # Resolve each row's interviewer THROUGH its interview (interview ->
+    # interview_users -> users). The old code stamped the requesting user's
+    # own name on every row, which was only coincidentally right for the
+    # interviewer-scoped view and wrong for the company-wide one.
+    intv_id_strs = [str(i["_id"]) for i in interviews]
+    interviewer_id_by_intv: dict[str, str] = {}
+    if intv_id_strs:
+        async for link in db.interview_users.find(
+            {"intv_id": {"$in": intv_id_strs}}, {"intv_id": 1, "user_id": 1}
+        ):
+            interviewer_id_by_intv[link.get("intv_id")] = link.get("user_id")
+
+    interviewer_oids = [
+        ObjectId(uid)
+        for uid in set(interviewer_id_by_intv.values())
+        if uid and ObjectId.is_valid(uid)
+    ]
+    interviewers_by_id: dict[str, dict] = {}
+    if interviewer_oids:
+        interviewers_by_id = {
+            str(u["_id"]): u
+            for u in await db.users.find(
+                {"_id": {"$in": interviewer_oids}}, {"password_hash": 0}
+            ).to_list(length=2000)
+        }
+
     # CV-analysis status per application, so the list's CV cell can link to
     # the analysis report (completed) or show a progress/failure hint
     # instead of the raw PDF. _effective_status also downgrades stale

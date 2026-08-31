@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 
 from bson import ObjectId
 from fastapi import APIRouter, Depends, HTTPException, Response, status
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 from database import get_db
 from dependencies import get_current_comp_id, get_current_user, require_role
@@ -668,6 +668,11 @@ async def complete_interview(
             )
             if isinstance(error, HTTPException):
                 raise
+            if isinstance(error, ValidationError):
+                raise HTTPException(
+                    status_code=status.HTTP_502_BAD_GATEWAY,
+                    detail=f"LLM output failed validation: {error}",
+                ) from error
             if isinstance(error, ValueError):
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
