@@ -6,7 +6,7 @@ import StartInterviewModal from "../components/job-candidate/StartInterviewModal
 import DeleteCandidateModal from "../components/job-candidate/DeleteCandidateModal";
 import EditCandidateForm from "../components/candidate/EditCandidateForm";
 import AddCandidateForm from "../components/candidate/AddCandidateForm";
-import { flex, card, badge, button, modal, page } from "../styles/layout";
+import { flex, card, badge, button, page } from "../styles/layout";
 
 import { useAuth } from "../lib/AuthContext.jsx";
 import { useToast } from "../components/common/ToastContext.jsx";
