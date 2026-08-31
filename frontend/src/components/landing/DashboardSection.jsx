@@ -16,7 +16,7 @@ const jobs = [
 const candidates = [
   { name: 'Sara Doe',    badge: 'SCHEDULED',     badgeClass: 'bg-primary-100 text-primary-600' },
   { name: 'John Smith',  badge: 'COMPLETED',     badgeClass: 'bg-mint-100 text-mint-700' },
-  { name: 'Dave Miller', badge: 'IN PROGRESS',   badgeClass: 'bg-sky-100 text-sky-600' },
+  { name: 'Dave Miller', badge: 'IN PROGRESS',   badgeClass: 'bg-amber-100 text-amber-700' },
   { name: 'Amy Chen',    badge: 'NOT SCHEDULED', badgeClass: 'bg-neutral-100 text-neutral-500' },
 ]
 

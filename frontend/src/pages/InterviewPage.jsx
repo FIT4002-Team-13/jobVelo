@@ -233,6 +233,69 @@ function FeedbackListCard({ title, section, tone }) {
   );
 }
 
+// Body of the dedicated BIAS tab. No header/badge of its own - the tab pill
+// and modal header already say what this is - so it's just the empty state or
+// the list of flagged questions. Its own scroll region keeps a long list from
+// growing the whole modal.
+function BiasTabBody({ incidents }) {
+  const list = Array.isArray(incidents) ? incidents : [];
+
+  if (list.length === 0) {
+    return (
+      <div className={`${flex.colCenter} gap-2 rounded-2xl bg-mint-50 px-6 py-12 text-center`}>
+        <svg
+          width="34" height="34" viewBox="0 0 24 24" fill="none"
+          stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+          className="text-mint-500"
+        >
+          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+          <path d="m9 12 2 2 4-4" />
+        </svg>
+        <p className="text-sm font-bold text-mint-700">No bias flagged</p>
+        <p className="max-w-xs text-sm leading-relaxed text-neutral-500">
+          No potentially biased or legally-risky questions were detected during this
+          interview.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="scrollbar-primary flex max-h-[52vh] flex-col gap-2.5 overflow-y-auto pr-1">
+      {list.map((incident, index) => (
+        <div
+          key={index}
+          className="rounded-xl border-l-[3px] border-amber-400 bg-amber-50/60 py-2.5 pl-4 pr-3"
+        >
+          <div className={`${flex.rowBetween} gap-2`}>
+            {incident.category && (
+              <span className="rounded-pill bg-amber-100 px-2 py-0.5 text-[10px] font-bold uppercase text-amber-700">
+                {incident.category}
+              </span>
+            )}
+            {incident.timestamp && (
+              <span className="shrink-0 text-[11px] font-semibold tabular-nums text-neutral-400">
+                {incident.timestamp}
+              </span>
+            )}
+          </div>
+          <p className="mt-1.5 break-words text-sm italic leading-relaxed text-neutral-700">
+            &ldquo;{incident.quote}&rdquo;
+          </p>
+          {incident.reason && (
+            <p className="mt-1.5 text-xs leading-relaxed text-neutral-500">{incident.reason}</p>
+          )}
+          {incident.suggestion && (
+            <p className="mt-1.5 text-xs leading-relaxed text-mint-700">
+              <span className="font-semibold">Try instead:</span> {incident.suggestion}
+            </p>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function ReportBody({ report, scores }) {
   const scoreRows = scores
     ? [
@@ -301,6 +364,8 @@ function InterviewReportModal({
     }`;
 
   const isCandidateTab = activeTab === "candidate";
+  const isBiasTab = activeTab === "bias";
+  const biasCount = (data?.bias_incidents ?? []).length;
   const headerName = isCandidateTab ? candidateName || "Candidate" : interviewerName || "Interviewer";
   const headerRole = isCandidateTab ? candidateRole || "" : "Interviewer";
 
@@ -344,18 +409,35 @@ function InterviewReportModal({
 
         {phase === "ready" && data && (
           <div className={`${flex.col} gap-5`}>
-            {/* Header: who this report is about + report switcher */}
+            {/* Header: who/what this report is about + report switcher */}
             <div className={`${flex.colCenter} gap-2 pt-2`}>
-              <div
-                className={`h-16 w-16 rounded-pill ${flex.rowCenter} text-xl font-bold text-white ${avatarColor(headerName)}`}
-              >
-                {initials(headerName)}
-              </div>
+              {isBiasTab ? (
+                <div className={`h-16 w-16 rounded-pill ${flex.rowCenter} bg-amber-100 text-amber-600`}>
+                  <svg
+                    width="30" height="30" viewBox="0 0 24 24" fill="none"
+                    stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+                  >
+                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                    <line x1="12" y1="8" x2="12" y2="12" />
+                    <line x1="12" y1="16" x2="12.01" y2="16" />
+                  </svg>
+                </div>
+              ) : (
+                <div
+                  className={`h-16 w-16 rounded-pill ${flex.rowCenter} text-xl font-bold text-white ${avatarColor(headerName)}`}
+                >
+                  {initials(headerName)}
+                </div>
+              )}
               <div className="text-center">
-                <h2 className="text-2xl font-bold text-neutral-800">{headerName}</h2>
-                {headerRole && <p className="text-sm text-neutral-400">{headerRole}</p>}
+                <h2 className="text-2xl font-bold text-neutral-800">
+                  {isBiasTab ? "Bias & Compliance" : headerName}
+                </h2>
+                <p className="text-sm text-neutral-400">
+                  {isBiasTab ? "Questions flagged during the interview" : headerRole}
+                </p>
               </div>
-              <div className={`${flex.row} gap-3 pt-1`}>
+              <div className={`${flex.row} gap-2 pt-1`}>
                 <button
                   type="button"
                   onClick={() => setActiveTab("candidate")}
@@ -366,15 +448,37 @@ function InterviewReportModal({
                 <button
                   type="button"
                   onClick={() => setActiveTab("interviewer")}
-                  className={tabClass(!isCandidateTab)}
+                  className={tabClass(activeTab === "interviewer")}
                 >
                   INTERVIEWER
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab("bias")}
+                  className={`rounded-xl px-4 py-0.5 text-sm font-semibold transition-colors ${flex.row} items-center gap-1.5 ${
+                    isBiasTab
+                      ? "bg-amber-500 text-white"
+                      : "bg-amber-100 text-amber-700 hover:bg-amber-200"
+                  }`}
+                >
+                  BIAS
+                  {biasCount > 0 && (
+                    <span
+                      className={`rounded-pill px-1.5 text-[10px] font-bold leading-4 ${
+                        isBiasTab ? "bg-white/30 text-white" : "bg-amber-500 text-white"
+                      }`}
+                    >
+                      {biasCount}
+                    </span>
+                  )}
                 </button>
               </div>
             </div>
 
             {isCandidateTab ? (
               <ReportBody report={data.candidate_report} scores={data.scores} />
+            ) : isBiasTab ? (
+              <BiasTabBody incidents={data.bias_incidents} />
             ) : (
               <ReportBody report={data.interviewer_report} scores={null} />
             )}
@@ -869,6 +973,10 @@ export default function InterviewPage() {
   const [highlightedEntryIdx, setHighlightedEntryIdx] = useState(null);
   const transcriptEntryRefs = useRef([]);
   const [biasWarnings, setBiasWarnings] = useState([]);
+  // Append-only log of EVERY flagged incident this session - unlike the capped,
+  // dismissible banner state above, this is never trimmed, so the completion
+  // report can persist the full list.
+  const biasIncidentsRef = useRef([]);
   const [highlightedEntryId, setHighlightedEntryId] = useState(null);
 
   const transcriptRef = useRef([]);
@@ -982,8 +1090,18 @@ export default function InterviewPage() {
   }
 
   function addBiasWarning(warning) {
+    // Stamp with the interview clock so the report can point back to the
+    // moment, and log it to the uncapped list before the banner trims to 3.
+    const timestamp = formatTimer(timerRef.current);
+    biasIncidentsRef.current.push({
+      quote: warning.quote,
+      category: warning.category ?? null,
+      reason: warning.reason ?? null,
+      suggestion: warning.suggestion ?? null,
+      timestamp,
+    });
     setBiasWarnings((prev) =>
-      [...prev, { ...warning, id: `bias-${Date.now()}-${Math.random()}` }].slice(-3)
+      [...prev, { ...warning, timestamp, id: `bias-${Date.now()}-${Math.random()}` }].slice(-3)
     );
   }
 
@@ -1992,6 +2110,7 @@ export default function InterviewPage() {
         body: JSON.stringify({
           transcript: finalEntries,
           duration_seconds: timer,
+          bias_incidents: biasIncidentsRef.current,
         }),
       });
       const data = await res.json().catch(() => null);

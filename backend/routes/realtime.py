@@ -18,11 +18,23 @@ async def realtime_transcribe(websocket: WebSocket, role: str | None = None) -> 
     await websocket.accept()
     transcript_queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
 
-    last_final_text = ""
+    # `role` is a plain, client-supplied query param with no validation
+    # beyond the strict "interviewer" check below. That's fine here: this
+    # socket has no auth at all (pre-existing, separate gap), so the worst
+    # case of a spoofed/wrong role is one wasted OpenAI call - never a
+    # data-exposure issue.
+    #
+    # Bias-checking only ever runs on the interviewer's own mic connection,
+    # never on candidate/display audio - the two sides open separate
+    # connections to this same route.
     bias_tasks: set[asyncio.Task] = set()
 
     async def run_bias_check(text: str) -> None:
-        result = await check_bias(f"{last_final_text} {text}".strip())
+        # Each final is now a complete utterance (DeepgramSession assembles the
+        # phrase fragments into whole sentences before flushing), so we check
+        # the sentence on its own - no cross-final window needed - and report
+        # it verbatim as the quote the frontend rendered.
+        result = await check_bias(text)
         if result.get("flagged"):
             await transcript_queue.put(
                 {"type": "bias_warning", "quote": text, **result}
@@ -34,13 +46,11 @@ async def realtime_transcribe(websocket: WebSocket, role: str | None = None) -> 
         task.add_done_callback(bias_tasks.discard)
 
     async def on_transcript(text: str, is_final: bool) -> None:
-        nonlocal last_final_text
         await transcript_queue.put(
             {"type": "transcript", "text": text, "is_final": is_final}
         )
         if is_final and role == "interviewer":
             spawn_bias_check(text)
-            last_final_text = text
 
     session = DeepgramSession(on_transcript)
     try:

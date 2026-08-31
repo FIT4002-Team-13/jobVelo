@@ -305,18 +305,56 @@ async def analyse(
     existing = await db.cv_analyses.find_one({"jobcand_id": jobcand_id})
     if existing:
         doc_status, _ = _effective_status(existing)
-        # An in-flight run is never interrupted, and a fileless POST is a read.
-        if doc_status == "processing" or not has_new_cv:
+        # Never interrupt an in-flight run.
+        if doc_status == "processing":
             return _serialise(existing, cached=True)
-        # New CV over a completed/failed analysis → replace it wholesale.
-        # Remember the old cover-letter path: if the new upload doesn't
-        # bring one, the candidate's cover-letter link would otherwise keep
-        # pointing at the file we're about to delete.
+        # A completed analysis with no new upload is a cached read - don't
+        # burn a re-run on an already-good result.
+        if doc_status == "completed" and not has_new_cv:
+            return _serialise(existing, cached=True)
+
+        # Otherwise we (re)generate. Two cases reach here:
+        #   - a new CV uploaded over any prior state (replace), or
+        #   - a fileless RETRY of a FAILED analysis: the reuse button after an
+        #     earlier error (e.g. a since-fixed Gemini model outage). Without
+        #     this a failed analysis could only ever be retried by re-uploading
+        #     the CV, which defeats the whole point of CV reuse.
+        # Remember the old cover-letter path: if the new upload doesn't bring
+        # one, the candidate's cover-letter link would otherwise keep pointing
+        # at the file we're about to delete.
         replaced_cl_path = existing.get("cover_letter_path")
+        # Files the retry is about to re-read - never delete these when tearing
+        # down the old doc, or the reuse read below would find nothing.
+        keep_paths: set[str] = set()
+        if not has_new_cv:
+            # Fileless retry → reuse the candidate's stored CV bytes (falling
+            # back to the failed doc's own file if the profile link is gone).
+            _probe_link, _probe_job, probe_candidate = await _lookup_jobcand_context(
+                jobcand_id
+            )
+            reuse_cv_path = _storage_path(
+                probe_candidate.get("cand_cv_url")
+            ) or existing.get("cv_path")
+            if not reuse_cv_path:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="No CV on file for this candidate. Upload a CV PDF to generate an analysis.",
+                )
+            keep_paths = {
+                p
+                for p in (
+                    reuse_cv_path,
+                    _storage_path(probe_candidate.get("cand_cover_letter_url")),
+                )
+                if p
+            }
         await db.cv_analyses.delete_one({"_id": existing["_id"]})
-        if existing.get("cv_path"):
+        if existing.get("cv_path") and existing["cv_path"] not in keep_paths:
             await delete_upload(existing["cv_path"])
-        if existing.get("cover_letter_path"):
+        if (
+            existing.get("cover_letter_path")
+            and existing["cover_letter_path"] not in keep_paths
+        ):
             await delete_upload(existing["cover_letter_path"])
     elif not has_new_cv:
         # No analysis for THIS link and no upload. If the candidate already
