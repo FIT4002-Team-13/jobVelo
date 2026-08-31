@@ -47,6 +47,7 @@ const CANDIDATE_STATUS_STYLES = {
 const CANDIDATE_FILTER_OPTIONS = [
   { value: "NOT SCHEDULED", label: "Not Scheduled" },
   { value: "SCHEDULED",     label: "Scheduled"     },
+  { value: 'IN PROGRESS',     label: 'In Progress' },
   { value: "COMPLETED",     label: "Completed"     },
 ];
 

@@ -519,15 +519,41 @@ function CvViewButton({ cvAnalysis, cvUrl, onViewAnalysis, onAnalyse, analysing 
     )
   }
 
+  // Failed → offer a Retry that re-runs against the candidate's stored CV
+  // (the server tears down the failed analysis and re-analyses - no re-upload
+  // needed). Falls back to disabled only if there's nothing to retry with.
   if (cvAnalysis?.status === 'failed') {
+    const canRetry = Boolean(cvUrl && onAnalyse)
     return (
       <button
         type="button"
-        disabled
-        title={cvAnalysis.error || 'Analysis failed. Re-upload the CV via Edit to retry.'}
-        className={`${base} cursor-not-allowed bg-coral-100 text-coral-700`}
+        onClick={canRetry ? onAnalyse : undefined}
+        disabled={!canRetry || analysing}
+        title={
+          canRetry
+            ? `${cvAnalysis.error ? cvAnalysis.error + ' — ' : ''}Click to retry the analysis.`
+            : cvAnalysis.error || 'Analysis failed. Re-upload the CV via Edit to retry.'
+        }
+        className={`${base} ${
+          analysing
+            ? 'cursor-wait bg-primary-100 text-primary-500'
+            : canRetry
+            ? 'bg-coral-100 text-coral-700 hover:bg-coral-200'
+            : 'cursor-not-allowed bg-coral-100 text-coral-700'
+        }`}
       >
-        Failed
+        {analysing ? (
+          <>
+            <svg className="h-3.5 w-3.5 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round">
+              <path d="M21 12a9 9 0 1 1-6.2-8.56" />
+            </svg>
+            Analysing…
+          </>
+        ) : canRetry ? (
+          'Retry'
+        ) : (
+          'Failed'
+        )}
       </button>
     )
   }
