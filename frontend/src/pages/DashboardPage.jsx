@@ -23,7 +23,6 @@ const CANDIDATE_FILTER_OPTIONS = [
   { value: 'SCHEDULED',     label: 'Scheduled'     },
   { value: 'IN PROGRESS',   label: 'In Progress'   },
   { value: 'COMPLETED',     label: 'Completed'     },
-  { value: 'CANCELLED',     label: 'Cancelled'     },
 ]
 
 // Solid-fill status pills - kept in sync with JobsPage + JobDetailPage.
