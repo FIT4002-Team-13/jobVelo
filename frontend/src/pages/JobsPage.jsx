@@ -353,8 +353,8 @@ export default function JobsPage() {
     <div className={page.shell}>
       <Sidebar />
 
-      <main className={page.main}>
-        <div className="flex items-start justify-between mb-6">
+      <div className="flex-1 flex flex-col overflow-hidden">
+        <header className="bg-neutral-0 border-b border-neutral-200 px-10 py-6 shrink-0 flex items-start justify-between">
           <div>
             <h1 className="text-4xl font-extrabold tracking-tight text-neutral-800">Job Posting</h1>
             <p className="text-xs text-neutral-400 mt-1">Manage your open positions</p>
@@ -366,7 +366,9 @@ export default function JobsPage() {
           >
             <span className="text-lg leading-none">+</span> Create Job
           </button>
-        </div>
+        </header>
+
+        <main className="flex-1 overflow-y-auto px-10 py-8">
 
         <div className="flex justify-end items-center gap-3 mb-5">
           <div className="flex items-center gap-2 border border-neutral-200 rounded-xl px-3 py-1.5 bg-neutral-0">
@@ -396,7 +398,8 @@ export default function JobsPage() {
               </div>
             )
         )}
-      </main>
+        </main>
+      </div>
 
       {formModal && (
         <JobFormModal

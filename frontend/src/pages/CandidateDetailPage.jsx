@@ -1412,29 +1412,29 @@ export default function CandidateDetailPage() {
     <div className={page.shell}>
       <Sidebar />
 
-      <main className={page.main}>
-        <div className="mb-6 flex items-start justify-between">
-          <div>
-            <button
-              onClick={() => navigate('/candidates')}
-              className={`${flex.row} mb-3 gap-2 rounded-lg border border-neutral-200 bg-neutral-0 px-3 py-1.5 text-sm font-semibold text-neutral-600 transition-colors hover:border-primary-200 hover:bg-primary-500/10 hover:text-primary-600`}
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/>
-              </svg>
-              Back
-            </button>
+      <div className="flex-1 flex flex-col overflow-hidden">
+        <header className="bg-neutral-0 border-b border-neutral-200 px-10 py-6 shrink-0">
+          <button
+            onClick={() => navigate(-1)}
+            className={`${flex.row} mb-3 gap-2 rounded-lg border border-neutral-200 bg-neutral-0 px-3 py-1.5 text-sm font-semibold text-neutral-600 transition-colors hover:border-primary-200 hover:bg-primary-500/10 hover:text-primary-600`}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/>
+            </svg>
+            Back
+          </button>
 
-            <h1 className="text-4xl font-extrabold tracking-tight text-neutral-800">
-              Candidate
-            </h1>
-            <p className="mt-1 text-xs text-neutral-400">
-              Manage all candidates across jobs
-            </p>
-          </div>
-        </div>
+          <h1 className="text-4xl font-extrabold tracking-tight text-neutral-800">
+            Candidate
+          </h1>
+          <p className="mt-1 text-xs text-neutral-400">
+            Manage all candidates across jobs
+          </p>
+        </header>
 
-        <div className="mb-6 grid grid-cols-11 gap-5 items-stretch">
+        <main className="flex-1 overflow-y-auto px-10 py-4">
+
+        <div className="mb-3 grid grid-cols-11 gap-5 items-stretch">
           <div className="col-span-7">
             <CandidateInfoCard
               candidate={candidate}
@@ -1500,7 +1500,8 @@ export default function CandidateDetailPage() {
               .catch((err) => toast.error(err.message || 'Failed to download the report.'))
           }}
         />
-      </main>
+        </main>
+      </div>
 
       {startTarget && (
         <StartInterviewModal

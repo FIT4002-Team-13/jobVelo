@@ -218,9 +218,23 @@ export default function ApplicationsPage() {
       return matchesSearch && matchesFilter
     })
 
+    function relevance(row) {
+      if (!needle) return 0
+      const name = (row.candidate_name || '').toLowerCase()
+      if (name === needle) return 0
+      if (name.startsWith(needle + ' ')) return 1
+      const idx = name.indexOf(needle)
+      if (idx === -1) return Number.MAX_SAFE_INTEGER
+      return 10 + idx
+    }
+
     next = [...next].sort((a, b) => {
+      if (needle) {
+        const relDiff = relevance(a) - relevance(b)
+        if (relDiff !== 0) return relDiff
+      }
       switch (sortValue) {
-        case 'score': 
+        case 'score':
           return ((getCandidateScore(b.ratings) ?? -Infinity) - (getCandidateScore(a.ratings) ?? -Infinity))
         case 'name_asc':
           return (a.candidate_name || '').localeCompare(b.candidate_name || '')
@@ -265,11 +279,8 @@ export default function ApplicationsPage() {
     <div className={page.shell}>
       <Sidebar />
 
-      <main className={page.main}>
-        {/* Header + controls render unconditionally - same skeleton as
-            JobsPage, where loading/error/empty states appear as a small
-            status line BELOW the controls instead of blanking the page. */}
-        <div className="mb-6 flex items-start justify-between">
+      <div className="flex-1 flex flex-col overflow-hidden">
+        <header className="bg-neutral-0 border-b border-neutral-200 px-10 py-6 shrink-0 flex items-start justify-between">
           <div>
             <h1 className="text-4xl font-extrabold tracking-tight text-neutral-800">
               Applications
@@ -286,7 +297,9 @@ export default function ApplicationsPage() {
           >
             <span className="text-lg leading-none">+</span> Add Candidate
           </button>
-        </div>
+        </header>
+
+        <main className="flex-1 overflow-y-auto px-10 py-8">
 
         {/* Controls row - matches the JobsPage search/sort/filter styling so
             the two pages read identically: same search-bar size, same icon'd
@@ -582,7 +595,8 @@ export default function ApplicationsPage() {
         </div>
             )
         )}
-      </main>
+        </main>
+      </div>
 
       {showAddModal && (
         <AddCandidateForm

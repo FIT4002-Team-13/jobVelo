@@ -82,7 +82,17 @@ export default function ErrorPage({ code = 404 }) {
           )}
           <button
             type="button"
-            onClick={() => (code === 500 ? navigate(homePath) : navigate(-1))}
+            // On 500 the AppErrorBoundary is still in hasError:true, so a
+            // client-side navigate() leaves it rendering the error page.
+            // window.location.assign forces a full navigation which resets
+            // the boundary. 404/403 don't have that problem.
+            onClick={() => {
+              if (code === 500) {
+                window.location.assign(homePath)
+              } else {
+                navigate(-1)
+              }
+            }}
             className="rounded-xl border border-neutral-200 bg-white px-5 py-2.5 text-sm font-semibold text-neutral-600 transition-colors hover:bg-neutral-50"
           >
             {code === 500 ? homeLabel : 'Go back'}

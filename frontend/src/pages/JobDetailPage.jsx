@@ -894,16 +894,15 @@ export default function JobDetailPage() {
     <div className={page.shell}>
       <Sidebar />
 
-      <main className={page.main}>
-        {/* Header */}
-        <div className="flex items-start justify-between mb-6">
+      <div className="flex-1 flex flex-col overflow-hidden">
+        <header className="bg-neutral-0 border-b border-neutral-200 px-10 py-6 shrink-0 flex items-start justify-between">
           <div>
             {/* Back-to-Jobs - upgraded from a tiny grey breadcrumb to a
                 proper chip so users actually notice it. Border + bg make it
                 read as a button; primary hover ties it to the rest of the
                 action palette (Edit, Add Candidate, Start Interview). */}
             <button
-              onClick={() => navigate("/jobs")}
+              onClick={() => navigate(-1)}
               className={`${flex.row} gap-2 mb-3 text-sm font-semibold text-neutral-600 bg-neutral-0 border border-neutral-200 rounded-lg px-3 py-1.5 hover:bg-primary-500/10 hover:border-primary-200 hover:text-primary-600 transition-colors`}
             >
               <svg
@@ -919,7 +918,7 @@ export default function JobDetailPage() {
                 <path d="M19 12H5" />
                 <path d="M12 19l-7-7 7-7" />
               </svg>
-              Back to Jobs
+              Back
             </button>
             <h1 className="text-4xl font-extrabold tracking-tight text-neutral-800">
               Job Posting
@@ -961,13 +960,15 @@ export default function JobDetailPage() {
               + Add Candidate
             </button>
           </div>
-        </div>
+        </header>
+
+        <main className="flex-1 overflow-y-auto px-10 py-8">
 
         {/* Top panels */}
         <div className="grid grid-cols-3 gap-5 mb-6">
           {/* Job Info */}
-          <div className={`col-span-2 ${card.base}`}>
-            <div className="flex items-start justify-between mb-3">
+          <div className={`col-span-2 ${card.base} flex flex-col h-[320px]`}>
+            <div className="shrink-0 flex items-start justify-between mb-3">
               <div>
                 <h2 className="text-lg font-bold text-neutral-800">
                   {job.title}
@@ -1016,17 +1017,17 @@ export default function JobDetailPage() {
               </div>
             </div>
 
-            <div className="mb-3">
-              <p className="text-sm font-bold text-neutral-700 mb-1">
-                Description
-              </p>
-              <p className="text-sm text-neutral-500 leading-relaxed">
+            <p className="shrink-0 text-sm font-bold text-neutral-700 mb-1">
+              Description
+            </p>
+            <div className="flex-1 min-h-0 overflow-y-auto scrollbar-primary mb-4">
+              <p className="text-sm text-neutral-500 leading-relaxed pr-2">
                 {job.description || "—"}
               </p>
             </div>
 
             {job.employment_type?.length > 0 && (
-              <div className="flex flex-wrap gap-2 mb-4">
+              <div className="shrink-0 flex flex-wrap gap-2 mb-4">
                 {job.employment_type.map((t) => (
                   <span
                     key={t}
@@ -1038,7 +1039,7 @@ export default function JobDetailPage() {
               </div>
             )}
 
-            <div className={`${flex.row} gap-8 text-sm text-neutral-500`}>
+            <div className={`shrink-0 ${flex.row} gap-8 text-sm text-neutral-500`}>
               <div>
                 <span className="block text-neutral-400 font-medium uppercase tracking-wide mb-0.5">
                   Start
@@ -1098,7 +1099,8 @@ export default function JobDetailPage() {
             }}
           />
         </div>
-      </main>
+        </main>
+      </div>
 
       {showEdit && (
         <JobFormModal

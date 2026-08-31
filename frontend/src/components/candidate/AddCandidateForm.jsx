@@ -97,6 +97,7 @@ export default function AddCandidateForm({ jobs = [], fixedJobId = null, onClose
   const [cvFile, setCvFile] = useState(null)
   const [coverLetterFile, setCoverLetterFile] = useState(null)
   const [interviewers, setInterviewers] = useState([])
+  const [interviewerOpen, setInterviewerOpen] = useState(false)
 
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
@@ -215,7 +216,7 @@ export default function AddCandidateForm({ jobs = [], fixedJobId = null, onClose
 
   return (
     <div className={modal.overlay}>
-      <div className={`${modal.panel} max-w-2xl max-h-[90vh] overflow-y-auto`}>
+      <div className={`${modal.panel} scrollbar-primary max-w-2xl max-h-[90vh] overflow-y-auto transition-[padding] ${interviewerOpen ? 'pb-52' : ''}`}>
         <button
           type="button"
           onClick={onClose}
@@ -319,6 +320,7 @@ export default function AddCandidateForm({ jobs = [], fixedJobId = null, onClose
                   setField('interviewer_user_id', userId)
                 }}
                 options={interviewers}
+                onOpenChange={setInterviewerOpen}
               />
             </div>
 

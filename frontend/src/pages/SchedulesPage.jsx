@@ -219,9 +219,8 @@ export default function SchedulesPage() {
     <div className={page.shell}>
       <Sidebar />
 
-      <main className={page.main}>
-        {/* Header - same skeleton as the Jobs / Applications pages. */}
-        <div className="mb-6 flex items-start justify-between">
+      <div className="flex-1 flex flex-col overflow-hidden">
+        <header className="bg-neutral-0 border-b border-neutral-200 px-10 py-6 shrink-0 flex items-start justify-between">
           <div>
             <h1 className="text-4xl font-extrabold tracking-tight text-neutral-800">Schedules</h1>
             <p className="mt-1 text-xs text-neutral-400">
@@ -240,7 +239,9 @@ export default function SchedulesPage() {
               </span>
             ))}
           </div>
-        </div>
+        </header>
+
+        <main className="flex-1 overflow-y-auto px-10 py-8">
 
         {/* Month controls */}
         <div className="mb-4 flex items-center gap-3">
@@ -359,7 +360,7 @@ export default function SchedulesPage() {
           </p>
         )}
       </main>
-
+    </div>
       {/* Day-detail modal - the full schedule for a crowded day. Google-
           Calendar-style: every interview listed, each row clickable through
           to the candidate page. */}
