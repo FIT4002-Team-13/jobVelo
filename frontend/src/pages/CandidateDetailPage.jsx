@@ -80,61 +80,44 @@ function ScoreBarRow({ label, value, colorClass }) {
   )
 }
 
-function CandidateScorePanel({ jobCand, interview, onViewEvidence, onViewTranscription, cvAnalysis}) {
-  
+function CandidateScorePanel({ jobCand, interview, onViewEvidence, onViewTranscription }) {
+  // This panel reflects the INTERVIEW rating only - never the CV analysis
+  // scores. Before an interview is rated there simply is no score here (the
+  // CV fit lives in its own analysis report), so the rows read "--" rather
+  // than borrowing the CV numbers, which would misrepresent an un-interviewed
+  // candidate as already scored.
   const ratings = jobCand?.ratings;
   const hasInterviewRatings = Boolean(ratings);
-  const interviewScores = hasInterviewRatings? [ratings.communication?.score, ratings.technical_skills?.score, ratings.problem_solving?.score].filter((score) => typeof score === "number" && Number.isFinite(score)) : [];
-  const interviewOverallScore = interviewScores.length > 0? interviewScores.reduce((total, score) => total + score, 0) / interviewScores.length : null;
-  const hasCvAnalysis = cvAnalysis?.status === "completed";
+  const interviewScores = hasInterviewRatings
+    ? [ratings.communication?.score, ratings.technical_skills?.score, ratings.problem_solving?.score].filter(
+        (score) => typeof score === "number" && Number.isFinite(score),
+      )
+    : [];
+  const interviewOverallScore =
+    interviewScores.length > 0
+      ? interviewScores.reduce((total, score) => total + score, 0) / interviewScores.length
+      : null;
   const hasTranscript = Array.isArray(interview?.intv_transcript) && interview.intv_transcript.length > 0;
-  const cvScores = hasCvAnalysis? [cvAnalysis.position_fit?.relevant_experience, cvAnalysis.position_fit?.technical_fit, cvAnalysis.position_fit?.soft_skills].filter((score) => typeof score === "number" && Number.isFinite(score)) : [];
-  const cvOverallScore = cvScores.length > 0 ? cvScores.reduce((total, score) => total + score, 0) / cvScores.length : null;
-  const finalScoreValue = hasInterviewRatings ? interviewOverallScore : cvOverallScore;
-  const overallScore = finalScoreValue != null ? formatScore(finalScoreValue) : "--";
-  const scoreLabel = hasInterviewRatings ? "FINAL SCORE" : "CV SCORE";
+  const overallScore = interviewOverallScore != null ? formatScore(interviewOverallScore) : "--";
+  const scoreLabel = "FINAL SCORE";
   const rank = jobCand?.rank == null ? "NA" : `#${jobCand.rank}`;
   const hasScore = overallScore !== "--";
-  const scoreRows = hasInterviewRatings ? [
-      {
-        label: "COMMUNICATION",
-        value: ratings.communication?.score,
-        colorClass: "bg-sky-500",
-      },
-      {
-        label: "TECHNICAL SKILLS",
-        value: ratings.technical_skills?.score,
-        colorClass: "bg-coral-500",
-      },
-      {
-        label: "PROBLEM SOLVING",
-        value: ratings.problem_solving?.score,
-        colorClass: "bg-mint-400",
-      },
-    ]
-  : [
-      {
-        label: "RELEVANT EXPERIENCE",
-        value:
-          cvAnalysis?.position_fit
-            ?.relevant_experience,
-        colorClass: "bg-coral-500",
-      },
-      {
-        label: "TECHNICAL FIT",
-        value:
-          cvAnalysis?.position_fit
-            ?.technical_fit,
-        colorClass: "bg-primary-500",
-      },
-      {
-        label: "SOFT SKILLS",
-        value:
-          cvAnalysis?.position_fit
-            ?.soft_skills,
-        colorClass: "bg-mint-400",
-      },
-
+  const scoreRows = [
+    {
+      label: "COMMUNICATION",
+      value: ratings?.communication?.score,
+      colorClass: "bg-sky-500",
+    },
+    {
+      label: "TECHNICAL SKILLS",
+      value: ratings?.technical_skills?.score,
+      colorClass: "bg-coral-500",
+    },
+    {
+      label: "PROBLEM SOLVING",
+      value: ratings?.problem_solving?.score,
+      colorClass: "bg-mint-400",
+    },
   ];
 
   return (
@@ -236,13 +219,24 @@ function FeedbackPanel({
   // themselves are the source of truth for what we can render.
   const candidateReport   = interview?.intv_candidate_report
   const interviewerReport = interview?.intv_interviewer_report
-  const activeReport      = activeTab === 'candidate' ? candidateReport : interviewerReport
+  const biasIncidents     = Array.isArray(interview?.intv_bias_incidents) ? interview.intv_bias_incidents : []
+  const biasCount         = biasIncidents.length
+  const isBiasTab         = activeTab === 'bias'
+  const activeReport      = activeTab === 'candidate' ? candidateReport
+                          : activeTab === 'interviewer' ? interviewerReport
+                          : null
   const hasActiveReport   = !!activeReport
   // Panel grows to full height when either tab has something to show, so
   // switching between tabs doesn't make the card jump in size if only one
   // report has been generated so far.
   const hasAnyReport      = !!candidateReport || !!interviewerReport
   const panelHeight       = hasAnyReport ? candidateTableHeight : candidateTableHeight / 2
+  // Bias is only evaluated once the interview has actually run. Reports are
+  // written together with the bias log at completion, so either signal means
+  // "the interview happened" - without it we'd claim "no bias" for interviews
+  // that simply haven't started, which reads as a clean bill of health it
+  // hasn't earned.
+  const interviewCompleted = interview?.intv_status === 'completed' || hasAnyReport
 
   const summary = activeReport?.summary ?? ''
   const strengthsItems = activeReport?.strengths?.items ?? []
@@ -277,21 +271,25 @@ function FeedbackPanel({
       <div className={flex.rowBetween}>
         <h2 className="text-lg font-bold text-neutral-800">Reports</h2>
 
-        <button
-          type="button"
-          onClick={handleDownload}
-          disabled={!hasActiveReport}
-          title={hasActiveReport
-            ? `Download the ${activeTab} report`
-            : `No ${activeTab} report has been generated yet.`}
-          className={`rounded-xl px-5 py-0.5 text-sm font-semibold text-white transition-colors ${
-            hasActiveReport
-              ? 'bg-primary-500 hover:bg-primary-600'
-              : 'cursor-not-allowed bg-neutral-400'
-          }`}
-        >
-          Download
-        </button>
+        {/* Download is per-report; the bias tab has nothing of its own to
+            download (it rides along in the interviewer report PDF). */}
+        {!isBiasTab && (
+          <button
+            type="button"
+            onClick={handleDownload}
+            disabled={!hasActiveReport}
+            title={hasActiveReport
+              ? `Download the ${activeTab} report`
+              : `No ${activeTab} report has been generated yet.`}
+            className={`rounded-xl px-5 py-0.5 text-sm font-semibold text-white transition-colors ${
+              hasActiveReport
+                ? 'bg-primary-500 hover:bg-primary-600'
+                : 'cursor-not-allowed bg-neutral-400'
+            }`}
+          >
+            Download
+          </button>
+        )}
       </div>
 
       <div className={`${flex.row} gap-3`}>
@@ -310,9 +308,32 @@ function FeedbackPanel({
         >
           INTERVIEWER
         </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab('bias')}
+          className={`rounded-xl px-4 py-0.5 text-sm font-semibold transition-colors ${flex.row} items-center gap-1.5 ${
+            isBiasTab
+              ? 'bg-amber-500 text-white'
+              : 'bg-amber-100 text-amber-700 hover:bg-amber-200'
+          }`}
+        >
+          BIAS
+          {biasCount > 0 && (
+            <span
+              className={`rounded-pill px-1.5 text-[10px] font-bold leading-4 ${
+                isBiasTab ? 'bg-white/30 text-white' : 'bg-amber-500 text-white'
+              }`}
+            >
+              {biasCount}
+            </span>
+          )}
+        </button>
       </div>
 
-      {hasActiveReport ? (
+      {isBiasTab ? (
+        <BiasTabContent incidents={biasIncidents} completed={interviewCompleted} />
+      ) : hasActiveReport ? (
         <div className="grid flex-1 grid-cols-3 gap-6">
           <ReportCard title="SUMMARY" bgClass="bg-neutral-50">
             <p className="text-sm leading-7 text-neutral-900">{summary}</p>
@@ -353,81 +374,108 @@ function FeedbackPanel({
         // specific report hasn't been generated yet. Switching tabs still
         // works, so a user can see the other tab's report if only one has
         // landed.
-        <div className="flex flex-1 items-center justify-center rounded-2xl bg-neutral-50 px-6 py-10">
-          <p className="text-center text-md font-semibold text-neutral-500">
+        <PanelEmptyState tone="neutral">
+          <p className="text-md font-semibold text-neutral-500">
             No {activeTab} report generated yet.
           </p>
-        </div>
-      )}
-
-      {/* Bias log - interviewer tab only (it's the interviewer's conduct), and
-          only once a report exists so it doesn't show on empty/scheduled. */}
-      {activeTab === 'interviewer' && hasActiveReport && (
-        <BiasLog incidents={interview?.intv_bias_incidents} />
+        </PanelEmptyState>
       )}
     </section>
   )
 }
 
-// Persisted bias log shown under the interviewer report. Mirrors the live
-// checker's flags (quote / category / reason / suggestion + interview-clock
-// timestamp) that were captured during the session.
-function BiasLog({ incidents }) {
+// Shared empty/info panel so every "nothing to show" state in the Reports
+// card is the same height and shape (they used to differ between tabs).
+function PanelEmptyState({ tone = 'neutral', children }) {
+  const bg = tone === 'mint' ? 'bg-mint-50' : 'bg-neutral-50'
+  return (
+    <div className={`flex flex-1 flex-col items-center justify-center gap-2 rounded-2xl px-6 py-10 text-center ${bg}`}>
+      {children}
+    </div>
+  )
+}
+
+// Body of the BIAS tab: the persisted flags (quote / category / reason /
+// suggestion + interview-clock timestamp) captured live during the session,
+// or a reassuring empty state. Its own scroll region keeps a long list from
+// stretching the Reports card.
+function BiasTabContent({ incidents, completed }) {
   const list = Array.isArray(incidents) ? incidents : []
 
-  return (
-    <div className="rounded-2xl border border-neutral-200 p-5">
-      <div className={`${flex.rowBetween} mb-3`}>
-        <h4 className="text-md font-bold uppercase tracking-wide text-neutral-500">
-          Bias &amp; Compliance
-        </h4>
-        <span
-          className={`rounded-pill px-2.5 py-0.5 text-xs font-bold ${
-            list.length > 0 ? 'bg-amber-100 text-amber-700' : 'bg-mint-100 text-mint-700'
-          }`}
+  // Interview hasn't run yet - bias is checked live during the interview, so
+  // there's simply nothing to report rather than a clean result.
+  if (!completed) {
+    return (
+      <PanelEmptyState tone="neutral">
+        <svg
+          width="34" height="34" viewBox="0 0 24 24" fill="none"
+          stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+          className="text-neutral-400"
         >
-          {list.length > 0 ? `${list.length} flagged` : 'None flagged'}
-        </span>
-      </div>
-
-      {list.length === 0 ? (
-        <p className="text-sm leading-7 text-neutral-500">
-          No potentially biased or legally-risky questions were flagged during this interview.
+          <circle cx="12" cy="12" r="9" />
+          <polyline points="12 7 12 12 15 14" />
+        </svg>
+        <p className="text-sm font-bold text-neutral-600">Interview not completed</p>
+        <p className="max-w-md text-sm leading-7 text-neutral-500">
+          Bias is checked live during the interview. Any flagged questions will appear here once
+          it has been completed.
         </p>
-      ) : (
-        <div className={`${flex.col} gap-3`}>
-          {list.map((incident, index) => (
-            <div
-              key={index}
-              className="rounded-xl border-l-[3px] border-amber-400 bg-amber-50/60 py-2.5 pl-4 pr-3"
-            >
-              <div className={`${flex.rowBetween} gap-2`}>
-                {incident.category && (
-                  <span className="rounded-pill bg-amber-100 px-2 py-0.5 text-[10px] font-bold uppercase text-amber-700">
-                    {incident.category}
-                  </span>
-                )}
-                {incident.timestamp && (
-                  <span className="shrink-0 text-[11px] font-semibold tabular-nums text-neutral-400">
-                    {incident.timestamp}
-                  </span>
-                )}
-              </div>
-              <p className="mt-1.5 break-words text-sm italic leading-relaxed text-neutral-800">
-                &ldquo;{incident.quote}&rdquo;
-              </p>
-              {incident.reason && (
-                <p className="mt-1.5 text-xs leading-relaxed text-neutral-500">{incident.reason}</p>
-              )}
-              {incident.suggestion && (
-                <p className="mt-1.5 text-xs leading-relaxed text-mint-700">
-                  <span className="font-semibold">Try instead:</span> {incident.suggestion}
-                </p>
-              )}
-            </div>
-          ))}
+      </PanelEmptyState>
+    )
+  }
+
+  // Completed, nothing flagged - a genuine clean result.
+  if (list.length === 0) {
+    return (
+      <PanelEmptyState tone="mint">
+        <svg
+          width="34" height="34" viewBox="0 0 24 24" fill="none"
+          stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+          className="text-mint-500"
+        >
+          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+          <path d="m9 12 2 2 4-4" />
+        </svg>
+        <p className="text-sm font-bold text-mint-700">No bias detected</p>
+        <p className="max-w-md text-sm leading-7 text-neutral-500">
+          No potentially biased or legally-risky questions were detected during this interview.
+        </p>
+      </PanelEmptyState>
+    )
+  }
+
+  return (
+    <div className="flex max-h-[320px] flex-1 flex-col gap-3 overflow-y-auto pr-1">
+      {list.map((incident, index) => (
+        <div
+          key={index}
+          className="rounded-xl border-l-[3px] border-amber-400 bg-amber-50/60 py-2.5 pl-4 pr-3"
+        >
+          <div className={`${flex.rowBetween} gap-2`}>
+            {incident.category && (
+              <span className="rounded-pill bg-amber-100 px-2 py-0.5 text-[10px] font-bold uppercase text-amber-700">
+                {incident.category}
+              </span>
+            )}
+            {incident.timestamp && (
+              <span className="shrink-0 text-[11px] font-semibold tabular-nums text-neutral-400">
+                {incident.timestamp}
+              </span>
+            )}
+          </div>
+          <p className="mt-1.5 break-words text-sm italic leading-relaxed text-neutral-800">
+            &ldquo;{incident.quote}&rdquo;
+          </p>
+          {incident.reason && (
+            <p className="mt-1.5 text-xs leading-relaxed text-neutral-500">{incident.reason}</p>
+          )}
+          {incident.suggestion && (
+            <p className="mt-1.5 text-xs leading-relaxed text-mint-700">
+              <span className="font-semibold">Try instead:</span> {incident.suggestion}
+            </p>
+          )}
         </div>
-      )}
+      ))}
     </div>
   )
 }
@@ -1003,7 +1051,6 @@ export default function CandidateDetailPage() {
           <div className="col-span-4">
             <CandidateScorePanel
               jobCand={jobCand}
-              cvAnalysis={cvAnalysis}
               interview={interview}
               onViewEvidence={() => setShowScoreEvidence(true)}
               onViewTranscription={() => {
