@@ -359,7 +359,76 @@ function FeedbackPanel({
           </p>
         </div>
       )}
+
+      {/* Bias log - interviewer tab only (it's the interviewer's conduct), and
+          only once a report exists so it doesn't show on empty/scheduled. */}
+      {activeTab === 'interviewer' && hasActiveReport && (
+        <BiasLog incidents={interview?.intv_bias_incidents} />
+      )}
     </section>
+  )
+}
+
+// Persisted bias log shown under the interviewer report. Mirrors the live
+// checker's flags (quote / category / reason / suggestion + interview-clock
+// timestamp) that were captured during the session.
+function BiasLog({ incidents }) {
+  const list = Array.isArray(incidents) ? incidents : []
+
+  return (
+    <div className="rounded-2xl border border-neutral-200 p-5">
+      <div className={`${flex.rowBetween} mb-3`}>
+        <h4 className="text-md font-bold uppercase tracking-wide text-neutral-500">
+          Bias &amp; Compliance
+        </h4>
+        <span
+          className={`rounded-pill px-2.5 py-0.5 text-xs font-bold ${
+            list.length > 0 ? 'bg-amber-100 text-amber-700' : 'bg-mint-100 text-mint-700'
+          }`}
+        >
+          {list.length > 0 ? `${list.length} flagged` : 'None flagged'}
+        </span>
+      </div>
+
+      {list.length === 0 ? (
+        <p className="text-sm leading-7 text-neutral-500">
+          No potentially biased or legally-risky questions were flagged during this interview.
+        </p>
+      ) : (
+        <div className={`${flex.col} gap-3`}>
+          {list.map((incident, index) => (
+            <div
+              key={index}
+              className="rounded-xl border-l-[3px] border-amber-400 bg-amber-50/60 py-2.5 pl-4 pr-3"
+            >
+              <div className={`${flex.rowBetween} gap-2`}>
+                {incident.category && (
+                  <span className="rounded-pill bg-amber-100 px-2 py-0.5 text-[10px] font-bold uppercase text-amber-700">
+                    {incident.category}
+                  </span>
+                )}
+                {incident.timestamp && (
+                  <span className="shrink-0 text-[11px] font-semibold tabular-nums text-neutral-400">
+                    {incident.timestamp}
+                  </span>
+                )}
+              </div>
+              <p className="mt-1.5 break-words text-sm italic leading-relaxed text-neutral-800">
+                &ldquo;{incident.quote}&rdquo;
+              </p>
+              {incident.reason && (
+                <p className="mt-1.5 text-xs leading-relaxed text-neutral-500">{incident.reason}</p>
+              )}
+              {incident.suggestion && (
+                <p className="mt-1.5 text-xs leading-relaxed text-mint-700">
+                  <span className="font-semibold">Try instead:</span> {incident.suggestion}
+                </p>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
   )
 }
 

@@ -18,6 +18,12 @@ class Settings(BaseSettings):
     # Deepgram — realtime STT for interview transcription.
     deepgram_api_key: str = ""
     deepgram_model: str = "nova-2"
+    # Silence (ms) that ends an utterance. Deepgram finalizes phrase fragments
+    # at every short pause; we buffer those and only flush a full sentence when
+    # Deepgram reports speech_final, which it does after this much silence.
+    # Higher = fewer, more complete sentences (better follow-up prompts) at the
+    # cost of a little latency before a line lands.
+    deepgram_endpointing_ms: int = 400
 
     # OpenAI — split into two models so realtime question generation can use
     # a fast/cheap model while end-of-interview summary/score uses a stronger one.

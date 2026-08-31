@@ -229,7 +229,68 @@ function FeedbackListCard({ title, section, tone }) {
   );
 }
 
-function ReportBody({ report, scores }) {
+function BiasSection({ incidents }) {
+  const list = Array.isArray(incidents) ? incidents : [];
+
+  return (
+    <div className="rounded-2xl border border-neutral-200 p-5">
+      <div className={`${flex.rowBetween} mb-3`}>
+        <h4 className="text-xs font-bold uppercase tracking-wide text-neutral-400">
+          Bias &amp; Compliance
+        </h4>
+        <span
+          className={`rounded-pill px-2.5 py-0.5 text-[11px] font-bold ${
+            list.length > 0 ? "bg-amber-100 text-amber-700" : "bg-mint-100 text-mint-700"
+          }`}
+        >
+          {list.length > 0 ? `${list.length} flagged` : "None flagged"}
+        </span>
+      </div>
+
+      {list.length === 0 ? (
+        <p className="text-sm leading-relaxed text-neutral-500">
+          No potentially biased or legally-risky questions were flagged during this
+          interview.
+        </p>
+      ) : (
+        <div className={`${flex.col} gap-3`}>
+          {list.map((incident, index) => (
+            <div
+              key={index}
+              className="rounded-xl border-l-[3px] border-amber-400 bg-amber-50/60 py-2.5 pl-4 pr-3"
+            >
+              <div className={`${flex.rowBetween} gap-2`}>
+                {incident.category && (
+                  <span className="rounded-pill bg-amber-100 px-2 py-0.5 text-[10px] font-bold uppercase text-amber-700">
+                    {incident.category}
+                  </span>
+                )}
+                {incident.timestamp && (
+                  <span className="shrink-0 text-[11px] font-semibold tabular-nums text-neutral-400">
+                    {incident.timestamp}
+                  </span>
+                )}
+              </div>
+              <p className="mt-1.5 break-words text-sm italic leading-relaxed text-neutral-700">
+                &ldquo;{incident.quote}&rdquo;
+              </p>
+              {incident.reason && (
+                <p className="mt-1.5 text-xs leading-relaxed text-neutral-500">{incident.reason}</p>
+              )}
+              {incident.suggestion && (
+                <p className="mt-1.5 text-xs leading-relaxed text-mint-700">
+                  <span className="font-semibold">Try instead:</span> {incident.suggestion}
+                </p>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ReportBody({ report, scores, biasIncidents }) {
   const scoreRows = scores
     ? [
         { label: "Communication", score: scores.communication },
@@ -273,6 +334,9 @@ function ReportBody({ report, scores }) {
           {report?.summary || "No summary generated."}
         </p>
       </div>
+
+      {/* Interviewer tab only - candidate ReportBody omits the prop entirely. */}
+      {biasIncidents !== undefined && <BiasSection incidents={biasIncidents} />}
     </div>
   );
 }
@@ -372,7 +436,11 @@ function InterviewReportModal({
             {isCandidateTab ? (
               <ReportBody report={data.candidate_report} scores={data.scores} />
             ) : (
-              <ReportBody report={data.interviewer_report} scores={null} />
+              <ReportBody
+                report={data.interviewer_report}
+                scores={null}
+                biasIncidents={data.bias_incidents}
+              />
             )}
 
             <div className={`${flex.row} gap-3 pt-1`}>
@@ -800,6 +868,10 @@ export default function InterviewPage() {
   // segments close together, so a single "latest only" slot would silently
   // drop the first one before it's read.
   const [biasWarnings, setBiasWarnings] = useState([]);
+  // Append-only log of EVERY flagged incident this session - unlike the capped,
+  // dismissible banner state above, this is never trimmed, so the completion
+  // report can persist the full list.
+  const biasIncidentsRef = useRef([]);
   const [highlightedEntryId, setHighlightedEntryId] = useState(null);
 
   const transcriptRef = useRef([]);
@@ -912,8 +984,18 @@ export default function InterviewPage() {
   }
 
   function addBiasWarning(warning) {
+    // Stamp with the interview clock so the report can point back to the
+    // moment, and log it to the uncapped list before the banner trims to 3.
+    const timestamp = formatTimer(timerRef.current);
+    biasIncidentsRef.current.push({
+      quote: warning.quote,
+      category: warning.category ?? null,
+      reason: warning.reason ?? null,
+      suggestion: warning.suggestion ?? null,
+      timestamp,
+    });
     setBiasWarnings((prev) =>
-      [...prev, { ...warning, id: `bias-${Date.now()}-${Math.random()}` }].slice(-3)
+      [...prev, { ...warning, timestamp, id: `bias-${Date.now()}-${Math.random()}` }].slice(-3)
     );
   }
 
@@ -1627,6 +1709,7 @@ export default function InterviewPage() {
         body: JSON.stringify({
           transcript: finalEntries,
           duration_seconds: timer,
+          bias_incidents: biasIncidentsRef.current,
         }),
       });
       const data = await res.json().catch(() => null);

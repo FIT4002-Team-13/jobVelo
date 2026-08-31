@@ -210,3 +210,63 @@ def test_transcript_truncation_keeps_most_recent_turns():
 def test_transcript_under_budget_is_untouched():
     entries = [{"speaker": "S", "timestamp": "00:01", "text": "short"}]
     assert _transcript_to_text(entries) == "[00:01] S: short"
+
+
+# ── bias incidents: persisted and echoed in the completion report ────────────
+
+
+def _skill(name):
+    return {"skill": name, "score": 7.0, "explanation": None, "evidence": []}
+
+
+def test_complete_echoes_stored_bias_incidents_on_cached_read(authed):
+    """A re-completed interview (reports + ratings already stored) returns the
+    persisted bias incidents without a second LLM run, so the full flagged
+    list survives past the live banner's last-3 cap."""
+    comp_id, client = authed
+    cand_id, job_id = ObjectId(), ObjectId()
+    empty_report = {"summary": "s", "strengths": {"items": []}, "improvements": {"items": []}}
+    bias = [
+        {
+            "quote": "Are you planning to have children soon?",
+            "category": "Family status",
+            "reason": "Touches a protected category.",
+            "suggestion": "Ask about availability for the role's hours.",
+            "timestamp": "04:12",
+        }
+    ]
+    interview = _interview_doc(
+        status="completed",
+        cand_id=str(cand_id),
+        job_id=str(job_id),
+        intv_candidate_report=empty_report,
+        intv_interviewer_report=empty_report,
+        intv_bias_incidents=bias,
+    )
+    link = {
+        "_id": ObjectId(),
+        "cand_id": str(cand_id),
+        "job_id": str(job_id),
+        "ratings": {
+            "technical_skills": _skill("Technical Skills"),
+            "communication": _skill("Communication"),
+            "problem_solving": _skill("Problem Solving"),
+        },
+    }
+
+    mock_db = MagicMock()
+    mock_db.interviews.find_one = AsyncMock(return_value=interview)
+    mock_db.candidates.find_one = AsyncMock(return_value={"_id": cand_id, "comp_id": comp_id})
+    mock_db.jobs.find_one = AsyncMock(return_value={"_id": job_id, "comp_id": comp_id})
+    mock_db.job_candidates.find_one = AsyncMock(return_value=link)
+
+    with patch("routes.interview.get_db", return_value=mock_db), patch(
+        "routes.interview.generate_interview_reports", new_callable=AsyncMock
+    ) as gen:
+        res = client.post(f"/api/interviews/{interview['_id']}/complete", json={})
+
+    assert res.status_code == 200
+    gen.assert_not_awaited()  # cached path: no LLM
+    body = res.json()
+    assert body["cached"] is True
+    assert body["bias_incidents"] == bias

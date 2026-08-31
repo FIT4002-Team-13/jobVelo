@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Response, status
 from database import get_db
 from dependencies import get_current_comp_id, get_current_user, require_role
 from models.interview import (
+    BiasIncident,
     InterviewCompleteOut,
     InterviewCompleteRequest,
     InterviewCreate,
@@ -68,6 +69,20 @@ def _safe_report(raw) -> InterviewFeedback | None:
         return None
 
 
+def _safe_bias_incidents(raw) -> list[BiasIncident]:
+    """Validate stored bias incidents one-by-one, skipping malformed entries
+    (e.g. legacy interviews with no such field) rather than failing the read."""
+    if not isinstance(raw, list):
+        return []
+    out: list[BiasIncident] = []
+    for entry in raw:
+        try:
+            out.append(BiasIncident(**entry))
+        except Exception:
+            continue
+    return out
+
+
 def _safe_transcript(raw) -> list[TranscriptEntry] | None:
     """Validate transcript entries one-by-one, skipping any malformed entry
     (missing id/speaker/timestamp/text) rather than failing the whole list."""
@@ -113,6 +128,7 @@ def interview_helper(interview: dict) -> InterviewOut:
         intv_duration_seconds=interview.get("intv_duration_seconds"),
         intv_candidate_report=_safe_report(interview.get("intv_candidate_report")),
         intv_interviewer_report=_safe_report(interview.get("intv_interviewer_report")),
+        intv_bias_incidents=_safe_bias_incidents(interview.get("intv_bias_incidents")),
         intv_created_at=created,
         intv_updated_at=updated,
     )
@@ -453,6 +469,7 @@ async def complete_interview(
             scores=_scores_from_ratings(ratings),
             candidate_report=InterviewFeedback(**interview["intv_candidate_report"]),
             interviewer_report=InterviewFeedback(**interview["intv_interviewer_report"]),
+            bias_incidents=_safe_bias_incidents(interview.get("intv_bias_incidents")),
             cached=True,
         )
 
@@ -573,6 +590,12 @@ async def complete_interview(
 
     scores = _scores_from_ratings(ratings)
 
+    # Bias incidents the live checker flagged, sent up with the completion
+    # click. Stored verbatim on the interview so the report (now and on any
+    # later re-open) always shows the full list, not just the last 3 the live
+    # banner kept.
+    bias_incidents = list(payload.bias_incidents or [])
+
     now = datetime.now(timezone.utc)
 
     await db.job_candidates.update_one(
@@ -596,6 +619,7 @@ async def complete_interview(
         "intv_transcript": entries,
         "intv_candidate_report": candidate_report.model_dump(),
         "intv_interviewer_report": interviewer_report.model_dump(),
+        "intv_bias_incidents": [b.model_dump() for b in bias_incidents],
         "intv_updated_at": now,
     }
     if payload.duration_seconds is not None:
@@ -608,6 +632,7 @@ async def complete_interview(
         scores=scores,
         candidate_report=candidate_report,
         interviewer_report=interviewer_report,
+        bias_incidents=bias_incidents,
         cached=False,
     )
 
@@ -672,6 +697,7 @@ async def _report_pdf_response(intv_id: str, kind: str, user: dict) -> Response:
         status=interview.get("intv_status"),
         scores=scores,
         transcript=interview.get("intv_transcript") or [],
+        bias_incidents=interview.get("intv_bias_incidents") or [],
     )
 
     safe_name = "".join(
