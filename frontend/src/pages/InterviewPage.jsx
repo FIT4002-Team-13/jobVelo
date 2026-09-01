@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { flex, card, button, badge, modal } from "../styles/layout";
 import { useAuth } from "../lib/AuthContext.jsx";
+
+import ReportSections from "../components/interview/ReportSections.jsx";
 import { useToast } from "../components/common/ToastContext.jsx";
 import { api, authedFetch } from "../lib/api.js";
 
@@ -202,101 +204,7 @@ function ScoreDonut({ value }) {
   );
 }
 
-// One strengths/improvements card. `tone` picks the tinted palette so the
-// pair reads like the report cards on the candidate detail page.
-function FeedbackListCard({ title, section, tone }) {
-  const palette =
-    tone === "mint"
-      ? { bg: "bg-mint-50", heading: "text-mint-700" }
-      : { bg: "bg-coral-50", heading: "text-coral-600" };
-  const items = section?.items ?? [];
-  return (
-    <div className={`rounded-2xl p-4 ${palette.bg}`}>
-      <h4 className={`mb-2 text-xs font-bold uppercase tracking-wide ${palette.heading}`}>
-        {title}
-      </h4>
-      {items.length === 0 ? (
-        <p className="text-xs italic text-neutral-400">Nothing noted.</p>
-      ) : (
-        <ul className="list-disc space-y-1 pl-4 text-sm leading-relaxed text-neutral-800">
-          {items.map((item, i) => (
-            <li key={`${item}-${i}`}>{item}</li>
-          ))}
-        </ul>
-      )}
-      {section?.justification && (
-        <p className="mt-2 text-xs leading-relaxed text-neutral-500">
-          {section.justification}
-        </p>
-      )}
-    </div>
-  );
-}
-
-// Body of the dedicated BIAS tab. No header/badge of its own - the tab pill
-// and modal header already say what this is - so it's just the empty state or
-// the list of flagged questions. Its own scroll region keeps a long list from
-// growing the whole modal.
-function BiasTabBody({ incidents }) {
-  const list = Array.isArray(incidents) ? incidents : [];
-
-  if (list.length === 0) {
-    return (
-      <div className={`${flex.colCenter} gap-2 rounded-2xl bg-mint-50 px-6 py-12 text-center`}>
-        <svg
-          width="34" height="34" viewBox="0 0 24 24" fill="none"
-          stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
-          className="text-mint-500"
-        >
-          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-          <path d="m9 12 2 2 4-4" />
-        </svg>
-        <p className="text-sm font-bold text-mint-700">No bias flagged</p>
-        <p className="max-w-xs text-sm leading-relaxed text-neutral-500">
-          No potentially biased or legally-risky questions were detected during this
-          interview.
-        </p>
-      </div>
-    );
-  }
-
-  return (
-    <div className="scrollbar-primary flex max-h-[52vh] flex-col gap-2.5 overflow-y-auto pr-1">
-      {list.map((incident, index) => (
-        <div
-          key={index}
-          className="rounded-xl border-l-[3px] border-amber-400 bg-amber-50/60 py-2.5 pl-4 pr-3"
-        >
-          <div className={`${flex.rowBetween} gap-2`}>
-            {incident.category && (
-              <span className="rounded-pill bg-amber-100 px-2 py-0.5 text-[10px] font-bold uppercase text-amber-700">
-                {incident.category}
-              </span>
-            )}
-            {incident.timestamp && (
-              <span className="shrink-0 text-[11px] font-semibold tabular-nums text-neutral-400">
-                {incident.timestamp}
-              </span>
-            )}
-          </div>
-          <p className="mt-1.5 break-words text-sm italic leading-relaxed text-neutral-700">
-            &ldquo;{incident.quote}&rdquo;
-          </p>
-          {incident.reason && (
-            <p className="mt-1.5 text-xs leading-relaxed text-neutral-500">{incident.reason}</p>
-          )}
-          {incident.suggestion && (
-            <p className="mt-1.5 text-xs leading-relaxed text-mint-700">
-              <span className="font-semibold">Try instead:</span> {incident.suggestion}
-            </p>
-          )}
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function ReportBody({ report, scores }) {
+function ReportBody({ report, scores, showRequirements }) {
   const scoreRows = scores
     ? [
         { label: "Communication", score: scores.communication },
@@ -309,7 +217,7 @@ function ReportBody({ report, scores }) {
     : null;
 
   return (
-    <div className={`${flex.col} gap-4`}>
+    <div className={`${flex.col} gap-5`}>
       {/* Result card - candidate tab only (the interviewer isn't rated). */}
       {scoreRows && (
         <div className="rounded-2xl border border-neutral-200 p-5">
@@ -327,19 +235,11 @@ function ReportBody({ report, scores }) {
         </div>
       )}
 
-      <div className="grid grid-cols-2 gap-4">
-        <FeedbackListCard title="Strengths" section={report?.strengths} tone="mint" />
-        <FeedbackListCard title="Improvements" section={report?.improvements} tone="coral" />
-      </div>
-
-      <div className="rounded-2xl bg-neutral-50 p-4">
-        <h4 className="mb-2 text-xs font-bold uppercase tracking-wide text-neutral-500">
-          Summary
-        </h4>
-        <p className="text-sm leading-relaxed text-neutral-800">
-          {report?.summary || "No summary generated."}
-        </p>
-      </div>
+      {/* Same summary / strengths / improvements / job-requirements body the
+          candidate detail page uses, with per-point timestamped evidence
+          behind the chevron disclosure. "stack" = single column for the
+          narrow modal. */}
+      <ReportSections report={report} showRequirements={showRequirements} variant="stack" />
     </div>
   );
 }
@@ -364,8 +264,6 @@ function InterviewReportModal({
     }`;
 
   const isCandidateTab = activeTab === "candidate";
-  const isBiasTab = activeTab === "bias";
-  const biasCount = (data?.bias_incidents ?? []).length;
   const headerName = isCandidateTab ? candidateName || "Candidate" : interviewerName || "Interviewer";
   const headerRole = isCandidateTab ? candidateRole || "" : "Interviewer";
 
@@ -409,35 +307,18 @@ function InterviewReportModal({
 
         {phase === "ready" && data && (
           <div className={`${flex.col} gap-5`}>
-            {/* Header: who/what this report is about + report switcher */}
+            {/* Header: who this report is about + report switcher */}
             <div className={`${flex.colCenter} gap-2 pt-2`}>
-              {isBiasTab ? (
-                <div className={`h-16 w-16 rounded-pill ${flex.rowCenter} bg-amber-100 text-amber-600`}>
-                  <svg
-                    width="30" height="30" viewBox="0 0 24 24" fill="none"
-                    stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
-                  >
-                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-                    <line x1="12" y1="8" x2="12" y2="12" />
-                    <line x1="12" y1="16" x2="12.01" y2="16" />
-                  </svg>
-                </div>
-              ) : (
-                <div
-                  className={`h-16 w-16 rounded-pill ${flex.rowCenter} text-xl font-bold text-white ${avatarColor(headerName)}`}
-                >
-                  {initials(headerName)}
-                </div>
-              )}
-              <div className="text-center">
-                <h2 className="text-2xl font-bold text-neutral-800">
-                  {isBiasTab ? "Bias & Compliance" : headerName}
-                </h2>
-                <p className="text-sm text-neutral-400">
-                  {isBiasTab ? "Questions flagged during the interview" : headerRole}
-                </p>
+              <div
+                className={`h-16 w-16 rounded-pill ${flex.rowCenter} text-xl font-bold text-white ${avatarColor(headerName)}`}
+              >
+                {initials(headerName)}
               </div>
-              <div className={`${flex.row} gap-2 pt-1`}>
+              <div className="text-center">
+                <h2 className="text-2xl font-bold text-neutral-800">{headerName}</h2>
+                {headerRole && <p className="text-sm text-neutral-400">{headerRole}</p>}
+              </div>
+              <div className={`${flex.row} gap-3 pt-1`}>
                 <button
                   type="button"
                   onClick={() => setActiveTab("candidate")}
@@ -448,39 +329,25 @@ function InterviewReportModal({
                 <button
                   type="button"
                   onClick={() => setActiveTab("interviewer")}
-                  className={tabClass(activeTab === "interviewer")}
+                  className={tabClass(!isCandidateTab)}
                 >
                   INTERVIEWER
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setActiveTab("bias")}
-                  className={`rounded-xl px-4 py-0.5 text-sm font-semibold transition-colors ${flex.row} items-center gap-1.5 ${
-                    isBiasTab
-                      ? "bg-amber-500 text-white"
-                      : "bg-amber-100 text-amber-700 hover:bg-amber-200"
-                  }`}
-                >
-                  BIAS
-                  {biasCount > 0 && (
-                    <span
-                      className={`rounded-pill px-1.5 text-[10px] font-bold leading-4 ${
-                        isBiasTab ? "bg-white/30 text-white" : "bg-amber-500 text-white"
-                      }`}
-                    >
-                      {biasCount}
-                    </span>
-                  )}
                 </button>
               </div>
             </div>
 
             {isCandidateTab ? (
-              <ReportBody report={data.candidate_report} scores={data.scores} />
-            ) : isBiasTab ? (
-              <BiasTabBody incidents={data.bias_incidents} />
+              <ReportBody
+                report={data.candidate_report}
+                scores={data.scores}
+                showRequirements
+              />
             ) : (
-              <ReportBody report={data.interviewer_report} scores={null} />
+              <ReportBody
+                report={data.interviewer_report}
+                scores={null}
+                showRequirements={false}
+              />
             )}
 
             <div className={`${flex.row} gap-3 pt-1`}>
@@ -513,10 +380,35 @@ function InterviewReportModal({
 // text, roomier spacing.
 function QuestionCard({ q, onMoreLike, onIgnore, isGeneratingSimilar }) {
   const [whyOpen, setWhyOpen] = useState(false);
+  // Breathe the glow for a few seconds when the card first appears as "new"
+  // (freshly-generated follow-up), then let it settle so the strip isn't
+  // permanently animated.
+  const [glow, setGlow] = useState(Boolean(q.isNew));
+  useEffect(() => {
+    if (!q.isNew) return undefined;
+    const t = setTimeout(() => setGlow(false), 6000);
+    return () => clearTimeout(t);
+  }, [q.isNew]);
+
   return (
-    <div className="flex w-[290px] shrink-0 flex-col rounded-2xl border border-neutral-200 bg-neutral-0 p-4">
+    <div
+      className={`flex w-[290px] shrink-0 flex-col rounded-2xl border bg-neutral-0 p-4 ${
+        glow ? "new-question-glow" : "border-neutral-200"
+      }`}
+    >
       <div className="mb-3 flex items-center justify-between gap-2 shrink-0">
-        <span className={`${badge.sm} ${q.categoryColor}`}>{q.category}</span>
+        <div className="flex min-w-0 items-center gap-1.5">
+          <span className={`${badge.sm} ${q.categoryColor}`}>{q.category}</span>
+          {q.isFollowUp && (
+            <span className="inline-flex items-center gap-1 rounded-pill bg-primary-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-primary-600">
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="9 14 4 9 9 4" />
+                <path d="M4 9h10a6 6 0 0 1 6 6v2" />
+              </svg>
+              Follow-up
+            </span>
+          )}
+        </div>
         <div className={`${flex.row} gap-1 text-neutral-300`}>
           <button className="rounded-lg p-1 transition-colors hover:bg-mint-50 hover:text-mint-500">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -1464,7 +1356,10 @@ export default function InterviewPage() {
   async function startMicOnly() {
     const interviewerLabel = user?.full_name || "Interviewer";
     try {
-      wsRef.current = createTranscriptionSocket(interviewerLabel, partialEntryRef);
+      // role="interviewer" is REQUIRED - the backend only runs the live bias
+      // check on the interviewer's own mic connection. Without it, biased
+      // questions are never flagged.
+      wsRef.current = createTranscriptionSocket(interviewerLabel, partialEntryRef, "interviewer");
       setStatus("Requesting microphone access...");
 
       const micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -1525,7 +1420,9 @@ export default function InterviewPage() {
       mediaStreamRef.current = displayStream;
 
       if (displayStream.getAudioTracks().length > 0) {
-        wsDisplayRef.current = createTranscriptionSocket(candidateLabel, displayPartialEntryRef);
+        // role="candidate": the display-audio side is the candidate's speech,
+        // which drives follow-up question generation (and must NOT be bias-checked).
+        wsDisplayRef.current = createTranscriptionSocket(candidateLabel, displayPartialEntryRef, "candidate");
 
         const displaySource = audioContextRef.current.createMediaStreamSource(displayStream);
         const displayProcessor = audioContextRef.current.createScriptProcessor(4096, 1, 1);
@@ -1907,7 +1804,9 @@ export default function InterviewPage() {
         .map((entry) => `${entry.speaker}: ${entry.text}`)
         .join("\n");
 
-      const response = await fetch(
+      // authedFetch (not bare fetch) so this keeps working if the endpoint
+      // ever gains an auth dependency - matches the initial-questions call.
+      const response = await authedFetch(
         `/api/interview-questions/${jobId}/follow-up`,
         {
           method: "POST",
@@ -1922,7 +1821,7 @@ export default function InterviewPage() {
         }
       );
 
-      const data = await response.json();
+      const data = await response.json().catch(() => ({}));
 
       if (!response.ok) {
         throw new Error(

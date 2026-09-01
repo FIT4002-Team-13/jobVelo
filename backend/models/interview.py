@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 # Interview cycle for scheduling + running + post-interview state.
 InterviewStatus = Literal[
@@ -19,6 +19,32 @@ class TranscriptEntry(BaseModel):
     comment: str | None = None
 
 
+class EvidenceRef(BaseModel):
+    """One timestamped transcript quote backing a feedback point (US28).
+
+    `timestamp` is the minutes:seconds marker from the transcript entry the
+    quote came from; `quote` is a short verbatim snippet of the candidate's
+    own words. The frontend hides these behind a per-point disclosure so the
+    report stays scannable but every claim is auditable.
+    """
+
+    timestamp: str = ""
+    quote: str
+
+
+class FeedbackPoint(BaseModel):
+    """A single strength/improvement point plus 0-2 pieces of transcript
+    evidence.
+
+    Backward compatibility: reports generated before US28 stored each item
+    as a plain string, so the section validator below coerces a bare string
+    into `FeedbackPoint(point=<string>, evidence=[])` - old documents (and
+    any LLM run that still emits strings) keep loading without a migration.
+    """
+
+    point: str
+    evidence: list[EvidenceRef] = Field(default_factory=list)
+    
 class BiasIncident(BaseModel):
     """One question the live bias checker flagged during the interview.
 
@@ -40,8 +66,37 @@ class InterviewFeedbackSection(BaseModel):
     Create/update payload for one section of the interview feedback report.
     """
 
-    items: list[str] = Field(default_factory=list)
+    items: list[FeedbackPoint] = Field(default_factory=list)
+    # Kept for backward compatibility with pre-US28 reports; the per-point
+    # evidence has superseded it, so new reports leave it null.
     justification: str | None = None
+
+    @field_validator("items", mode="before")
+    @classmethod
+    def _coerce_items(cls, value):
+        """Accept the legacy list[str] shape as well as list[FeedbackPoint]."""
+        if not isinstance(value, list):
+            return value
+        return [
+            {"point": item, "evidence": []} if isinstance(item, str) else item
+            for item in value
+        ]
+
+
+class RequirementMapping(BaseModel):
+    """One job requirement matched against the candidate's answers.
+
+    There's no structured requirements list on a job (just a free-text
+    `description`), so `requirement` is itself LLM-extracted from that
+    description/title at report-generation time - see US28. `evidence`
+    carries the timestamped candidate quotes that show the requirement was
+    addressed (empty when it wasn't).
+    """
+
+    requirement: str
+    addressed: bool
+    justification: str = ""
+    evidence: list[EvidenceRef] = Field(default_factory=list)
 
 
 class InterviewFeedback(BaseModel):
@@ -56,6 +111,9 @@ class InterviewFeedback(BaseModel):
     improvements: InterviewFeedbackSection = Field(
         default_factory=InterviewFeedbackSection
     )
+    requirements_mapping: list[RequirementMapping] = Field(
+        default_factory=list
+    )
 
 
 class InterviewScores(BaseModel):
@@ -69,14 +127,10 @@ class InterviewScores(BaseModel):
 
 class InterviewCompleteRequest(BaseModel):
     """Payload for POST /{intv_id}/complete. The transcript is optional -
-    when omitted the server uses whatever the periodic autosave stored.
-    Bounded so a hostile/buggy client can't post an arbitrarily large body."""
+    when omitted the server uses whatever the periodic autosave stored."""
 
-    transcript: list[TranscriptEntry] | None = Field(default=None, max_length=5000)
+    transcript: list[TranscriptEntry] | None = None
     duration_seconds: int | None = Field(default=None, ge=0)
-    # Bias incidents the live checker flagged during this session. The client
-    # accumulates every one (uncapped, dismissal-proof) and posts them here so
-    # they land in the persisted report - the live banner only keeps the last 3.
     bias_incidents: list[BiasIncident] | None = Field(default=None, max_length=500)
 
 
@@ -91,6 +145,9 @@ class InterviewCompleteOut(BaseModel):
     scores: InterviewScores | None = None
     candidate_report: InterviewFeedback
     interviewer_report: InterviewFeedback
+
+    transcript: list[TranscriptEntry] | None = Field(default=None, max_length=5000)
+    duration_seconds: int | None = Field(default=None, ge=0)
     # Bias questions flagged live during the interview, echoed back so the
     # completion popup can show them in the report. Empty when none fired.
     bias_incidents: list[BiasIncident] = Field(default_factory=list)

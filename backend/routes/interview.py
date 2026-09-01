@@ -341,30 +341,6 @@ def _clamp_score(value) -> float:
         return 0.0
 
 
-def _transcript_to_text(entries: list[dict]) -> str:
-    """Flatten transcript entries into "[mm:ss] Speaker: text" lines for
-    the LLM. Skips empty lines and in-flight partials defensively.
-    Truncates oldest turns when the result exceeds _TRANSCRIPT_CHAR_BUDGET."""
-    lines = []
-    for e in entries or []:
-        text = (e.get("text") or "").strip()
-        if not text:
-            continue
-        speaker = e.get("speaker") or "Unknown"
-        timestamp = e.get("timestamp") or ""
-        prefix = f"[{timestamp}] " if timestamp else ""
-        lines.append(f"{prefix}{speaker}: {text}")
-
-    full = "\n".join(lines)
-    if len(full) <= _TRANSCRIPT_CHAR_BUDGET:
-        return full
-
-    marker = "[earlier transcript truncated]\n"
-    while lines and len(marker + "\n".join(lines)) > _TRANSCRIPT_CHAR_BUDGET:
-        lines.pop(0)
-    return marker + "\n".join(lines)
-
-
 def _has_non_interviewer_speech(
     entries: list[dict], interviewer_names: set[str]
 ) -> bool:
@@ -884,6 +860,70 @@ async def download_interviewer_report(
     user: dict = Depends(get_current_user),
 ) -> Response:
     return await _report_pdf_response(intv_id, "interviewer", user)
+
+
+def _merge_consecutive_turns(entries: list[dict]) -> list[dict]:
+    """Merge back-to-back fragments from the SAME speaker into one turn.
+
+    Live speech-to-text emits many short partial fragments per utterance,
+    each with its own timestamp - so a single spoken sentence is split
+    across several entries. When the report LLM later quotes "verbatim from
+    one line" it lands on a fragment and the evidence reads as a cut-off
+    half-sentence. Stitching consecutive same-speaker fragments into one
+    block (keeping the FIRST fragment's timestamp as the turn's marker) means
+    each line the LLM sees is a whole utterance, so it can quote a complete
+    sentence anchored to a real timestamp.
+    """
+    merged: list[dict] = []
+    for e in entries or []:
+        text = (e.get("text") or "").strip()
+        if not text:
+            continue
+        speaker = e.get("speaker") or "Unknown"
+        if merged and merged[-1]["speaker"] == speaker:
+            # Same speaker still talking - append to the open turn. A space
+            # joins fragments; existing terminal punctuation is preserved.
+            merged[-1]["text"] = f"{merged[-1]['text']} {text}".strip()
+        else:
+            merged.append(
+                {
+                    "speaker": speaker,
+                    "timestamp": e.get("timestamp") or "",
+                    "text": text,
+                }
+            )
+    return merged
+
+
+def _transcript_to_text(entries: list[dict]) -> str:
+    """Flatten transcript entries into "[mm:ss] Speaker: text" lines for the
+    LLM, one line per speaker TURN (consecutive same-speaker fragments are
+    merged first) so quotes come out as complete sentences, not fragments.
+
+    Very long interviews are truncated to _TRANSCRIPT_CHAR_BUDGET so a huge
+    transcript can never blow the model's context: oldest whole turns are
+    dropped first, and a single oversized turn is head-trimmed as a last
+    resort. The most recent content (what the report is really about) is
+    always kept, flagged with a truncation marker."""
+    lines = []
+    for e in _merge_consecutive_turns(entries):
+        timestamp = e.get("timestamp") or ""
+        prefix = f"[{timestamp}] " if timestamp else ""
+        lines.append(f"{prefix}{e['speaker']}: {e['text']}")
+
+    full = "\n".join(lines)
+    if len(full) <= _TRANSCRIPT_CHAR_BUDGET:
+        return full
+
+    marker = "[earlier transcript truncated]\n"
+    while len(lines) > 1 and len(marker + "\n".join(lines)) > _TRANSCRIPT_CHAR_BUDGET:
+        lines.pop(0)
+    body = "\n".join(lines)
+    # One remaining turn can still exceed the budget - keep its most recent tail.
+    keep = _TRANSCRIPT_CHAR_BUDGET - len(marker)
+    if len(body) > keep:
+        body = body[-keep:]
+    return marker + body
 
 
 @router.patch(

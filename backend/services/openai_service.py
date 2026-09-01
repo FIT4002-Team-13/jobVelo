@@ -415,28 +415,67 @@ JSON object with EXACTLY this shape:
   }},
   "candidate_report": {{          // evaluates the CANDIDATE's performance
     "summary": string,           // 2-3 sentences, plain English
-    "strengths":    {{ "items": [string], "justification": string }},
-    "improvements": {{ "items": [string], "justification": string }}
+    "strengths":    {{ "items": [ {{ "point": string, "evidence": [ {{ "timestamp": string, "quote": string }} ] }} ] }},
+    "improvements": {{ "items": [ {{ "point": string, "evidence": [ {{ "timestamp": string, "quote": string }} ] }} ] }},
+    "requirements_mapping": [    // 3-6 key requirements from the job
+      {{                         // description/title, each matched against
+        "requirement":   string, // the candidate's actual answers
+        "addressed":     boolean,
+        "evidence":      [ {{ "timestamp": string, "quote": string }} ]
+      }}
+    ]
   }},
   "interviewer_report": {{        // evaluates how the INTERVIEWER ran it
     "summary": string,
-    "strengths":    {{ "items": [string], "justification": string }},
-    "improvements": {{ "items": [string], "justification": string }}
+    "strengths":    {{ "items": [ {{ "point": string, "evidence": [ {{ "timestamp": string, "quote": string }} ] }} ] }},
+    "improvements": {{ "items": [ {{ "point": string, "evidence": [ {{ "timestamp": string, "quote": string }} ] }} ] }}
   }}
 }}
 
 Rules:
 - Output ONLY valid JSON. No prose, no markdown fences.
-- 2-4 items per strengths/improvements list; each item is a short phrase
-  (under 12 words) grounded in something that actually happened in the
-  transcript. `justification` is 1-2 sentences citing evidence.
-- Attribute every candidate claim or trait ONLY to lines spoken by the
-  candidate's labeled speaker (see the interviewer/candidate speaker labels
-  given below - do not guess the role mapping from names or phrasing).
-  Never infer candidate behaviour from interviewer speech, silence, or
-  transcript formatting. If the candidate's labeled lines are sparse or
-  absent, say so plainly in candidate_report.summary and leave
-  strengths/improvements items empty rather than guessing.
+- 2-4 items per strengths/improvements list. Each item's `point` is a short
+  phrase (under 12 words) grounded in something that actually happened in
+  the transcript.
+- EVIDENCE: attach a transcript quote ONLY when a specific line clearly
+  supports the point. When one exists, add 1-2 evidence entries (never more
+  than 2). Each transcript line is one whole speaker turn; quote ONE
+  COMPLETE SENTENCE from it verbatim - start at a sentence beginning and end
+  at its natural full stop / question mark. NEVER cut a sentence off in the
+  middle or quote a dangling fragment; if the only relevant words are a
+  fragment, quote the smallest complete sentence that contains them. Keep it
+  reasonably short (roughly under 30 words). Use that line's `timestamp`
+  exactly as it appears (the "mm:ss" marker next to the speaker). Quote real
+  words - never paraphrase, never invent a quote, never fabricate a
+  timestamp. If no line cleanly supports the point, leave `evidence` as an
+  empty array []. Do NOT stretch, pad, or force a quote to fill the slot -
+  a point with no clean supporting line should simply have empty evidence.
+  Quality over coverage.
+- Attribute every candidate claim, trait, or quote ONLY to lines spoken by
+  the candidate's labeled speaker (see the interviewer/candidate speaker
+  labels below - do not guess the role mapping from names or phrasing).
+  Strengths/improvements/requirement evidence in the CANDIDATE report must
+  quote the candidate's own lines; evidence in the INTERVIEWER report must
+  quote the interviewer's lines. Never infer candidate behaviour from
+  interviewer speech, silence, or transcript formatting. If the candidate's
+  labeled lines are sparse or absent, say so plainly in
+  candidate_report.summary and leave its strengths/improvements items empty
+  rather than guessing.
+- `requirements_mapping` (candidate_report only): ALWAYS populate this with
+  3-6 of the most important skills/responsibilities/expectations from the job
+  description (fall back to the job title if the description is thin). These
+  come from the JOB, not the candidate - so produce them even when the
+  candidate's answers were thin, brief, evasive, or off-topic. A sparse
+  interview does NOT mean an empty list; it means more requirements are
+  simply marked `addressed: false` (a Gap). This list must be populated
+  independently of how many strengths/improvements you found - never omit it
+  just because those lists came out short. Each `requirement` is a short
+  phrase in your own words, not copied verbatim. Set `addressed: true` only
+  when the candidate's own labeled lines actually speak to that requirement;
+  when true, include 1-2 supporting quotes if a clear line exists (otherwise
+  leave `evidence` empty - same no-fabrication rule). When `addressed` is
+  false, leave `evidence` an empty array. The ONLY case where this list may
+  be empty is when there is NO candidate speech at all in the transcript.
 - Plain, conversational English. Refer to people as "they"/"them".
 - Score against the target role's expectations; be honest, not generous.
   A thin or evasive transcript should score low.
@@ -464,7 +503,16 @@ async def generate_interview_reports(
     candidate_speaker_label: str | None = None,
     candidate_speech_detected: bool = True,
 ) -> dict[str, Any]:
-    """One call, both post-interview reports + the three 0-10 ratings."""
+    """One call, both post-interview reports + the three 0-10 ratings.
+
+    Optional context sharpens the output: the job description becomes the
+    yardstick for skill scoring, the pre-interview CV analysis frames what
+    the interview was supposed to verify (with an explicit anchoring guard
+    so its scores aren't parroted), and the duration calibrates confidence.
+
+    Returns the parsed JSON dict; the route validates it against the
+    Pydantic models and clamps/rejects anything malformed.
+    """
     context_parts = [f"Target role: {job_title or 'the role'}"]
     if job_description and job_description.strip():
         context_parts.append(
