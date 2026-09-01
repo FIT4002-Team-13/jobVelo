@@ -74,13 +74,13 @@ async def create_invitation(
     for _ in range(5):
         code = _generate_code()
         doc = {
-            "comp_id":    admin["comp_id"],
-            "code":       code,
-            "role":       payload.role,
-            "status":     "active",
-            "user_id":    None,
+            "comp_id": admin["comp_id"],
+            "code": code,
+            "role": payload.role,
+            "status": "active",
+            "user_id": None,
             "created_at": now,
-            "used_at":    None,
+            "used_at": None,
         }
         try:
             result = await db.invitations.insert_one(doc)

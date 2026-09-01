@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import Sidebar from '../components/common/Sidebar'
-import { page, card } from '../styles/layout'
+import { page, card, modal } from '../styles/layout'
 import { useAuth } from '../lib/AuthContext.jsx'
 import { authedFetch } from '../lib/api.js'
 
@@ -10,17 +10,17 @@ import { authedFetch } from '../lib/api.js'
 // Monday-first, matching how people plan a work week.
 const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 
-// Solid event-pill palette (Google-Calendar-style saturated chips). Keyed by
-// the application status that rides on each row; the soft-tint versions of
-// the same colours are used for status chips elsewhere in the app.
+// Tinted event-pill palette (soft chip + coloured left accent). Kept light on
+// purpose so the solid "today" date badge stays the most saturated thing on
+// the grid and is easy to spot. Keyed by the application status on each row.
 const PILL_STYLES = {
-  SCHEDULED:       'bg-primary-500 hover:bg-primary-600 text-white',
-  'IN PROGRESS':   'bg-sky-500 hover:bg-sky-600 text-white',
-  COMPLETED:       'bg-mint-500 hover:bg-mint-600 text-white',
-  EVALUATED:       'bg-mint-500 hover:bg-mint-600 text-white',
-  HIRED:           'bg-mint-600 hover:bg-mint-700 text-white',
-  REJECTED:        'bg-coral-400 hover:bg-coral-500 text-white',
-  CANCELLED:       'bg-neutral-300 hover:bg-neutral-400 text-neutral-600',
+  SCHEDULED:       'bg-primary-100 hover:bg-primary-200 text-primary-700 border-l-2 border-primary-500',
+  'IN PROGRESS':   'bg-amber-100 hover:bg-amber-200 text-amber-700 border-l-2 border-amber-500',
+  COMPLETED:       'bg-mint-100 hover:bg-mint-200 text-mint-700 border-l-2 border-mint-500',
+  EVALUATED:       'bg-mint-100 hover:bg-mint-200 text-mint-700 border-l-2 border-mint-500',
+  HIRED:           'bg-mint-100 hover:bg-mint-200 text-mint-700 border-l-2 border-mint-600',
+  REJECTED:        'bg-coral-100 hover:bg-coral-200 text-coral-700 border-l-2 border-coral-500',
+  CANCELLED:       'bg-neutral-100 hover:bg-neutral-200 text-neutral-500 border-l-2 border-neutral-300',
 }
 
 // Soft-tint chip palette for the hover card - mirrors the status pills on
@@ -28,7 +28,7 @@ const PILL_STYLES = {
 const CHIP_STYLES = {
   'NOT SCHEDULED': 'bg-neutral-100 text-neutral-500',
   SCHEDULED:       'bg-primary-100 text-primary-600',
-  'IN PROGRESS':   'bg-sky-100 text-sky-600',
+  'IN PROGRESS':   'bg-amber-100 text-amber-700',
   COMPLETED:       'bg-mint-100 text-mint-700',
   EVALUATED:       'bg-mint-100 text-mint-700',
   HIRED:           'bg-mint-500 text-white',
@@ -37,7 +37,7 @@ const CHIP_STYLES = {
 
 const LEGEND = [
   { label: 'Scheduled',   dot: 'bg-primary-500' },
-  { label: 'In progress', dot: 'bg-sky-500' },
+  { label: 'In progress', dot: 'bg-amber-500' },
   { label: 'Completed',   dot: 'bg-mint-500' },
 ]
 
@@ -52,7 +52,7 @@ function dateKey(d) {
 }
 
 function formatTime(d) {
-  return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
+  return d.toLocaleTimeString('en-AU', { hour: 'numeric', minute: '2-digit', hour12: true })
 }
 
 function formatLongDate(d) {
@@ -93,7 +93,7 @@ function EventPill({ ev, onOpen, direction = 'down', align = 'center' }) {
         type="button"
         onClick={onOpen}
         className={`w-full truncate rounded-md px-1.5 py-0.5 text-left text-[11px] font-semibold leading-4 transition-colors ${
-          PILL_STYLES[ev.status] ?? 'bg-neutral-400 text-white'
+          PILL_STYLES[ev.status] ?? 'bg-neutral-100 text-neutral-500 border-l-2 border-neutral-300'
         }`}
       >
         {formatTime(ev.when)} · {ev.candidate_name}
@@ -144,6 +144,7 @@ function EventPill({ ev, onOpen, direction = 'down', align = 'center' }) {
 export default function SchedulesPage() {
   const { user } = useAuth()
   const navigate = useNavigate()
+  const isInterviewer = user?.role === 'interviewer'
 
   const today = new Date()
   const [year, setYear] = useState(today.getFullYear())
@@ -152,6 +153,9 @@ export default function SchedulesPage() {
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  // Day whose full schedule is open in the overflow modal - null = closed.
+  // Set by clicking "+N more" on a crowded day cell.
+  const [dayDetail, setDayDetail] = useState(null)
 
   useEffect(() => {
     async function load() {
@@ -191,7 +195,7 @@ export default function SchedulesPage() {
   }, [rows])
 
   const cells = useMemo(() => buildMonthCells(year, month), [year, month])
-  const monthLabel = new Date(year, month, 1).toLocaleDateString('en-US', {
+  const monthLabel = new Date(year, month, 1).toLocaleDateString('en-AU', {
     month: 'long',
     year: 'numeric',
   })
@@ -215,13 +219,14 @@ export default function SchedulesPage() {
     <div className={page.shell}>
       <Sidebar />
 
-      <main className={page.main}>
-        {/* Header - same skeleton as the Jobs / Applications pages. */}
-        <div className="mb-6 flex items-start justify-between">
+      <div className="flex-1 flex flex-col overflow-hidden">
+        <header className="bg-neutral-0 border-b border-neutral-200 px-10 py-6 shrink-0 flex items-start justify-between">
           <div>
             <h1 className="text-4xl font-extrabold tracking-tight text-neutral-800">Schedules</h1>
             <p className="mt-1 text-xs text-neutral-400">
-              Your upcoming interviews at a glance
+              {isInterviewer
+                ? 'Your upcoming interviews at a glance'
+                : "Your team's interviews at a glance"}
             </p>
           </div>
 
@@ -234,7 +239,9 @@ export default function SchedulesPage() {
               </span>
             ))}
           </div>
-        </div>
+        </header>
+
+        <main className="flex-1 overflow-y-auto px-10 py-8">
 
         {/* Month controls */}
         <div className="mb-4 flex items-center gap-3">
@@ -325,15 +332,17 @@ export default function SchedulesPage() {
                         />
                       ))}
                       {hidden > 0 && (
-                        <p
-                          className="px-1.5 text-[11px] font-medium text-neutral-400"
-                          title={dayEvents
-                            .slice(MAX_PILLS_PER_DAY)
-                            .map((ev) => `${formatTime(ev.when)} ${ev.candidate_name} — ${ev.job_title}`)
-                            .join('\n')}
+                        // Opens the day-detail modal with the FULL list -
+                        // the old version was inert text whose native
+                        // tooltip was the only (and easily missed) way to
+                        // see the overflowed interviews.
+                        <button
+                          type="button"
+                          onClick={() => setDayDetail({ date: day, events: dayEvents })}
+                          className="rounded-md px-1.5 py-0.5 text-left text-[11px] font-semibold text-neutral-500 transition-colors hover:bg-neutral-100 hover:text-primary-600"
                         >
                           +{hidden} more
-                        </p>
+                        </button>
                       )}
                     </div>
                   </div>
@@ -345,11 +354,82 @@ export default function SchedulesPage() {
 
         {!loading && !error && rows.every((r) => !r.interview_datetime) && (
           <p className="mt-4 text-sm text-neutral-400">
-            No scheduled interviews yet — interviews you&apos;re assigned to will appear here once
-            they have a date.
+            {isInterviewer
+              ? "No scheduled interviews yet — interviews you're assigned to will appear here once they have a date."
+              : 'No scheduled interviews yet — schedule one from a job page and it will appear here.'}
           </p>
         )}
       </main>
+    </div>
+      {/* Day-detail modal - the full schedule for a crowded day. Google-
+          Calendar-style: every interview listed, each row clickable through
+          to the candidate page. */}
+      {dayDetail && (
+        <div
+          className={modal.overlay}
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) setDayDetail(null)
+          }}
+        >
+          <div className="w-full max-w-md rounded-2xl bg-neutral-0 p-6 shadow-xl">
+            <div className="mb-4 flex items-start justify-between">
+              <div>
+                <h2 className="text-base font-bold text-neutral-800">
+                  {formatLongDate(dayDetail.date)}
+                </h2>
+                <p className="text-xs text-neutral-400">
+                  {dayDetail.events.length} interview{dayDetail.events.length === 1 ? '' : 's'}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setDayDetail(null)}
+                className="text-xl leading-none text-neutral-400 hover:text-neutral-700"
+                aria-label="Close"
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="scrollbar-primary flex max-h-[60vh] flex-col gap-2 overflow-y-auto">
+              {dayDetail.events.map((ev) => (
+                <button
+                  key={ev.application_id}
+                  type="button"
+                  onClick={() => {
+                    setDayDetail(null)
+                    if (ev.cand_id && ev.job_id) navigate(`/candidates/${ev.cand_id}/${ev.job_id}`)
+                  }}
+                  className="flex items-center gap-3 rounded-xl border border-neutral-100 px-3 py-2.5 text-left transition-colors hover:border-primary-200 hover:bg-primary-500/5"
+                >
+                  <span className="w-16 shrink-0 text-xs font-semibold tabular-nums text-neutral-500">
+                    {formatTime(ev.when)}
+                  </span>
+                  <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-pill bg-primary-500 text-[11px] font-bold text-white">
+                    {getInitials(ev.candidate_name)}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-semibold text-neutral-800">
+                      {ev.candidate_name}
+                    </p>
+                    <p className="truncate text-xs text-neutral-400">
+                      {ev.job_title}
+                      {ev.interviewer ? ` · ${ev.interviewer}` : ''}
+                    </p>
+                  </div>
+                  <span
+                    className={`shrink-0 rounded-pill px-2 py-0.5 text-[10px] font-bold uppercase ${
+                      CHIP_STYLES[ev.status] ?? 'bg-neutral-100 text-neutral-500'
+                    }`}
+                  >
+                    {ev.status}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

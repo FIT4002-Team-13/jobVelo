@@ -114,101 +114,110 @@ from datetime import datetime, timezone
 from typing import Any
 
 from bson import ObjectId
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
 from database import get_db
-from dependencies import get_current_comp_id
+from dependencies import get_current_comp_id, get_current_user
 
 router = APIRouter(prefix="/api/applications", tags=["applications"])
 
 
 def _safe_avg_score(job_candidate: dict[str, Any]) -> float | None:
+    ratings = job_candidate.get("ratings") or {}
+
     scores = [
-        job_candidate.get("communication_score"),
-        job_candidate.get("skill_score"),
-        job_candidate.get("problem_solving_score"),
+        (ratings.get("communication") or {}).get("score"),
+        (ratings.get("technical_skills") or {}).get("score"),
+        (ratings.get("problem_solving") or {}).get("score"),
     ]
-    valid_scores = [float(s) for s in scores if s is not None]
+
+    valid_scores = [float(score) for score in scores if score is not None]
+
     if not valid_scores:
         return None
+
     return round(sum(valid_scores) / len(valid_scores), 1)
 
 
 @router.get("")
 async def list_applications(
-    user_id: str = Query(..., description="Current user's MongoDB _id (string)"),
+    user_id: str | None = Query(
+        None,
+        description="Deprecated - scope now derives from the JWT and this is ignored.",
+    ),
+    user: dict = Depends(get_current_user),
     comp_id: ObjectId = Depends(get_current_comp_id),
 ) -> list[dict[str, Any]]:
+    """List applications, scoped by the caller's ROLE (from the JWT):
+
+    - interviewer: only the applications whose interview they are assigned
+      to (their personal workload).
+    - recruiter / admin / anyone else: every application in the company.
+      Previously the list was interviewer-scoped for all roles, so a
+      recruiter logged in to an empty Applications page and an empty
+      Schedules calendar even when the pipeline was full.
+
+    The legacy `user_id` query param is accepted but ignored - clients used
+    to pass their own id, and deriving scope server-side closes the hole
+    where any company user could enumerate a colleague's assignments.
+    """
     db = get_db()
-
-    if not user_id.strip():
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid user_id.",
-        )
-
-    # Tenant guard: the requested interviewer must belong to the caller's
-    # company. Without this, anyone could pass another company's user_id
-    # and read that interviewer's whole application list.
-    interviewer_user = (
-        await db.users.find_one({"_id": ObjectId(user_id), "comp_id": comp_id})
-        if ObjectId.is_valid(user_id) else None
-    )
-    if not interviewer_user:
-        raise HTTPException(status_code=404, detail="User not found")
-    interviewer_name = (
-        interviewer_user.get("full_name") or interviewer_user.get("username") or ""
-    )
 
     # Set of the company's job ids - used to drop any application row whose
     # job belongs to a different company (defence-in-depth on the join below).
     company_job_ids = {
         str(j["_id"]) async for j in db.jobs.find({"comp_id": comp_id}, {"_id": 1})
     }
-
-    # Find all interview links for this user directly by ID — no name lookup.
-    interview_user_links = await db.interview_users.find(
-        {"user_id": user_id}
-    ).to_list(length=2000)
-
-    interview_ids = [
-        link.get("intv_id")
-        for link in interview_user_links
-        if link.get("intv_id")
-    ]
-
-    interview_oids = [
-        ObjectId(iid)
-        for iid in interview_ids
-        if ObjectId.is_valid(iid)
-    ]
-
-    interviews = []
-    if interview_oids:
-        interviews = await db.interviews.find(
-            {"_id": {"$in": interview_oids}}
-        ).to_list(length=2000)
-
-    # Build a set of assigned candidate-job pairs.
-    assigned_pairs = {
-        (i.get("cand_id"), i.get("job_id"))
-        for i in interviews
-        if i.get("cand_id") and i.get("job_id")
-    }
-
-    if not assigned_pairs:
+    if not company_job_ids:
         return []
 
-    # Pull all job-candidate links, then keep only assigned ones.
-    all_job_candidates = await db.job_candidates.find({}).to_list(length=5000)
+    if user.get("role") == "interviewer":
+        # Interviewer: applications whose interview they're linked to.
+        interview_user_links = await db.interview_users.find(
+            {"user_id": str(user["_id"])}
+        ).to_list(length=2000)
 
-    matched_job_candidates = [
-        jc for jc in all_job_candidates
-        if (jc.get("cand_id"), jc.get("job_id")) in assigned_pairs
-        # Only keep rows whose job is in the caller's company.
-        and jc.get("job_id") in company_job_ids
-    ]
+        interview_oids = [
+            ObjectId(link["intv_id"])
+            for link in interview_user_links
+            if ObjectId.is_valid(link.get("intv_id", ""))
+        ]
+
+        interviews = []
+        if interview_oids:
+            interviews = await db.interviews.find(
+                {"_id": {"$in": interview_oids}}
+            ).to_list(length=2000)
+
+        assigned_pairs = {
+            (i.get("cand_id"), i.get("job_id"))
+            for i in interviews
+            if i.get("cand_id") and i.get("job_id")
+        }
+
+        # Fetch ONLY the links for the (cand, job) pairs this user is
+        # assigned to. The (cand_id, job_id) pair is unique-indexed, so this
+        # returns at most one doc per pair.
+        pair_filters = [
+            {"cand_id": cand_id, "job_id": job_id}
+            for (cand_id, job_id) in assigned_pairs
+            if job_id in company_job_ids
+        ]
+        if not pair_filters:
+            return []
+
+        matched_job_candidates = await db.job_candidates.find(
+            {"$or": pair_filters}
+        ).to_list(length=len(pair_filters))
+    else:
+        # Recruiter / admin / hiring manager: the whole company pipeline.
+        matched_job_candidates = await db.job_candidates.find(
+            {"job_id": {"$in": list(company_job_ids)}}
+        ).to_list(length=2000)
+        interviews = await db.interviews.find(
+            {"job_id": {"$in": list(company_job_ids)}}
+        ).to_list(length=2000)
 
     if not matched_job_candidates:
         return []
@@ -219,20 +228,67 @@ async def list_applications(
     candidate_oids = [ObjectId(cid) for cid in cand_ids if ObjectId.is_valid(cid)]
     job_oids = [ObjectId(jid) for jid in job_ids if ObjectId.is_valid(jid)]
 
-    candidates = await db.candidates.find(
-        {"_id": {"$in": candidate_oids}}
-    ).to_list(length=2000)
+    candidates = await db.candidates.find({"_id": {"$in": candidate_oids}}).to_list(
+        length=2000
+    )
 
-    jobs = await db.jobs.find(
-        {"_id": {"$in": job_oids}}
-    ).to_list(length=2000)
+    jobs = await db.jobs.find({"_id": {"$in": job_oids}}).to_list(length=2000)
 
     candidate_map = {str(c["_id"]): c for c in candidates}
     job_map = {str(j["_id"]): j for j in jobs}
-    interview_map = {
-        (i.get("cand_id"), i.get("job_id")): i
-        for i in interviews
-    }
+    interview_map = {(i.get("cand_id"), i.get("job_id")): i for i in interviews}
+
+    # Resolve each row's interviewer THROUGH its interview (interview ->
+    # interview_users -> users). The old code stamped the requesting user's
+    # own name on every row, which was only coincidentally right for the
+    # interviewer-scoped view and wrong for the company-wide one.
+    intv_id_strs = [str(i["_id"]) for i in interviews]
+    interviewer_id_by_intv: dict[str, str] = {}
+    if intv_id_strs:
+        async for link in db.interview_users.find(
+            {"intv_id": {"$in": intv_id_strs}}, {"intv_id": 1, "user_id": 1}
+        ):
+            interviewer_id_by_intv[link.get("intv_id")] = link.get("user_id")
+
+    interviewer_oids = [
+        ObjectId(uid)
+        for uid in set(interviewer_id_by_intv.values())
+        if uid and ObjectId.is_valid(uid)
+    ]
+    interviewers_by_id: dict[str, dict] = {}
+    if interviewer_oids:
+        interviewers_by_id = {
+            str(u["_id"]): u
+            for u in await db.users.find(
+                {"_id": {"$in": interviewer_oids}}, {"password_hash": 0}
+            ).to_list(length=2000)
+        }
+
+    # Resolve each row's interviewer THROUGH its interview (interview ->
+    # interview_users -> users). The old code stamped the requesting user's
+    # own name on every row, which was only coincidentally right for the
+    # interviewer-scoped view and wrong for the company-wide one.
+    intv_id_strs = [str(i["_id"]) for i in interviews]
+    interviewer_id_by_intv: dict[str, str] = {}
+    if intv_id_strs:
+        async for link in db.interview_users.find(
+            {"intv_id": {"$in": intv_id_strs}}, {"intv_id": 1, "user_id": 1}
+        ):
+            interviewer_id_by_intv[link.get("intv_id")] = link.get("user_id")
+
+    interviewer_oids = [
+        ObjectId(uid)
+        for uid in set(interviewer_id_by_intv.values())
+        if uid and ObjectId.is_valid(uid)
+    ]
+    interviewers_by_id: dict[str, dict] = {}
+    if interviewer_oids:
+        interviewers_by_id = {
+            str(u["_id"]): u
+            for u in await db.users.find(
+                {"_id": {"$in": interviewer_oids}}, {"password_hash": 0}
+            ).to_list(length=2000)
+        }
 
     # CV-analysis status per application, so the list's CV cell can link to
     # the analysis report (completed) or show a progress/failure hint
@@ -261,6 +317,21 @@ async def list_applications(
         if not candidate or not job:
             continue
 
+        intv_id = str(interview["_id"]) if interview else None
+        interviewer_uid = interviewer_id_by_intv.get(intv_id) if intv_id else None
+        interviewer_doc = (
+            interviewers_by_id.get(interviewer_uid) if interviewer_uid else None
+        )
+        interviewer_name = (
+            (
+                interviewer_doc.get("full_name")
+                or interviewer_doc.get("username")
+                or interviewer_doc.get("email")
+            )
+            if interviewer_doc
+            else None
+        )
+
         rows.append(
             {
                 "application_id": str(jc["_id"]),
@@ -270,15 +341,28 @@ async def list_applications(
                 "phone": candidate.get("cand_phone") or "",
                 "job_id": str(job["_id"]),
                 "job_title": job.get("title") or "",
-                "status": (interview.get("intv_status") or "not_scheduled").replace("_", " ").upper() if interview else "NOT SCHEDULED",
+                # When the candidate profile was created - the dashboard's
+                # admin summary uses it for the "+N this month" delta.
+                "cand_created_at": candidate.get("cand_created_at"),
+                "status": (interview.get("intv_status") or "not_scheduled")
+                .replace("_", " ")
+                .upper()
+                if interview
+                else "NOT SCHEDULED",
                 "cv_url": candidate.get("cand_cv_url"),
                 "cover_letter_url": candidate.get("cand_cover_letter_url"),
                 # None when no analysis exists for this application yet.
                 "cv_analysis_status": analysis_status_map.get(str(jc["_id"])),
                 "score": _safe_avg_score(jc),
-                "interview_datetime": interview.get("intv_date_time") if interview else None,
+                "interview_datetime": interview.get("intv_date_time")
+                if interview
+                else None,
                 "interviewer": interviewer_name,
-                "interviewer_user_id": user_id,
+                "interviewer_user_id": interviewer_uid,
+                # Interview id rides along so rows can deep-link to the
+                # interview page without an extra lookup.
+                "intv_id": intv_id,
+                "ratings": jc.get("ratings"),
             }
         )
 
@@ -289,7 +373,6 @@ async def list_applications(
             return datetime.min.replace(tzinfo=timezone.utc)
 
         return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
-
 
     rows.sort(key=_sort_key, reverse=True)
     return rows
@@ -321,8 +404,12 @@ async def update_application(
     old_job_id = application["job_id"]
     cand_id = application["cand_id"]
     for jid in (old_job_id, payload.job_id):
-        if not jid or not ObjectId.is_valid(jid) or not await db.jobs.find_one(
-            {"_id": ObjectId(jid), "comp_id": comp_id}, {"_id": 1}
+        if (
+            not jid
+            or not ObjectId.is_valid(jid)
+            or not await db.jobs.find_one(
+                {"_id": ObjectId(jid), "comp_id": comp_id}, {"_id": 1}
+            )
         ):
             raise HTTPException(status_code=404, detail="Application not found.")
 
@@ -340,10 +427,12 @@ async def update_application(
     )
 
     # 2. Find or create the interview for this candidate/job.
-    interview = await db.interviews.find_one({
-        "cand_id": cand_id,
-        "job_id": old_job_id,
-    })
+    interview = await db.interviews.find_one(
+        {
+            "cand_id": cand_id,
+            "job_id": old_job_id,
+        }
+    )
 
     scheduled_dt = None
     if payload.scheduled_at:
@@ -352,43 +441,45 @@ async def update_application(
         except ValueError:
             raise HTTPException(status_code=400, detail="Invalid scheduled_at.")
 
-    intv_status = "scheduled" if scheduled_dt else "not_scheduled"
-
     if interview:
-        # A finished (or cancelled) interview is immutable apart from the
-        # job link: recomputing its status/datetime here would silently
-        # downgrade "completed" back to "scheduled" whenever the candidate
-        # profile is edited, orphaning the reports and scores.
-        if interview.get("intv_status") in ("completed", "cancelled"):
-            interview_updates = {
-                "job_id": payload.job_id,
-                "intv_updated_at": now,
-            }
-        else:
-            interview_updates = {
-                "job_id": payload.job_id,
-                "intv_date_time": scheduled_dt,
-                "intv_status": intv_status,
-                "intv_updated_at": now,
-            }
+        existing_status = interview.get("intv_status", "not_scheduled")
+        interview_set: dict = {
+            "job_id": payload.job_id,
+            "intv_updated_at": now,
+        }
+        # Never overwrite the date/status on an interview that has already
+        # progressed past scheduling — editing candidate details (name,
+        # interviewer, etc.) must not reset an in-progress or completed
+        # interview back to not_scheduled and wipe the recorded date.
+        # We only touch date/status when:
+        #   - the interview hasn't started yet (not_scheduled / scheduled), AND
+        #   - a new date is being set, OR the user is explicitly clearing one.
+        if existing_status in ("not_scheduled", "scheduled"):
+            interview_set["intv_date_time"] = scheduled_dt
+            interview_set["intv_status"] = (
+                "scheduled" if scheduled_dt else "not_scheduled"
+            )
         await db.interviews.update_one(
             {"_id": interview["_id"]},
-            {"$set": interview_updates},
+            {"$set": interview_set},
         )
         interview = await db.interviews.find_one({"_id": interview["_id"]})
     else:
-        result = await db.interviews.insert_one({
-            "cand_id": cand_id,
-            "job_id": payload.job_id,
-            "intv_date_time": scheduled_dt,
-            "intv_location": None,
-            "intv_transcript": None,
-            "intv_status": intv_status,
-            "intv_candidate_report": None,
-            "intv_interviewer_report": None,
-            "intv_created_at": now,
-            "intv_updated_at": now,
-        })
+        intv_status = "scheduled" if scheduled_dt else "not_scheduled"
+        result = await db.interviews.insert_one(
+            {
+                "cand_id": cand_id,
+                "job_id": payload.job_id,
+                "intv_date_time": scheduled_dt,
+                "intv_location": None,
+                "intv_transcript": None,
+                "intv_status": intv_status,
+                "intv_candidate_report": None,
+                "intv_interviewer_report": None,
+                "intv_created_at": now,
+                "intv_updated_at": now,
+            }
+        )
         interview = await db.interviews.find_one({"_id": result.inserted_id})
 
     # 3. Update interview_users link only if an interviewer_user_id was provided.
@@ -402,23 +493,28 @@ async def update_application(
 
         # The interviewer being assigned must belong to the caller's company.
         if not await db.users.find_one(
-            {"_id": ObjectId(payload.interviewer_user_id), "comp_id": comp_id}, {"_id": 1}
+            {"_id": ObjectId(payload.interviewer_user_id), "comp_id": comp_id},
+            {"_id": 1},
         ):
             raise HTTPException(status_code=404, detail="Interviewer not found.")
 
-        existing_link = await db.interview_users.find_one({
-            "intv_id": intv_id_str,
-            "user_id": payload.interviewer_user_id,
-        })
+        existing_link = await db.interview_users.find_one(
+            {
+                "intv_id": intv_id_str,
+                "user_id": payload.interviewer_user_id,
+            }
+        )
 
         if not existing_link:
             await db.interview_users.delete_many({"intv_id": intv_id_str})
-            await db.interview_users.insert_one({
-                "user_id": payload.interviewer_user_id,
-                "intv_id": intv_id_str,
-                "intvuser_created_at": now,
-                "intvuser_updated_at": now,
-            })
+            await db.interview_users.insert_one(
+                {
+                    "user_id": payload.interviewer_user_id,
+                    "intv_id": intv_id_str,
+                    "intvuser_created_at": now,
+                    "intvuser_updated_at": now,
+                }
+            )
 
     return {
         "ok": True,
