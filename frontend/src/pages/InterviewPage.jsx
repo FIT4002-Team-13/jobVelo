@@ -1242,8 +1242,9 @@ export default function InterviewPage() {
 
   function createTranscriptionSocket(speaker, partialRef, role) {
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+    const wsBase = import.meta.env.VITE_WS_URL || `${protocol}//${window.location.host}`;
     const socket = new WebSocket(
-      `wss://jobvelo.onrender.com/api/realtime/transcribe?role=${role}`
+      `${wsBase}/api/realtime/transcribe?role=${role}`
     );
     socket.binaryType = "arraybuffer";
 
