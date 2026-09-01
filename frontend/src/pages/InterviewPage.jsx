@@ -2328,7 +2328,7 @@ export default function InterviewPage() {
             </div>
           )}
         </div>
-
+        </div>
         {/* Right — Assessment + Questions + Actions */}
         <div className={`flex-1 ${flex.col} gap-4 overflow-hidden`}>
           {/* Interview Sections */}
@@ -2461,7 +2461,6 @@ export default function InterviewPage() {
                 ? "View Report"
                 : "Complete"}
             </button>
-          </div>
           </div>
         </div>
       </div>
