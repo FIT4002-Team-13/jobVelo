@@ -38,10 +38,16 @@ test('US2 - login page loads with identifier and password fields', async ({ page
   await expect(page.getByRole('button', { name: /log in/i })).toBeVisible()
 })
 
-test('US2 - empty submission shows client-side error without hitting server', async ({ page }) => {
+test('US2 - empty submission does not hit the server and stays on login page', async ({ page }) => {
+  let serverCalled = false
+  await page.route('**/api/auth/login', (route) => {
+    serverCalled = true
+    route.continue()
+  })
   await page.goto('/login')
   await page.getByRole('button', { name: /log in/i }).click()
-  await expect(page.getByText(/please enter your username\/email and password/i)).toBeVisible()
+  await expect(page).toHaveURL('/login')
+  expect(serverCalled).toBe(false)
 })
 
 test('US2 - wrong credentials from server shows error and stays on login page', async ({ page }) => {
