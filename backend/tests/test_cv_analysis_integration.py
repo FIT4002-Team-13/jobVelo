@@ -122,7 +122,7 @@ async def test_cv_analysis_returns_400_when_no_resume_and_no_existing_analysis(
     db_client,
 ):
     """POST /api/cv-analysis without a CV file and no cached result must return 400."""
-    client, db = db_client
+    client, _db = db_client
 
     response = await client.post(
         "/api/cv-analysis",
