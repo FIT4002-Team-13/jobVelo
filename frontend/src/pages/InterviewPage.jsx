@@ -2279,6 +2279,7 @@ export default function InterviewPage() {
               {transcriptVisible ? "Hide" : "Show"}
             </button>
           </div> 
+          </div>
           {biasWarnings.length > 0 && (
             <div className={`${flex.col} gap-2 absolute top-12 bottom-0 left-0 right-0 z-50 overflow-y-auto px-6 pt-4 pb-6 scrollbar-primary`}>
               {biasWarnings.map((warning, index) => (
@@ -2327,8 +2328,9 @@ export default function InterviewPage() {
               />
             </div>
           )}
+        
         </div>
-        </div>
+
         {/* Right — Assessment + Questions + Actions */}
         <div className={`flex-1 ${flex.col} gap-4 overflow-hidden`}>
           {/* Interview Sections */}
