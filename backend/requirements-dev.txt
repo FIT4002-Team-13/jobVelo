@@ -2,3 +2,4 @@ pytest
 httpx
 pytest-asyncio
 ruff
+mongomock-motor
