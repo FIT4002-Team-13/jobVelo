@@ -111,9 +111,10 @@ function JobCard({ job, onEdit, onDelete }) {
   // fully-populated ones. Each "missing" value renders as a muted italic
   // placeholder (status pill = neutral chip, numbers = 0) instead of an
   // empty string that would collapse the line and ruin the grid rhythm.
-  // The display status (completed-interview override included) is computed
-  // once by the page so the filter menu and this pill can never disagree.
-  const status         = job.display_status || null
+  // The parent stamps each job with `display_status` (Pending / In Progress /
+  // Completed) derived from candidate interview completion, so the pill and
+  // the filter menu can never disagree. Fall back to the raw status defensively.
+  const status = job.display_status ?? job.status ?? null
   const description    = job.description?.trim()
   const interviewers   = job.interviewers?.length ?? 0
   const filled         = job.candidates_filled ?? 0

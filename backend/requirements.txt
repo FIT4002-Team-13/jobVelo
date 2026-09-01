@@ -26,4 +26,4 @@ google-genai==0.3.0
 # Multipart parsing for file uploads (CV analysis, etc.)
 python-multipart==0.0.12
 
-# PDF rendering for downloadable interview reports (services/report_pdf.py)
+
