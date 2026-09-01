@@ -41,8 +41,8 @@ class CvAnalysisPositionFit(BaseModel):
     """Three 0-10 scores rendered as the Position Fit Summary bars."""
 
     relevant_experience: float = 0.0
-    technical_fit:       float = 0.0
-    soft_skills:         float = 0.0
+    technical_fit: float = 0.0
+    soft_skills: float = 0.0
 
 
 # Lifecycle of an analysis document. The POST endpoint inserts the doc as
@@ -55,24 +55,24 @@ CvAnalysisStatus = Literal["processing", "completed", "failed"]
 class CvAnalysisOut(BaseModel):
     """Public response model used by every CV-analysis endpoint."""
 
-    analysis_id:         str
-    jobcand_id:          str
-    status:              CvAnalysisStatus = "completed"
+    analysis_id: str
+    jobcand_id: str
+    status: CvAnalysisStatus = "completed"
     # Human-readable failure reason, only set when status == "failed".
-    error:               str | None = None
-    candidate_name:      str | None = None
-    position_title:      str
-    position_fit:        CvAnalysisPositionFit
-    key_strengths:       list[CvAnalysisBullet] = []
-    improvements:        list[CvAnalysisBullet] = []
-    inconsistencies:     list[CvAnalysisBullet] = []
+    error: str | None = None
+    candidate_name: str | None = None
+    position_title: str
+    position_fit: CvAnalysisPositionFit
+    key_strengths: list[CvAnalysisBullet] = []
+    improvements: list[CvAnalysisBullet] = []
+    inconsistencies: list[CvAnalysisBullet] = []
     # Suggested questions the recruiter can ask, grounded in the CV / JD.
     interview_questions: list[CvAnalysisQuestion] = []
     # Storage paths so the frontend can preview the PDFs via /api/files.
-    cv_path:             str
-    cover_letter_path:   str | None = None
-    created_at:          datetime
+    cv_path: str
+    cover_letter_path: str | None = None
+    created_at: datetime
     # True when the response came from the cache (existing record) instead
     # of from a fresh LLM call. Lets the frontend show a subtle "cached"
     # indicator if it wants - cosmetic only.
-    cached:              bool = False
+    cached: bool = False

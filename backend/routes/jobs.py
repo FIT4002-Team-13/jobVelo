@@ -25,8 +25,24 @@ from pydantic import BaseModel, EmailStr, Field
 from database import get_db
 from dependencies import get_current_comp_id
 from models.job import JobCreate, JobOut, JobUpdate
+from services.file_storage import delete_upload
 
 router = APIRouter(prefix="/api/jobs", tags=["jobs"])
+
+
+async def _delete_cv_analyses_for_links(db, jobcand_ids: list[str]) -> None:
+    """Cascade helper: remove the cv_analyses docs for these job-candidate
+    links AND the PDF files they own. Best-effort on the files (the DB row
+    is the source of truth), exact on the docs."""
+    if not jobcand_ids:
+        return
+    async for doc in db.cv_analyses.find(
+        {"jobcand_id": {"$in": jobcand_ids}},
+        {"cv_path": 1, "cover_letter_path": 1},
+    ):
+        await delete_upload(doc.get("cv_path"))
+        await delete_upload(doc.get("cover_letter_path"))
+    await db.cv_analyses.delete_many({"jobcand_id": {"$in": jobcand_ids}})
 
 
 def _comp_oid(comp_id: str) -> ObjectId:
@@ -104,6 +120,7 @@ def _validate_oid(job_id: str) -> ObjectId:
 #         }
 #     return out
 
+
 async def _job_stats(db, job_ids: list[str]) -> dict[str, dict]:
     """Per-job stats derived live from job_candidates + interviews +
     interview_users. Count comes from job_candidates, interviewer names
@@ -113,8 +130,7 @@ async def _job_stats(db, job_ids: list[str]) -> dict[str, dict]:
         return {}
 
     out: dict[str, dict] = {
-        job_id: {"count": 0, "interviewers": []}
-        for job_id in job_ids
+        job_id: {"count": 0, "interviewers": []} for job_id in job_ids
     }
 
     # Candidate count is still purely the number of link rows.
@@ -126,9 +142,9 @@ async def _job_stats(db, job_ids: list[str]) -> dict[str, dict]:
         out[row["_id"]]["count"] = row["count"]
 
     # Pull all interviews for these jobs.
-    interviews = await db.interviews.find(
-        {"job_id": {"$in": job_ids}}
-    ).to_list(length=5000)
+    interviews = await db.interviews.find({"job_id": {"$in": job_ids}}).to_list(
+        length=5000
+    )
 
     if not interviews:
         return out
@@ -145,8 +161,7 @@ async def _job_stats(db, job_ids: list[str]) -> dict[str, dict]:
         link_pairs.add((link.get("cand_id"), link.get("job_id")))
 
     interviews = [
-        i for i in interviews
-        if (i.get("cand_id"), i.get("job_id")) in link_pairs
+        i for i in interviews if (i.get("cand_id"), i.get("job_id")) in link_pairs
     ]
 
     if not interviews:
@@ -188,9 +203,7 @@ async def _job_stats(db, job_ids: list[str]) -> dict[str, dict]:
             continue
 
         display_name = (
-            user.get("full_name")
-            or user.get("username")
-            or user.get("email")
+            user.get("full_name") or user.get("username") or user.get("email")
         )
         if display_name:
             names_by_job.setdefault(job_id, set()).add(display_name)
@@ -223,16 +236,18 @@ async def list_jobs(
 
     stats = await _job_stats(db, [str(j["_id"]) for j in jobs])
     return [
-        _serialize({
-            **j,
-            "interviewers":      stats.get(str(j["_id"]), {}).get("interviewers", []),
-            "candidates_filled": stats.get(str(j["_id"]), {}).get("count", 0),
-        })
+        _serialize(
+            {
+                **j,
+                "interviewers": stats.get(str(j["_id"]), {}).get("interviewers", []),
+                "candidates_filled": stats.get(str(j["_id"]), {}).get("count", 0),
+            }
+        )
         for j in jobs
     ]
 
 
-#@router.get("/{job_id}", response_model=JobOut)
+# @router.get("/{job_id}", response_model=JobOut)
 # async def get_job(
 #     job_id: str,
 #     db: AsyncIOMotorDatabase = Depends(get_db),
@@ -241,6 +256,7 @@ async def list_jobs(
 #     job = await db.jobs.find_one({"_id": oid})
 #     if job is None:
 #         raise HTTPException(status_code=404, detail="Job not found")
+
 
 #     # Count + interviewers both computed on read so a deleted candidate
 #     # row (or a dropped collection) doesn't leave the counter stale.
@@ -267,11 +283,13 @@ async def get_job(
 
     stats = await _job_stats(db, [job_id])
 
-    return _serialize({
-        **job,
-        "interviewers": stats.get(job_id, {}).get("interviewers", []),
-        "candidates_filled": stats.get(job_id, {}).get("count", 0),
-    })
+    return _serialize(
+        {
+            **job,
+            "interviewers": stats.get(job_id, {}).get("interviewers", []),
+            "candidates_filled": stats.get(job_id, {}).get("count", 0),
+        }
+    )
 
 
 @router.post("", response_model=JobOut, status_code=status.HTTP_201_CREATED)
@@ -323,7 +341,19 @@ async def update_job(
     )
     if result is None:
         raise HTTPException(status_code=404, detail="Job not found")
-    return _serialize(result)
+
+    # Return the same computed fields the list/get endpoints carry
+    # (candidates_filled + interviewers). Without them the frontend's
+    # optimistic card update rendered 0 candidates and an empty avatar
+    # stack until the next full refresh.
+    stats = await _job_stats(db, [job_id])
+    return _serialize(
+        {
+            **result,
+            "interviewers": stats.get(job_id, {}).get("interviewers", []),
+            "candidates_filled": stats.get(job_id, {}).get("count", 0),
+        }
+    )
 
 
 @router.delete(
@@ -338,18 +368,36 @@ async def delete_job(
     db: AsyncIOMotorDatabase = Depends(get_db),
     comp_id: ObjectId = Depends(get_current_comp_id),
 ):
-    """Delete the job AND all its job_candidates links so we don't leave
-    dangling rows pointing at a deleted job. The candidate docs themselves
-    are NOT deleted - candidates are shared across many jobs."""
+    """Delete the job AND everything hanging off it: job_candidates links,
+    interviews (+ interviewer links), and cv_analyses docs/files. The
+    candidate docs themselves are NOT deleted - candidates are shared
+    across many jobs.
+
+    Without the full cascade, orphaned interviews kept feeding the
+    dashboard status rollup (pinning candidates at "SCHEDULED" forever)
+    and analysis PDFs accumulated on disk unreachably."""
     oid = _validate_oid(job_id)
+
+    # Collect the dependent ids BEFORE deleting anything.
+    link_ids = [
+        str(link["_id"])
+        async for link in db.job_candidates.find({"job_id": job_id}, {"_id": 1})
+    ]
+    interview_ids = [
+        str(i["_id"]) async for i in db.interviews.find({"job_id": job_id}, {"_id": 1})
+    ]
 
     # Only delete if the job belongs to the caller's company.
     result = await db.jobs.delete_one({"_id": oid, "comp_id": comp_id})
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Job not found")
 
-    # Cascade: remove the link rows pointing at this job.
+    # Cascade: links, their CV analyses (+ files), interviews, interviewer links.
     await db.job_candidates.delete_many({"job_id": job_id})
+    await _delete_cv_analyses_for_links(db, link_ids)
+    if interview_ids:
+        await db.interview_users.delete_many({"intv_id": {"$in": interview_ids}})
+        await db.interviews.delete_many({"job_id": job_id})
 
 
 # ---------- Job ⇄ candidates view (compatibility for JobDetailPage) ----------
@@ -386,8 +434,14 @@ async def list_candidates_for_job(
 
     # Bulk fetch the candidates referenced by the links. Skip any invalid
     # cand_ids defensively so one bad row can't fail the whole query.
-    cand_oids = [ObjectId(lnk["cand_id"]) for lnk in links if ObjectId.is_valid(lnk.get("cand_id", ""))]
-    cand_docs = await db.candidates.find({"_id": {"$in": cand_oids}}).to_list(length=500)
+    cand_oids = [
+        ObjectId(lnk["cand_id"])
+        for lnk in links
+        if ObjectId.is_valid(lnk.get("cand_id", ""))
+    ]
+    cand_docs = await db.candidates.find({"_id": {"$in": cand_oids}}).to_list(
+        length=500
+    )
     cands_by_id = {str(c["_id"]): c for c in cand_docs}
 
     # Bulk-fetch interviews for this job, keyed by cand_id.
@@ -401,7 +455,9 @@ async def list_candidates_for_job(
         intv_user_links = await db.interview_users.find(
             {"intv_id": {"$in": interview_ids}}
         ).to_list(length=500)
-    user_id_by_intv = {lnk["intv_id"]: lnk["user_id"] for lnk in intv_user_links if lnk.get("intv_id")}
+    user_id_by_intv = {
+        lnk["intv_id"]: lnk["user_id"] for lnk in intv_user_links if lnk.get("intv_id")
+    }
 
     # Bulk-fetch users for those interviewers.
     user_ids = list({uid for uid in user_id_by_intv.values() if ObjectId.is_valid(uid)})
@@ -416,10 +472,12 @@ async def list_candidates_for_job(
     out = []
     for link in links:
         c = cands_by_id.get(link.get("cand_id"), {})
-        interview_docs = await db.interviews.find({
-            "job_id": job_id,
-            "cand_id": link.get("cand_id"),
-        }).to_list(length=20)
+        interview_docs = await db.interviews.find(
+            {
+                "job_id": job_id,
+                "cand_id": link.get("cand_id"),
+            }
+        ).to_list(length=20)
         completed_interview = next(
             (item for item in interview_docs if item.get("intv_status") == "completed"),
             None,
@@ -439,39 +497,55 @@ async def list_candidates_for_job(
         user_id = user_id_by_intv.get(intv_id) if intv_id else None
         user = users_by_id.get(user_id) if user_id else None
         interviewer_name = (
-            user.get("full_name") or user.get("username") or user.get("email")
-        ) if user else None
+            (user.get("full_name") or user.get("username") or user.get("email"))
+            if user
+            else None
+        )
 
         # scheduled_at from interview; fall back to stored field.
         scheduled_at = (
             interview.get("intv_date_time") if interview else link.get("scheduled_at")
         )
 
-        scores = [
-            link.get("communication_score"),
-            link.get("skill_score"),
-            link.get("problem_solving_score"),
-        ]
-        scores = [s for s in scores if s is not None]
-        avg = sum(scores) / len(scores) if scores else link.get("score")
+        ratings = link.get("ratings") or {}
 
-        out.append({
-            "id": str(link["_id"]),
-            "cand_id": str(c["_id"]) if c.get("_id") else cand_id,
-            "job_id": job_id,
-            "name": c.get("cand_full_name") or link.get("name", ""),
-            "email": c.get("cand_email"),
-            "phone": c.get("cand_phone"),
-            "status": (interview.get("intv_status") or "not_scheduled").replace("_", " ").upper() if interview else "NOT SCHEDULED",
-            "scheduled_at": scheduled_at,
-            "interviewer": interviewer_name,
-            "communication_score":   link.get("communication_score"),
-            "skill_score":           link.get("skill_score"),
-            "problem_solving_score": link.get("problem_solving_score"),
-            "score": avg,
-            "intv_completed": completed_interview is not None,
-            "intv_id": str(completed_interview["_id"]) if completed_interview else None,
-        })
+        scores = [
+            (ratings.get("communication") or {}).get("score"),
+            (ratings.get("technical_skills") or {}).get("score"),
+            (ratings.get("problem_solving") or {}).get("score"),
+        ]
+
+        scores = [score for score in scores if score is not None]
+
+        avg = round(sum(scores) / len(scores), 1) if scores else None
+
+        out.append(
+            {
+                "id": str(link["_id"]),
+                "cand_id": str(c["_id"]) if c.get("_id") else cand_id,
+                "job_id": job_id,
+                "name": c.get("cand_full_name") or link.get("name", ""),
+                "email": c.get("cand_email"),
+                "phone": c.get("cand_phone"),
+                # Document URLs ride along so the Edit Candidate modal (shared
+                # with the Applications page) can show the existing file names.
+                "cv_url": c.get("cand_cv_url"),
+                "cover_letter_url": c.get("cand_cover_letter_url"),
+                "status": (interview.get("intv_status") or "not_scheduled")
+                .replace("_", " ")
+                .upper()
+                if interview
+                else "NOT SCHEDULED",
+                "scheduled_at": scheduled_at,
+                "interviewer": interviewer_name,
+                "ratings": ratings or None,
+                "score": avg,
+                "intv_completed": completed_interview is not None,
+                "intv_id": str(completed_interview["_id"])
+                if completed_interview
+                else None,
+            }
+        )
     return out
 
 
@@ -508,14 +582,19 @@ async def remove_candidate_from_job(
         {"_id": ObjectId(jobcand_id), "job_id": job_id}
     )
     if not link:
-        raise HTTPException(status_code=404, detail="Candidate link not found on this job")
+        raise HTTPException(
+            status_code=404, detail="Candidate link not found on this job"
+        )
 
     cand_id = link.get("cand_id")
 
     # Scope by job_id too so an attacker can't delete a random link by id.
-    await db.job_candidates.delete_one(
-        {"_id": ObjectId(jobcand_id), "job_id": job_id}
-    )
+    await db.job_candidates.delete_one({"_id": ObjectId(jobcand_id), "job_id": job_id})
+
+    # Cascade the link's CV analysis (+ its PDF files) - re-linking the same
+    # candidate later creates a NEW jobcand_id, so the old analysis would be
+    # unreachable forever.
+    await _delete_cv_analyses_for_links(db, [jobcand_id])
 
     # Cascade: find and remove the interview(s) for this candidate/job, plus
     # any interview_users links pointing at them.
@@ -550,6 +629,7 @@ async def remove_candidate_from_job(
 #     interviewer: str | None = Field(default=None, max_length=100)
 #     scheduled_at: str | None = None
 
+
 class AddCandidateToJob(BaseModel):
     """Body for POST /api/jobs/{job_id}/candidates.
 
@@ -565,6 +645,78 @@ class AddCandidateToJob(BaseModel):
     cover_letter_url: str | None = None
     interviewer_user_id: str | None = None
     scheduled_at: str | None = None
+
+
+async def _link_row(
+    db,
+    link: dict,
+    job_id: str,
+    name,
+    email,
+    phone,
+    cv_url=None,
+    cover_letter_url=None,
+) -> dict:
+    """Build the same flat row shape GET /{job_id}/candidates returns, for a
+    single link. The POST endpoints return this so the optimistic row the
+    frontend appends renders identically to what a refresh would show
+    (status/interviewer/schedule included) instead of a hardcoded stub."""
+    cand_id = link.get("cand_id")
+    interview_docs = await db.interviews.find(
+        {"job_id": job_id, "cand_id": cand_id}
+    ).to_list(length=20)
+    # Last-wins mirrors the GET's dict-keying of interviews by cand_id.
+    interview = interview_docs[-1] if interview_docs else None
+    completed_interview = next(
+        (i for i in interview_docs if i.get("intv_status") == "completed"),
+        None,
+    )
+
+    interviewer_name = None
+    if interview is not None:
+        iu = await db.interview_users.find_one({"intv_id": str(interview["_id"])})
+        if iu and ObjectId.is_valid(iu.get("user_id", "")):
+            u = await db.users.find_one(
+                {"_id": ObjectId(iu["user_id"])}, {"password_hash": 0}
+            )
+            if u:
+                interviewer_name = (
+                    u.get("full_name") or u.get("username") or u.get("email")
+                )
+
+    scores = [
+        link.get("communication_score"),
+        link.get("skill_score"),
+        link.get("problem_solving_score"),
+    ]
+    scores = [s for s in scores if s is not None]
+    avg = sum(scores) / len(scores) if scores else link.get("score")
+
+    return {
+        "id": str(link["_id"]),
+        "cand_id": cand_id,
+        "job_id": job_id,
+        "name": name,
+        "email": email,
+        "phone": phone,
+        "cv_url": cv_url,
+        "cover_letter_url": cover_letter_url,
+        "status": (
+            (interview.get("intv_status") or "not_scheduled").replace("_", " ").upper()
+            if interview
+            else "NOT SCHEDULED"
+        ),
+        "scheduled_at": (
+            interview.get("intv_date_time") if interview else link.get("scheduled_at")
+        ),
+        "interviewer": interviewer_name,
+        "communication_score": link.get("communication_score"),
+        "skill_score": link.get("skill_score"),
+        "problem_solving_score": link.get("problem_solving_score"),
+        "score": avg,
+        "intv_completed": completed_interview is not None,
+        "intv_id": str(completed_interview["_id"]) if completed_interview else None,
+    }
 
 
 @router.post("/{job_id}/candidates", status_code=201)
@@ -595,6 +747,20 @@ async def add_candidate_to_job(
     now = datetime.now(timezone.utc)
     comp_id = job["comp_id"]  # ObjectId
 
+    # Validate the interviewer BEFORE creating anything, so a bad id can't
+    # leave a half-created candidate+link with no interview. Must be a real
+    # user in the caller's company (404, not 403 - don't reveal other
+    # companies' user ids).
+    if payload.interviewer_user_id:
+        if not ObjectId.is_valid(payload.interviewer_user_id):
+            raise HTTPException(status_code=400, detail="Invalid interviewer_user_id")
+        interviewer_user = await db.users.find_one(
+            {"_id": ObjectId(payload.interviewer_user_id), "comp_id": comp_id},
+            {"_id": 1},
+        )
+        if interviewer_user is None:
+            raise HTTPException(status_code=404, detail="Interviewer not found")
+
     # 1. Reuse existing candidate by (comp_id, email) if present.
     candidate = await db.candidates.find_one(
         {"comp_id": comp_id, "cand_email": payload.email}
@@ -609,7 +775,9 @@ async def add_candidate_to_job(
             updates["cand_phone"] = payload.phone
         if payload.cv_url and payload.cv_url != candidate.get("cand_cv_url"):
             updates["cand_cv_url"] = payload.cv_url
-        if payload.cover_letter_url and payload.cover_letter_url != candidate.get("cand_cover_letter_url"):
+        if payload.cover_letter_url and payload.cover_letter_url != candidate.get(
+            "cand_cover_letter_url"
+        ):
             updates["cand_cover_letter_url"] = payload.cover_letter_url
         if updates:
             updates["cand_updated_at"] = now
@@ -618,16 +786,18 @@ async def add_candidate_to_job(
         cand_id = str(candidate["_id"])
     else:
         # 2. No match - create a new candidate.
-        cand_result = await db.candidates.insert_one({
-            "cand_full_name": payload.name,
-            "cand_email": payload.email,
-            "cand_phone": payload.phone,
-            "cand_cv_url": payload.cv_url,
-            "cand_cover_letter_url": payload.cover_letter_url,
-            "comp_id": comp_id,
-            "cand_created_at": now,
-            "cand_updated_at": now,
-        })
+        cand_result = await db.candidates.insert_one(
+            {
+                "cand_full_name": payload.name,
+                "cand_email": payload.email,
+                "cand_phone": payload.phone,
+                "cand_cv_url": payload.cv_url,
+                "cand_cover_letter_url": payload.cover_letter_url,
+                "comp_id": comp_id,
+                "cand_created_at": now,
+                "cand_updated_at": now,
+            }
+        )
         cand_id = str(cand_result.inserted_id)
 
     # 3. Already linked to this job? Don't double-link, just return the
@@ -636,38 +806,39 @@ async def add_candidate_to_job(
         {"cand_id": cand_id, "job_id": job_id}
     )
     if existing_link:
+        # Return the link's REAL current state (was a hardcoded "SCHEDULED"
+        # stub, which made the optimistic row lie until the next refresh).
+        row = await _link_row(
+            db,
+            existing_link,
+            job_id,
+            payload.name,
+            payload.email,
+            payload.phone,
+            cv_url=candidate.get("cand_cv_url"),
+            cover_letter_url=candidate.get("cand_cover_letter_url"),
+        )
         return {
-            "candidate": {
-                "id": str(existing_link["_id"]),
-                "cand_id": cand_id,
-                "job_id": job_id,
-                "name": payload.name,
-                "email": payload.email,
-                "phone": payload.phone,
-                "cv_url": payload.cv_url,
-                "cover_letter_url": payload.cover_letter_url,
-                "interviewer": existing_link.get("interviewer"),
-                "scheduled_at": existing_link.get("scheduled_at"),
-                "status": "SCHEDULED",
-                "score": existing_link.get("score"),
-            },
+            "candidate": row,
             "job": _serialize(job).model_dump(),
         }
 
     # 4. Create the link row (status lives on Interview per UML, not here).
-    link_result = await db.job_candidates.insert_one({
-        "cand_id": cand_id,
-        "job_id": job_id,
-        "score": None,
-        "cv_analysis": None,
-        "communication_score": None,
-        "skill_score": None,
-        "problem_solving_score": None,
-        "created_at": now,
-        "updated_at": now,
-    })
+    link_result = await db.job_candidates.insert_one(
+        {
+            "cand_id": cand_id,
+            "job_id": job_id,
+            "score": None,
+            "cv_analysis": None,
+            "communication_score": None,
+            "skill_score": None,
+            "problem_solving_score": None,
+            "created_at": now,
+            "updated_at": now,
+        }
+    )
 
-    # 5. Create interview document whenever an interviewer is assigned.
+    # 5. Create interview document whenever a date or interviewer is provided.
     scheduled_dt = None
     if payload.scheduled_at:
         try:
@@ -675,28 +846,33 @@ async def add_candidate_to_job(
         except ValueError:
             pass
 
-    if payload.interviewer_user_id:
+    if scheduled_dt or payload.interviewer_user_id:
         intv_status = "scheduled" if scheduled_dt else "not_scheduled"
-        interview_result = await db.interviews.insert_one({
-            "cand_id": cand_id,
-            "job_id": job_id,
-            "intv_date_time": scheduled_dt,
-            "intv_location": None,
-            "intv_transcript": None,
-            "intv_status": intv_status,
-            "intv_candidate_report": None,
-            "intv_interviewer_report": None,
-            "intv_created_at": now,
-            "intv_updated_at": now,
-        })
+        interview_result = await db.interviews.insert_one(
+            {
+                "cand_id": cand_id,
+                "job_id": job_id,
+                "intv_date_time": scheduled_dt,
+                "intv_location": None,
+                "intv_transcript": None,
+                "intv_status": intv_status,
+                "intv_candidate_report": None,
+                "intv_interviewer_report": None,
+                "intv_created_at": now,
+                "intv_updated_at": now,
+            }
+        )
 
         # 6. Link interviewer via interview_users.
-        await db.interview_users.insert_one({
-            "user_id": payload.interviewer_user_id,
-            "intv_id": str(interview_result.inserted_id),
-            "intvuser_created_at": now,
-            "intvuser_updated_at": now,
-        })
+        if payload.interviewer_user_id:
+            await db.interview_users.insert_one(
+                {
+                    "user_id": payload.interviewer_user_id,
+                    "intv_id": str(interview_result.inserted_id),
+                    "intvuser_created_at": now,
+                    "intvuser_updated_at": now,
+                }
+            )
 
     # Touch job timestamp so listings re-order correctly.
     updated_job = await db.jobs.find_one_and_update(
@@ -708,24 +884,29 @@ async def add_candidate_to_job(
     count = await db.job_candidates.count_documents({"job_id": job_id})
     stats = await _job_stats(db, [job_id])
 
+    # Build the row from what was ACTUALLY created - the status reflects
+    # the real interview ("SCHEDULED"/"NOT SCHEDULED"/none) and the
+    # interviewer name resolves through interview_users, exactly like a
+    # GET would report it.
+    new_link = await db.job_candidates.find_one({"_id": link_result.inserted_id})
+    row = await _link_row(
+        db,
+        new_link,
+        job_id,
+        payload.name,
+        payload.email,
+        payload.phone,
+        cv_url=payload.cv_url,
+        cover_letter_url=payload.cover_letter_url,
+    )
+
     return {
-        "candidate": {
-            "id": str(link_result.inserted_id),
-            "cand_id": cand_id,
-            "job_id": job_id,
-            "name": payload.name,
-            "email": payload.email,
-            "phone": payload.phone,
-            "cv_url": payload.cv_url,
-            "cover_letter_url": payload.cover_letter_url,
-            "interviewer": None,
-            "scheduled_at": payload.scheduled_at,
-            "status": "SCHEDULED",
-            "score": None,
-        },
-        "job": _serialize({
-            **updated_job,
-            "candidates_filled": count,
-            "interviewers": stats.get(job_id, {}).get("interviewers", []),
-        }).model_dump(),
+        "candidate": row,
+        "job": _serialize(
+            {
+                **updated_job,
+                "candidates_filled": count,
+                "interviewers": stats.get(job_id, {}).get("interviewers", []),
+            }
+        ).model_dump(),
     }

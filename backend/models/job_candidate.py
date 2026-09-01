@@ -13,6 +13,33 @@ from pydantic import BaseModel, Field
 # typo'd status from the API.
 JobCandidateStatus = Literal["SCHEDULED", "EVALUATED", "HIRED", "REJECTED"]
 
+SkillName = Literal["Technical Skills", "Communication", "Problem Solving"]
+
+
+class RatingEvidence(BaseModel):
+    transcript_entry_id: str
+    speaker: str
+    timestamp: str
+    text: str
+
+
+class SkillRating(BaseModel):
+    skill: SkillName
+    score: float = Field(..., ge=0, le=10)
+    explanation: str | None = Field(default=None, max_length=200)
+    evidence: list[RatingEvidence] = Field(default_factory=list, max_length=3)
+
+
+class CandidateRatings(BaseModel):
+    technical_skills: SkillRating
+    communication: SkillRating
+    problem_solving: SkillRating
+
+
+class JobCandidateEvaluationOut(BaseModel):
+    ratings: CandidateRatings
+    status: JobCandidateStatus
+
 
 class JobCandidateCreate(BaseModel):
     """Payload for creating a job-candidate link.
@@ -24,9 +51,10 @@ class JobCandidateCreate(BaseModel):
     cand_id: str = Field(..., min_length=1)
     job_id: str = Field(..., min_length=1)
     cv_analysis: str | None = None
-    communication_score: float | None = None
-    skill_score: float | None = None
-    problem_solving_score: float | None = None
+
+
+class JobCandidatePlanUpdate(BaseModel):
+    plan_sections: list[dict]
 
 
 class JobCandidateScoreUpdate(BaseModel):
@@ -41,9 +69,7 @@ class JobCandidateScoreUpdate(BaseModel):
     """
 
     cv_analysis: str | None = None
-    communication_score: float | None = Field(default=None, ge=0, le=10)
-    skill_score: float | None = Field(default=None, ge=0, le=10)
-    problem_solving_score: float | None = Field(default=None, ge=0, le=10)
+    ratings: CandidateRatings | None = None
 
 
 class JobCandidateOut(BaseModel):
@@ -59,11 +85,9 @@ class JobCandidateOut(BaseModel):
     job_id: str
     status: JobCandidateStatus | None = None
     cv_analysis: str | None = None
-    communication_score: float | None = None
-    skill_score: float | None = None
-    problem_solving_score: float | None = None
-    final_score: float | None = None
+    ratings: CandidateRatings | None = None
     rank: int | None = None
+    plan_sections: list[dict] | None = None
     created_at: datetime
     updated_at: datetime
 

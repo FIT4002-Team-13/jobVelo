@@ -8,13 +8,22 @@ python-dotenv==1.0.1
 email-validator==2.2.0
 bcrypt==4.2.0
 PyJWT==2.9.0
+fpdf2==2.8.8
 
 # Realtime STT - used by services/deepgram_service.py
 deepgram-sdk==3.7.7
 
 # LLM providers - kept as separate services so callers pick explicitly
-openai==1.54.0
+openai==3.3.1
+# openai==1.54.0 passes a `proxies` kwarg into httpx.AsyncClient(...) that
+# httpx removed in 0.28. Pin httpx explicitly so pip doesn't silently
+# resolve the latest (incompatible) version - this broke every OpenAI call
+# (check_bias, generate_next_question, summarise, score) with a TypeError
+# that was invisible because check_bias() fails open.
+httpx==0.27.2
 google-genai==0.3.0
 
 # Multipart parsing for file uploads (CV analysis, etc.)
 python-multipart==0.0.12
+
+# PDF rendering for downloadable interview reports (services/report_pdf.py)

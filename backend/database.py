@@ -28,7 +28,12 @@ async def connect_to_mongo() -> None:
             tlsCAFile=certifi.where(),
         )
         mongo.db = mongo.client[settings.mongodb_db]
-    except (ConfigurationError, ServerSelectionTimeoutError, PyMongoError, OSError) as exc:
+    except (
+        ConfigurationError,
+        ServerSelectionTimeoutError,
+        PyMongoError,
+        OSError,
+    ) as exc:
         mongo.client = None
         mongo.db = None
         raise RuntimeError("Unable to connect to MongoDB") from exc
@@ -94,9 +99,12 @@ async def ensure_indexes() -> None:
     await db.interviews.create_index("intv_date_time")
 
     # Interview-Users - one user can only be linked once to the same interview.
-    await db.user_interviews.create_index([("user_id", 1), ("intv_id", 1)], unique=True)
-    await db.user_interviews.create_index("intv_id")
-    await db.user_interviews.create_index("user_id")
+    # NOTE: the collection the app actually reads/writes is `interview_users`;
+    # these previously targeted a phantom `user_interviews` collection, so the
+    # uniqueness constraint was silently unenforced and lookups unindexed.
+    await db.interview_users.create_index([("user_id", 1), ("intv_id", 1)], unique=True)
+    await db.interview_users.create_index("intv_id")
+    await db.interview_users.create_index("user_id")
 
 
 # Stub kept so existing callers (main.py lifespan) don't break. Real seeding

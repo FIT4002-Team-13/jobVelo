@@ -78,14 +78,17 @@ function FileDropzone({
   )
 }
 
-export default function AddCandidateForm({ jobs = [], onClose, onSaved }) {
+// `fixedJobId` locks the form to one job (used from the Job Detail page, which
+// is already scoped to a single role): the "Assign to Job" picker is hidden and
+// that id is used directly. Left null on the Applications page, the picker shows.
+export default function AddCandidateForm({ jobs = [], fixedJobId = null, onClose, onSaved }) {
   const { user } = useAuth()
 
   const [formState, setFormState] = useState({
     name: '',
     email: '',
     phone: '',
-    job_id: '',
+    job_id: fixedJobId || '',
     interviewer: '',
     interviewer_user_id: '',
     scheduled_at: '',
@@ -94,6 +97,7 @@ export default function AddCandidateForm({ jobs = [], onClose, onSaved }) {
   const [cvFile, setCvFile] = useState(null)
   const [coverLetterFile, setCoverLetterFile] = useState(null)
   const [interviewers, setInterviewers] = useState([])
+  const [interviewerOpen, setInterviewerOpen] = useState(false)
 
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
@@ -138,6 +142,7 @@ export default function AddCandidateForm({ jobs = [], onClose, onSaved }) {
     if (!formState.job_id) {
       return setError('Please select a job position.')
     }
+    // (job_id is pre-filled and the picker hidden when fixedJobId is set.)
     if (formState.scheduled_at && !isFutureDateTime(formState.scheduled_at)) {
       return setError('Scheduled date/time must be in the future.')
     }
@@ -211,7 +216,7 @@ export default function AddCandidateForm({ jobs = [], onClose, onSaved }) {
 
   return (
     <div className={modal.overlay}>
-      <div className={`${modal.panel} max-w-2xl max-h-[90vh] overflow-y-auto`}>
+      <div className={`${modal.panel} scrollbar-primary max-w-2xl max-h-[90vh] overflow-y-auto transition-[padding] ${interviewerOpen ? 'pb-52' : ''}`}>
         <button
           type="button"
           onClick={onClose}
@@ -244,7 +249,7 @@ export default function AddCandidateForm({ jobs = [], onClose, onSaved }) {
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          {fixedJobId ? (
             <div>
               <label className={form.label}>Phone *</label>
               <input
@@ -254,25 +259,37 @@ export default function AddCandidateForm({ jobs = [], onClose, onSaved }) {
                 className={form.input}
               />
             </div>
+          ) : (
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className={form.label}>Phone *</label>
+                <input
+                  value={formState.phone}
+                  onChange={(e) => setField('phone', e.target.value)}
+                  placeholder="04XXXXXXXX"
+                  className={form.input}
+                />
+              </div>
 
-            <div>
-              <label className={form.label}>Assign to Job *</label>
-              <select
-                value={formState.job_id}
-                onChange={(e) => setField('job_id', e.target.value)}
-                className={form.input}
-              >
-                <option value="">Select a existing job position</option>
-                {jobs
-                  .filter((job) => (job.candidates_filled ?? 0) < (job.candidates_total ?? 1))
-                  .map((job) => (
-                    <option key={job.id} value={job.id}>
-                      {job.title}
-                    </option>
-                  ))}
-              </select>
+              <div>
+                <label className={form.label}>Assign to Job *</label>
+                <select
+                  value={formState.job_id}
+                  onChange={(e) => setField('job_id', e.target.value)}
+                  className={form.input}
+                >
+                  <option value="">Select a existing job position</option>
+                  {jobs
+                    .filter((job) => (job.candidates_filled ?? 0) < (job.candidates_total ?? 1))
+                    .map((job) => (
+                      <option key={job.id} value={job.id}>
+                        {job.title}
+                      </option>
+                    ))}
+                </select>
+              </div>
             </div>
-          </div>
+          )}
 
           <div className="grid grid-cols-2 gap-4">
             <FileDropzone
@@ -303,6 +320,7 @@ export default function AddCandidateForm({ jobs = [], onClose, onSaved }) {
                   setField('interviewer_user_id', userId)
                 }}
                 options={interviewers}
+                onOpenChange={setInterviewerOpen}
               />
             </div>
 

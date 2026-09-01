@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 
 import Sidebar from '../components/common/Sidebar'
@@ -6,7 +6,379 @@ import StartInterviewModal from '../components/job-candidate/StartInterviewModal
 import EditCandidateForm from '../components/candidate/EditCandidateForm'
 import { card, flex, page } from '../styles/layout'
 import { useAuth } from '../lib/AuthContext.jsx'
-import { api, authedFetch } from '../lib/api.js'
+import { useToast } from '../components/common/ToastContext.jsx'
+import { api, authedFetch, downloadFileWithAuth, openFileWithAuth } from '../lib/api.js'
+
+import ScoreEvidencePopup from "../components/candidate/ScoreEvidencePopup";
+
+const SECTION_COLORS = [
+  { bg: 'bg-primary-50',  border: 'border-primary-200',  dot: 'bg-primary-400',  time: 'text-primary-500' },
+  { bg: 'bg-sky-50',      border: 'border-sky-200',      dot: 'bg-sky-400',      time: 'text-sky-500'     },
+  { bg: 'bg-mint-50',     border: 'border-mint-200',     dot: 'bg-mint-400',     time: 'text-mint-600'    },
+  { bg: 'bg-coral-50',    border: 'border-coral-200',    dot: 'bg-coral-400',    time: 'text-coral-500'   },
+]
+
+function InterviewPlanCard({ jobId, candId, jobCand }) {
+  const [state, setState] = useState('idle') // 'idle' | 'loading' | 'done' | 'error'
+  const [sections, setSections] = useState([])
+  const [errorMsg, setErrorMsg] = useState('')
+  const [totalMinutes, setTotalMinutes] = useState(60)
+  const [editingIndex, setEditingIndex] = useState(null)
+  const [editDraft, setEditDraft] = useState(null)
+  const [addingNew, setAddingNew] = useState(false)
+  const dragSrcIndex = useRef(null)
+  const [dragOverIndex, setDragOverIndex] = useState(null)
+  const [newDraft, setNewDraft] = useState({ name: '', description: '', suggested_minutes: 10 })
+
+  useEffect(() => {
+    if (Array.isArray(jobCand?.plan_sections) && jobCand.plan_sections.length > 0) {
+      setSections(jobCand.plan_sections)
+      setState('done')
+    } else {
+      setSections([])
+      setState('idle')
+    }
+  }, [jobCand?.jobcand_id])
+
+  function persist(updated) {
+    if (!jobCand?.jobcand_id) return
+    authedFetch(`/api/job-candidates/${jobCand.jobcand_id}/plan`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ plan_sections: updated }),
+    }).catch(() => {})
+  }
+
+  async function generate() {
+    setState('loading')
+    setErrorMsg('')
+    setEditingIndex(null)
+    setAddingNew(false)
+    try {
+      const res = await authedFetch('/api/interviews/generate-plan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ job_id: jobId, cand_id: candId, total_minutes: totalMinutes }),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => null)
+        throw new Error(data?.detail || `Request failed (${res.status})`)
+      }
+      const data = await res.json()
+      const plan = Array.isArray(data) ? data : []
+      if (plan.length === 0) {
+        throw new Error('No sections were returned. Please try again.')
+      }
+      setSections(plan)
+      setState('done')
+      persist(plan)
+    } catch (err) {
+      setErrorMsg(err.message || 'Something went wrong.')
+      setState('error')
+    }
+  }
+
+  function startEdit(i) {
+    setEditingIndex(i)
+    setEditDraft({ ...sections[i] })
+    setAddingNew(false)
+  }
+
+  function cancelEdit() {
+    setEditingIndex(null)
+    setEditDraft(null)
+  }
+
+  function commitEdit() {
+    if (!editDraft?.name?.trim()) return
+    const updated = sections.map((s, i) =>
+      i === editingIndex
+        ? { ...editDraft, suggested_minutes: Number(editDraft.suggested_minutes) || 5 }
+        : s
+    )
+    setSections(updated)
+    setEditingIndex(null)
+    setEditDraft(null)
+    persist(updated)
+  }
+
+  function deleteSection(i) {
+    const updated = sections.filter((_, idx) => idx !== i)
+    setSections(updated)
+    if (editingIndex === i) { setEditingIndex(null); setEditDraft(null) }
+    persist(updated)
+    if (updated.length === 0) setState('idle')
+  }
+
+  function startAdd() {
+    setAddingNew(true)
+    setNewDraft({ name: '', description: '', suggested_minutes: 10 })
+    setEditingIndex(null)
+    setEditDraft(null)
+  }
+
+  function cancelAdd() { setAddingNew(false) }
+
+  function reorderSection(from, to) {
+    const updated = [...sections]
+    const [moved] = updated.splice(from, 1)
+    updated.splice(to, 0, moved)
+    setSections(updated)
+    persist(updated)
+  }
+
+  function commitAdd() {
+    if (!newDraft.name.trim()) return
+    const updated = [
+      ...sections,
+      { name: newDraft.name.trim(), description: newDraft.description.trim(), suggested_minutes: Number(newDraft.suggested_minutes) || 10 },
+    ]
+    setSections(updated)
+    setAddingNew(false)
+    setState('done')
+    persist(updated)
+  }
+
+  const plannedMinutes = sections.reduce((s, x) => s + (x.suggested_minutes || 0), 0)
+
+  const fieldClass = 'w-full rounded-lg border border-neutral-200 bg-white px-2 py-1 text-xs text-neutral-800 focus:outline-none focus:ring-1 focus:ring-primary-400'
+
+  return (
+    <section className={`${card.base} ${flex.col} gap-4 mb-6`}>
+      {/* Header */}
+      <div className={flex.rowBetween}>
+        <div>
+          <h2 className="text-lg font-bold text-neutral-800">Interview Plan</h2>
+          <p className="text-xs text-neutral-400 mt-0.5">
+            AI-suggested sections based on this role and candidate
+          </p>
+        </div>
+
+        <div className={`${flex.row} items-center gap-3`}>
+          {/* Total duration param */}
+          <label className={`${flex.row} items-center gap-1.5`}>
+            <span className="text-xs font-semibold text-neutral-500 whitespace-nowrap">Total duration</span>
+            <input
+              type="number"
+              min={10}
+              max={240}
+              value={totalMinutes}
+              onChange={(e) => setTotalMinutes(Number(e.target.value) || 60)}
+              className="w-16 rounded-lg border border-neutral-200 px-2 py-1 text-xs text-neutral-800 text-center focus:outline-none focus:ring-1 focus:ring-primary-400"
+            />
+            <span className="text-xs text-neutral-400">min</span>
+          </label>
+
+          {state === 'done' ? (
+            <>
+              <span className="text-xs text-neutral-400">{plannedMinutes} min planned</span>
+              <button
+                type="button"
+                onClick={generate}
+                className="rounded-xl border border-neutral-200 bg-white px-3 py-1.5 text-xs font-semibold text-neutral-500 transition-colors hover:bg-neutral-50"
+              >
+                Regenerate
+              </button>
+            </>
+          ) : state !== 'loading' ? (
+            <button
+              type="button"
+              onClick={generate}
+              className="inline-flex items-center gap-2 rounded-xl bg-primary-500 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-primary-600"
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/>
+              </svg>
+              Generate Plan
+            </button>
+          ) : null}
+        </div>
+      </div>
+
+      {/* Idle empty state */}
+      {state === 'idle' && (
+        <div className="flex items-center justify-center rounded-2xl bg-neutral-50 px-6 py-10">
+          <div className={`${flex.col} items-center gap-2 text-center`}>
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-neutral-300">
+              <rect x="3" y="3" width="18" height="18" rx="3"/><path d="M3 9h18M9 21V9"/>
+            </svg>
+            <p className="text-sm font-semibold text-neutral-400">No plan generated yet</p>
+            <p className="text-xs text-neutral-400 max-w-xs">
+              Set a total duration above and click &ldquo;Generate Plan&rdquo; to get AI-suggested sections.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Loading */}
+      {state === 'loading' && (
+        <div className="flex items-center justify-center rounded-2xl bg-neutral-50 px-6 py-10">
+          <div className={`${flex.col} items-center gap-3`}>
+            <svg className="animate-spin text-primary-500" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
+            </svg>
+            <p className="text-sm text-neutral-400">Generating interview plan…</p>
+          </div>
+        </div>
+      )}
+
+      {/* Error */}
+      {state === 'error' && (
+        <div className="flex items-center justify-center rounded-2xl bg-coral-50 px-6 py-6">
+          <p className="text-sm text-coral-600">{errorMsg}</p>
+        </div>
+      )}
+
+      {/* Sections grid */}
+      {state === 'done' && (
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+          {sections.map((section, i) => {
+            const color = SECTION_COLORS[i % SECTION_COLORS.length]
+
+            if (editingIndex === i) {
+              return (
+                <div key={i} className={`${flex.col} gap-2 rounded-2xl border-2 border-primary-300 bg-primary-50 p-3`}>
+                  <input
+                    className={fieldClass}
+                    value={editDraft.name}
+                    onChange={(e) => setEditDraft((d) => ({ ...d, name: e.target.value }))}
+                    placeholder="Section name"
+                    autoFocus
+                  />
+                  <textarea
+                    className={`${fieldClass} resize-none`}
+                    rows={3}
+                    value={editDraft.description}
+                    onChange={(e) => setEditDraft((d) => ({ ...d, description: e.target.value }))}
+                    placeholder="Description"
+                  />
+                  <div className={`${flex.row} items-center gap-1`}>
+                    <input
+                      type="number"
+                      min={1}
+                      max={120}
+                      className="w-14 rounded-lg border border-neutral-200 bg-white px-2 py-1 text-xs text-neutral-800 text-center focus:outline-none focus:ring-1 focus:ring-primary-400"
+                      value={editDraft.suggested_minutes}
+                      onChange={(e) => setEditDraft((d) => ({ ...d, suggested_minutes: e.target.value }))}
+                    />
+                    <span className="text-xs text-neutral-400">min</span>
+                  </div>
+                  <div className={`${flex.row} gap-2 mt-1`}>
+                    <button type="button" onClick={cancelEdit} className="flex-1 rounded-lg border border-neutral-200 bg-white py-1 text-xs font-semibold text-neutral-500 hover:bg-neutral-50">
+                      Cancel
+                    </button>
+                    <button type="button" onClick={commitEdit} disabled={!editDraft?.name?.trim()} className="flex-1 rounded-lg bg-primary-500 py-1 text-xs font-semibold text-white hover:bg-primary-600 disabled:bg-neutral-300 disabled:cursor-not-allowed">
+                      Save
+                    </button>
+                  </div>
+                </div>
+              )
+            }
+
+            return (
+              <div
+                key={i}
+                draggable
+                onDragStart={() => { dragSrcIndex.current = i }}
+                onDragOver={(e) => { e.preventDefault(); if (dragSrcIndex.current !== i) setDragOverIndex(i) }}
+                onDragLeave={() => setDragOverIndex(null)}
+                onDrop={(e) => { e.preventDefault(); if (dragSrcIndex.current !== null && dragSrcIndex.current !== i) reorderSection(dragSrcIndex.current, i); setDragOverIndex(null) }}
+                onDragEnd={() => { dragSrcIndex.current = null; setDragOverIndex(null) }}
+                className={`${flex.col} gap-2 rounded-2xl border p-4 ${color.bg} ${color.border} cursor-grab active:cursor-grabbing active:opacity-50 transition-opacity ${dragOverIndex === i ? 'ring-2 ring-primary-400 ring-offset-1' : ''}`}
+              >
+                <div className={`${flex.row} items-center gap-2`}>
+                  <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor" className="text-neutral-300 shrink-0">
+                    <circle cx="2" cy="2" r="1"/><circle cx="8" cy="2" r="1"/>
+                    <circle cx="2" cy="5" r="1"/><circle cx="8" cy="5" r="1"/>
+                    <circle cx="2" cy="8" r="1"/><circle cx="8" cy="8" r="1"/>
+                  </svg>
+                  <span className={`h-2 w-2 shrink-0 rounded-full ${color.dot}`} />
+                  <span className="text-sm font-bold text-neutral-800 leading-tight flex-1">{section.name}</span>
+                </div>
+                <p className="text-xs text-neutral-500 leading-relaxed flex-1">{section.description}</p>
+                <div className="flex items-center justify-between mt-1">
+                  <span className={`text-xs font-semibold ${color.time}`}>{section.suggested_minutes} min</span>
+                  <div className={`${flex.row} gap-0.5`}>
+                    <button
+                      type="button"
+                      onClick={() => startEdit(i)}
+                      title="Edit section"
+                      className="p-1 rounded-lg text-neutral-400 hover:text-neutral-600 hover:bg-black/5 transition-colors"
+                    >
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                      </svg>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => deleteSection(i)}
+                      title="Remove section"
+                      className="p-1 rounded-lg text-neutral-400 hover:text-coral-500 hover:bg-coral-50 transition-colors"
+                    >
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/>
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )
+          })}
+
+          {/* Add section */}
+          {addingNew ? (
+            <div className={`${flex.col} gap-2 rounded-2xl border-2 border-dashed border-primary-300 bg-primary-50 p-3`}>
+              <input
+                className={fieldClass}
+                value={newDraft.name}
+                onChange={(e) => setNewDraft((d) => ({ ...d, name: e.target.value }))}
+                placeholder="Section name"
+                autoFocus
+              />
+              <textarea
+                className={`${fieldClass} resize-none`}
+                rows={3}
+                value={newDraft.description}
+                onChange={(e) => setNewDraft((d) => ({ ...d, description: e.target.value }))}
+                placeholder="Description"
+              />
+              <div className={`${flex.row} items-center gap-1`}>
+                <input
+                  type="number"
+                  min={1}
+                  max={120}
+                  className="w-14 rounded-lg border border-neutral-200 bg-white px-2 py-1 text-xs text-neutral-800 text-center focus:outline-none focus:ring-1 focus:ring-primary-400"
+                  value={newDraft.suggested_minutes}
+                  onChange={(e) => setNewDraft((d) => ({ ...d, suggested_minutes: e.target.value }))}
+                />
+                <span className="text-xs text-neutral-400">min</span>
+              </div>
+              <div className={`${flex.row} gap-2 mt-1`}>
+                <button type="button" onClick={cancelAdd} className="flex-1 rounded-lg border border-neutral-200 bg-white py-1 text-xs font-semibold text-neutral-500 hover:bg-neutral-50">
+                  Cancel
+                </button>
+                <button type="button" onClick={commitAdd} disabled={!newDraft.name.trim()} className="flex-1 rounded-lg bg-primary-500 py-1 text-xs font-semibold text-white hover:bg-primary-600 disabled:bg-neutral-300 disabled:cursor-not-allowed">
+                  Add
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={startAdd}
+              className={`${flex.col} items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-neutral-200 p-4 text-neutral-400 hover:border-primary-300 hover:text-primary-400 transition-colors min-h-[120px]`}
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+              </svg>
+              <span className="text-xs font-semibold">Add section</span>
+            </button>
+          )}
+        </div>
+      )}
+    </section>
+  )
+}
 
 function formatDate(iso) {
   if (!iso) return '--'
@@ -23,7 +395,7 @@ function formatDateTime(iso) {
   const today = new Date()
   const isToday = d.toDateString() === today.toDateString()
 
-  const time = d.toLocaleTimeString('en-US', {
+  const time = d.toLocaleTimeString('en-AU', {
     hour: 'numeric',
     minute: '2-digit',
     hour12: true,
@@ -77,45 +449,45 @@ function ScoreBarRow({ label, value, colorClass }) {
   )
 }
 
-function CandidateScorePanel({ jobCand, interview, onViewTranscription }) {
-  const computedFinalScore =
-    jobCand?.communication_score == null ||
-    jobCand?.skill_score == null ||
-    jobCand?.problem_solving_score == null
-      ? null
-      : (
-          (jobCand.communication_score +
-            jobCand.skill_score +
-            jobCand.problem_solving_score) / 3
-        )
-
-  const finalScore =
-    jobCand?.final_score != null
-      ? formatScore(jobCand.final_score)
-      : computedFinalScore != null
-      ? formatScore(computedFinalScore)
-      : '--'
-
-  const rank = jobCand?.rank == null ? 'NA' : `#${jobCand.rank}`
-  const hasScore = finalScore !== '--'
-
+function CandidateScorePanel({ jobCand, interview, onViewEvidence, onViewTranscription }) {
+  // This panel reflects the INTERVIEW rating only - never the CV analysis
+  // scores. Before an interview is rated there simply is no score here (the
+  // CV fit lives in its own analysis report), so the rows read "--" rather
+  // than borrowing the CV numbers, which would misrepresent an un-interviewed
+  // candidate as already scored.
+  const ratings = jobCand?.ratings;
+  const hasInterviewRatings = Boolean(ratings);
+  const interviewScores = hasInterviewRatings
+    ? [ratings.communication?.score, ratings.technical_skills?.score, ratings.problem_solving?.score].filter(
+        (score) => typeof score === "number" && Number.isFinite(score),
+      )
+    : [];
+  const interviewOverallScore =
+    interviewScores.length > 0
+      ? interviewScores.reduce((total, score) => total + score, 0) / interviewScores.length
+      : null;
+  const hasTranscript = Array.isArray(interview?.intv_transcript) && interview.intv_transcript.length > 0;
+  const overallScore = interviewOverallScore != null ? formatScore(interviewOverallScore) : "--";
+  const scoreLabel = "FINAL SCORE";
+  const rank = jobCand?.rank == null ? "NA" : `#${jobCand.rank}`;
+  const hasScore = overallScore !== "--";
   const scoreRows = [
     {
-      label: 'COMMUNICATION',
-      value: jobCand?.communication_score,
-      colorClass: 'bg-sky-500',
+      label: "COMMUNICATION",
+      value: ratings?.communication?.score,
+      colorClass: "bg-sky-500",
     },
     {
-      label: 'SKILL',
-      value: jobCand?.skill_score,
-      colorClass: 'bg-coral-500',
+      label: "TECHNICAL SKILLS",
+      value: ratings?.technical_skills?.score,
+      colorClass: "bg-coral-500",
     },
     {
-      label: 'PROBLEM SOLVING',
-      value: jobCand?.problem_solving_score,
-      colorClass: 'bg-mint-400',
+      label: "PROBLEM SOLVING",
+      value: ratings?.problem_solving?.score,
+      colorClass: "bg-mint-400",
     },
-  ]
+  ];
 
   return (
     <div className={`${card.base} ${flex.col} h-full justify-between`}>
@@ -127,11 +499,11 @@ function CandidateScorePanel({ jobCand, interview, onViewTranscription }) {
         }`}
       >
         <p className={`text-xs uppercase tracking-wide ${hasScore ? 'text-primary-500' : 'text-neutral-500'}`}>
-          FINAL SCORE
+          {scoreLabel}
         </p>
 
         <p className={`mt-1 text-4xl font-extrabold leading-none ${hasScore ? 'text-primary-500' : 'text-neutral-500'}`}>
-          {finalScore}
+          {overallScore}
         </p>
       </div>
 
@@ -150,15 +522,26 @@ function CandidateScorePanel({ jobCand, interview, onViewTranscription }) {
         <p className="text-sm font-medium text-neutral-800">RANK</p>
         <p className="text-sm font-semibold text-neutral-800">{rank}</p>
       </div>
-
+      <button
+        type="button"
+        onClick={onViewEvidence}
+        disabled={!hasInterviewRatings}
+        className={`mt-4 w-full rounded-[18px] px-4 py-1.5 text-sm font-semibold transition-colors ${
+          hasInterviewRatings
+            ? "bg-primary-500 text-white hover:bg-primary-600"
+            : "cursor-not-allowed bg-neutral-300 text-neutral-500"
+        }`}
+      >
+        View Score and Evidence
+      </button>
       <button
         type="button"
         onClick={onViewTranscription}
-        disabled={!interview?.intv_transcript}
+        disabled={!hasTranscript}
         className={`mt-4 w-full rounded-[18px] px-4 py-1.5 text-sm font-semibold text-white transition-colors ${
-          interview?.intv_transcript
+          hasTranscript
             ? 'bg-primary-500 hover:bg-primary-600'
-            : 'bg-neutral-400 cursor-not-allowed'
+            : 'cursor-not-allowed bg-neutral-400'
         }`}
       >
         View Transcription
@@ -190,6 +573,36 @@ function BulletList({ items = [] }) {
   )
 }
 
+// One strengths/improvements card. When the interview produced no feedback
+// (e.g. it ended with no candidate speech, so the summary explains why), the
+// bullet list and justification are both empty - show a plain "Nothing
+// available." note instead of a bare heading with an empty body, and drop the
+// JUSTIFICATION sub-heading when there's nothing to justify.
+function FeedbackSectionCard({ title, titleColor, bgClass, items, justification }) {
+  const hasItems = items.length > 0
+  const hasJustification = Boolean(justification && justification.trim())
+
+  return (
+    <ReportCard title={title} titleColor={titleColor} bgClass={bgClass}>
+      {hasItems || hasJustification ? (
+        <>
+          <BulletList items={items} />
+          {hasJustification && (
+            <>
+              <h4 className={`mb-2 text-md font-bold uppercase ${titleColor}`}>
+                JUSTIFICATION
+              </h4>
+              <p className="text-sm leading-7 text-neutral-900">{justification}</p>
+            </>
+          )}
+        </>
+      ) : (
+        <p className="text-sm italic leading-7 text-neutral-400">Nothing available.</p>
+      )}
+    </ReportCard>
+  )
+}
+
 function FeedbackPanel({
   interview,
   candidateTableHeight = 230,
@@ -205,13 +618,26 @@ function FeedbackPanel({
   // themselves are the source of truth for what we can render.
   const candidateReport   = interview?.intv_candidate_report
   const interviewerReport = interview?.intv_interviewer_report
-  const activeReport      = activeTab === 'candidate' ? candidateReport : interviewerReport
+  const biasIncidents     = Array.isArray(interview?.intv_bias_incidents) ? interview.intv_bias_incidents : []
+  const biasCount         = biasIncidents.length
+  const isBiasTab         = activeTab === 'bias'
+  const activeReport      = activeTab === 'candidate' ? candidateReport
+                          : activeTab === 'interviewer' ? interviewerReport
+                          : null
   const hasActiveReport   = !!activeReport
-  // Panel grows to full height when either tab has something to show, so
-  // switching between tabs doesn't make the card jump in size if only one
-  // report has been generated so far.
+  // Fixed panel height regardless of tab or whether a report exists. A
+  // variable height used to let a taller empty state (e.g. the bias
+  // "not completed" block) overflow a short min-height and grow the card,
+  // so the same "nothing yet" states rendered at different heights across
+  // tabs. A stable box + flex-1 content makes every state fill identically.
   const hasAnyReport      = !!candidateReport || !!interviewerReport
-  const panelHeight       = hasAnyReport ? candidateTableHeight : candidateTableHeight / 2
+  const panelHeight       = candidateTableHeight
+  // Bias is only evaluated once the interview has actually run. Reports are
+  // written together with the bias log at completion, so either signal means
+  // "the interview happened" - without it we'd claim "no bias" for interviews
+  // that simply haven't started, which reads as a clean bill of health it
+  // hasn't earned.
+  const interviewCompleted = interview?.intv_status === 'completed' || hasAnyReport
 
   const summary = activeReport?.summary ?? ''
   const strengthsItems = activeReport?.strengths?.items ?? []
@@ -246,21 +672,25 @@ function FeedbackPanel({
       <div className={flex.rowBetween}>
         <h2 className="text-lg font-bold text-neutral-800">Reports</h2>
 
-        <button
-          type="button"
-          onClick={handleDownload}
-          disabled={!hasActiveReport}
-          title={hasActiveReport
-            ? `Download the ${activeTab} report`
-            : `No ${activeTab} report has been generated yet.`}
-          className={`rounded-xl px-5 py-0.5 text-sm font-semibold text-white transition-colors ${
-            hasActiveReport
-              ? 'bg-primary-500 hover:bg-primary-600'
-              : 'cursor-not-allowed bg-neutral-400'
-          }`}
-        >
-          Download
-        </button>
+        {/* Download is per-report; the bias tab has nothing of its own to
+            download (it rides along in the interviewer report PDF). */}
+        {!isBiasTab && (
+          <button
+            type="button"
+            onClick={handleDownload}
+            disabled={!hasActiveReport}
+            title={hasActiveReport
+              ? `Download the ${activeTab} report`
+              : `No ${activeTab} report has been generated yet.`}
+            className={`rounded-xl px-5 py-0.5 text-sm font-semibold text-white transition-colors ${
+              hasActiveReport
+                ? 'bg-primary-500 hover:bg-primary-600'
+                : 'cursor-not-allowed bg-neutral-400'
+            }`}
+          >
+            Download
+          </button>
+        )}
       </div>
 
       <div className={`${flex.row} gap-3`}>
@@ -279,56 +709,164 @@ function FeedbackPanel({
         >
           INTERVIEWER
         </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab('bias')}
+          className={`rounded-xl px-4 py-0.5 text-sm font-semibold transition-colors ${flex.row} items-center gap-1.5 ${
+            isBiasTab
+              ? 'bg-amber-500 text-white'
+              : 'bg-amber-100 text-amber-700 hover:bg-amber-200'
+          }`}
+        >
+          BIAS
+          {biasCount > 0 && (
+            <span
+              className={`rounded-pill px-1.5 text-[10px] font-bold leading-4 ${
+                isBiasTab ? 'bg-white/30 text-white' : 'bg-amber-500 text-white'
+              }`}
+            >
+              {biasCount}
+            </span>
+          )}
+        </button>
       </div>
 
-      {hasActiveReport ? (
+      {isBiasTab ? (
+        <BiasTabContent incidents={biasIncidents} completed={interviewCompleted} />
+      ) : hasActiveReport ? (
         <div className="grid flex-1 grid-cols-3 gap-6">
           <ReportCard title="SUMMARY" bgClass="bg-neutral-50">
             <p className="text-sm leading-7 text-neutral-900">{summary}</p>
           </ReportCard>
 
-          <ReportCard
+          <FeedbackSectionCard
             title="STRENGTHS"
             titleColor="text-mint-700"
             bgClass="bg-mint-50"
-          >
-            <BulletList items={strengthsItems} />
+            items={strengthsItems}
+            justification={strengthsJustification}
+          />
 
-            <h4 className="mb-2 text-md font-bold uppercase text-mint-700">
-              JUSTIFICATION
-            </h4>
-            <p className="text-sm leading-7 text-neutral-900">
-              {strengthsJustification}
-            </p>
-          </ReportCard>
-
-          <ReportCard
+          <FeedbackSectionCard
             title="IMPROVEMENTS"
             titleColor="text-coral-500"
             bgClass="bg-coral-50"
-          >
-            <BulletList items={improvementsItems} />
-
-            <h4 className="mb-2 text-md font-bold uppercase text-coral-500">
-              JUSTIFICATION
-            </h4>
-            <p className="text-sm leading-7 text-neutral-900">
-              {improvementsJustification}
-            </p>
-          </ReportCard>
+            items={improvementsItems}
+            justification={improvementsJustification}
+          />
         </div>
       ) : (
         // Per-tab empty state - shows on whichever tab is active when that
         // specific report hasn't been generated yet. Switching tabs still
         // works, so a user can see the other tab's report if only one has
         // landed.
-        <div className="flex flex-1 items-center justify-center rounded-2xl bg-neutral-50 px-6 py-10">
-          <p className="text-center text-md font-semibold text-neutral-500">
+        <PanelEmptyState tone="neutral">
+          <p className="text-md font-semibold text-neutral-500">
             No {activeTab} report generated yet.
           </p>
-        </div>
+        </PanelEmptyState>
       )}
     </section>
+  )
+}
+
+// Shared empty/info panel so every "nothing to show" state in the Reports
+// card is the same height and shape (they used to differ between tabs). The
+// fixed min-height is the key: a one-line message and a taller icon+heading+
+// paragraph block both occupy the same box, so switching tabs never resizes
+// the card.
+function PanelEmptyState({ tone = 'neutral', children }) {
+  const bg = tone === 'mint' ? 'bg-mint-50' : 'bg-neutral-50'
+  return (
+    <div className={`flex min-h-[190px] flex-1 flex-col items-center justify-center gap-2 rounded-2xl px-6 py-8 text-center ${bg}`}>
+      {children}
+    </div>
+  )
+}
+
+// Body of the BIAS tab: the persisted flags (quote / category / reason /
+// suggestion + interview-clock timestamp) captured live during the session,
+// or a reassuring empty state. Its own scroll region keeps a long list from
+// stretching the Reports card.
+function BiasTabContent({ incidents, completed }) {
+  const list = Array.isArray(incidents) ? incidents : []
+
+  // Interview hasn't run yet - bias is checked live during the interview, so
+  // there's simply nothing to report rather than a clean result.
+  if (!completed) {
+    return (
+      <PanelEmptyState tone="neutral">
+        <svg
+          width="34" height="34" viewBox="0 0 24 24" fill="none"
+          stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+          className="text-neutral-400"
+        >
+          <circle cx="12" cy="12" r="9" />
+          <polyline points="12 7 12 12 15 14" />
+        </svg>
+        <p className="text-sm font-bold text-neutral-600">Interview not completed</p>
+        <p className="max-w-md text-sm leading-7 text-neutral-500">
+          Bias is checked live during the interview. Any flagged questions will appear here once
+          it has been completed.
+        </p>
+      </PanelEmptyState>
+    )
+  }
+
+  // Completed, nothing flagged - a genuine clean result.
+  if (list.length === 0) {
+    return (
+      <PanelEmptyState tone="mint">
+        <svg
+          width="34" height="34" viewBox="0 0 24 24" fill="none"
+          stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+          className="text-mint-500"
+        >
+          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+          <path d="m9 12 2 2 4-4" />
+        </svg>
+        <p className="text-sm font-bold text-mint-700">No bias detected</p>
+        <p className="max-w-md text-sm leading-7 text-neutral-500">
+          No potentially biased or legally-risky questions were detected during this interview.
+        </p>
+      </PanelEmptyState>
+    )
+  }
+
+  return (
+    <div className="flex max-h-[320px] flex-1 flex-col gap-3 overflow-y-auto pr-1">
+      {list.map((incident, index) => (
+        <div
+          key={index}
+          className="rounded-xl border-l-[3px] border-amber-400 bg-amber-50/60 py-2.5 pl-4 pr-3"
+        >
+          <div className={`${flex.rowBetween} gap-2`}>
+            {incident.category && (
+              <span className="rounded-pill bg-amber-100 px-2 py-0.5 text-[10px] font-bold uppercase text-amber-700">
+                {incident.category}
+              </span>
+            )}
+            {incident.timestamp && (
+              <span className="shrink-0 text-[11px] font-semibold tabular-nums text-neutral-400">
+                {incident.timestamp}
+              </span>
+            )}
+          </div>
+          <p className="mt-1.5 break-words text-sm italic leading-relaxed text-neutral-800">
+            &ldquo;{incident.quote}&rdquo;
+          </p>
+          {incident.reason && (
+            <p className="mt-1.5 text-xs leading-relaxed text-neutral-500">{incident.reason}</p>
+          )}
+          {incident.suggestion && (
+            <p className="mt-1.5 text-xs leading-relaxed text-mint-700">
+              <span className="font-semibold">Try instead:</span> {incident.suggestion}
+            </p>
+          )}
+        </div>
+      ))}
+    </div>
   )
 }
 
@@ -336,9 +874,10 @@ function FeedbackPanel({
 //   - analysis completed  → solid primary button, opens the analysis report
 //   - analysis processing → disabled button with a spinner ("Analysing…")
 //   - analysis failed     → disabled coral button, error in the tooltip
-//   - no analysis yet     → legacy behaviour: link to cand_cv_url if one
-//                           exists, otherwise the greyed-out disabled state
-function CvViewButton({ cvAnalysis, cvUrl, onViewAnalysis }) {
+//   - no analysis, has CV  → "Analyse CV" (reuses the candidate's stored CV
+//                           for this job, no re-upload) + a raw-PDF link
+//   - no analysis, no CV   → greyed-out disabled state
+function CvViewButton({ cvAnalysis, cvUrl, onViewAnalysis, onAnalyse, analysing }) {
   const base =
     'inline-flex min-w-[98px] items-center justify-center gap-1.5 rounded-xl px-4 py-0.5 text-sm font-semibold transition-colors'
 
@@ -365,15 +904,41 @@ function CvViewButton({ cvAnalysis, cvUrl, onViewAnalysis }) {
     )
   }
 
+  // Failed → offer a Retry that re-runs against the candidate's stored CV
+  // (the server tears down the failed analysis and re-analyses - no re-upload
+  // needed). Falls back to disabled only if there's nothing to retry with.
   if (cvAnalysis?.status === 'failed') {
+    const canRetry = Boolean(cvUrl && onAnalyse)
     return (
       <button
         type="button"
-        disabled
-        title={cvAnalysis.error || 'Analysis failed. Re-upload the CV via Edit to retry.'}
-        className={`${base} cursor-not-allowed bg-coral-100 text-coral-700`}
+        onClick={canRetry ? onAnalyse : undefined}
+        disabled={!canRetry || analysing}
+        title={
+          canRetry
+            ? `${cvAnalysis.error ? cvAnalysis.error + ' — ' : ''}Click to retry the analysis.`
+            : cvAnalysis.error || 'Analysis failed. Re-upload the CV via Edit to retry.'
+        }
+        className={`${base} ${
+          analysing
+            ? 'cursor-wait bg-primary-100 text-primary-500'
+            : canRetry
+            ? 'bg-coral-100 text-coral-700 hover:bg-coral-200'
+            : 'cursor-not-allowed bg-coral-100 text-coral-700'
+        }`}
       >
-        Failed
+        {analysing ? (
+          <>
+            <svg className="h-3.5 w-3.5 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round">
+              <path d="M21 12a9 9 0 1 1-6.2-8.56" />
+            </svg>
+            Analysing…
+          </>
+        ) : canRetry ? (
+          'Retry'
+        ) : (
+          'Failed'
+        )}
       </button>
     )
   }
@@ -390,32 +955,51 @@ function CvViewButton({ cvAnalysis, cvUrl, onViewAnalysis }) {
     )
   }
 
+  // No analysis for this job yet. If the candidate has a CV on file, offer
+  // to analyse it against THIS job (server reuses the stored PDF - the
+  // candidate was likely analysed for a different job already).
+  if (cvUrl) {
+    return (
+      <button
+        type="button"
+        onClick={onAnalyse}
+        disabled={analysing || !onAnalyse}
+        title="Analyse the candidate's CV against this job"
+        className={`${base} ${
+          analysing
+            ? 'cursor-wait bg-primary-100 text-primary-500'
+            : 'bg-primary-500 text-white hover:bg-primary-600'
+        }`}
+      >
+        {analysing ? (
+          <>
+            <svg className="h-3.5 w-3.5 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round">
+              <path d="M21 12a9 9 0 1 1-6.2-8.56" />
+            </svg>
+            Analysing…
+          </>
+        ) : (
+          'Analyse CV'
+        )}
+      </button>
+    )
+  }
+
   return (
-    <a
-      href={cvUrl || '#'}
-      target="_blank"
-      rel="noreferrer"
-      className={`${base} ${
-        cvUrl
-          ? 'bg-primary-500 text-white hover:bg-primary-600'
-          : 'cursor-not-allowed bg-neutral-300 text-neutral-500'
-      }`}
-      onClick={(e) => {
-        if (!cvUrl) e.preventDefault()
-      }}
-    >
+    <span className={`${base} cursor-not-allowed bg-neutral-300 text-neutral-500`}>
       View
-    </a>
+    </span>
   )
 }
 
-function CandidateInfoCard({ candidate, job, interview, onStartInterview, interviewer, onEdit, cvAnalysis, onViewCvAnalysis }) {
+function CandidateInfoCard({ candidate, job, interview, onStartInterview, interviewer, onEdit, cvAnalysis, onViewCvAnalysis, onAnalyseCv, analysingCv }) {
   const { user } = useAuth()
   const status = (interview?.intv_status ?? 'not_scheduled').replace(/_/g, ' ').toUpperCase()
   // Starting an interview is interviewer-only - mirrors the backend's
   // Depends(require_role("interviewer")) on POST /api/interviews. Other
   // roles simply never see the button rather than hitting a 403.
   const canStartInterview = status === 'SCHEDULED' && user?.role === 'interviewer'
+  const startLabel = status === 'IN PROGRESS' ? 'Resume Interview' : 'Start Interview'
 
   // Unified palette - mirrors JobDetailPage / DashboardPage / ApplicationsPage
   // so the same status reads identically wherever it appears. Key change:
@@ -424,7 +1008,9 @@ function CandidateInfoCard({ candidate, job, interview, onStartInterview, interv
   const statusClass =
     status === 'SCHEDULED'
       ? 'bg-primary-100 text-primary-600'
-      : status === 'EVALUATED'
+      : status === 'IN PROGRESS'
+      ? 'bg-amber-100 text-amber-700'
+      : status === 'COMPLETED' || status === 'EVALUATED'
       ? 'bg-mint-100 text-mint-700'
       : status === 'HIRED'
       ? 'bg-mint-500 text-white'
@@ -444,7 +1030,16 @@ function CandidateInfoCard({ candidate, job, interview, onStartInterview, interv
             <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>
             </svg>
-            Last Update {new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+            {/* Real timestamp from the candidate doc - previously rendered
+                new Date() (always "today"), which quietly lied. */}
+            Last Update{' '}
+            {candidate?.cand_updated_at
+              ? new Date(candidate.cand_updated_at).toLocaleDateString('en-AU', {
+                  month: 'short',
+                  day: 'numeric',
+                  year: 'numeric',
+                })
+              : '--'}
           </p>
         </div>
 
@@ -453,22 +1048,39 @@ function CandidateInfoCard({ candidate, job, interview, onStartInterview, interv
               here in the header as a solid CTA (only when the interview is
               actually scheduled) instead of being tucked into the DATE row. */}
           {canStartInterview && (
+            // Same vertical metrics + pill shape as the Edit button and the
+            // status chip beside it (px-4 py-0.5 text-sm rounded-pill), so
+            // the three header controls read as one row of equal-height
+            // pills - only the solid fill marks this one as the CTA.
             <button
               type="button"
               onClick={onStartInterview}
-              className="inline-flex items-center gap-2 rounded-xl bg-primary-500 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-primary-600"
+              className="inline-flex items-center gap-1.5 rounded-pill bg-primary-500 px-4 py-0.5 text-sm font-semibold text-white transition-colors hover:bg-primary-600"
             >
-              <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor">
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor">
                 <polygon points="5 3 19 12 5 21 5 3" />
               </svg>
-              Start Interview
+              {startLabel}
             </button>
           )}
 
+          {/* Editing is locked once the interview is finished - mirrors the
+              backend guard that keeps completed/cancelled interviews
+              immutable (reports, scores, and schedule stay as evaluated). */}
           <button
             type="button"
+            disabled={status === 'COMPLETED' || status === 'CANCELLED'}
             onClick={onEdit}
-            className="rounded-pill border border-neutral-200 hover:bg-neutral-50 bg-white px-4 py-0.5 text-sm font-semibold text-neutral-500"
+            title={
+              status === 'COMPLETED' || status === 'CANCELLED'
+                ? 'This interview is finished - the application can no longer be edited.'
+                : undefined
+            }
+            className={`rounded-pill border px-4 py-0.5 text-sm font-semibold ${
+              status === 'COMPLETED' || status === 'CANCELLED'
+                ? 'cursor-not-allowed border-neutral-100 bg-neutral-50 text-neutral-300'
+                : 'border-neutral-200 bg-white text-neutral-500 hover:bg-neutral-50'
+            }`}
           >
             Edit
           </button>
@@ -542,6 +1154,8 @@ function CandidateInfoCard({ candidate, job, interview, onStartInterview, interv
             cvAnalysis={cvAnalysis}
             cvUrl={candidate?.cand_cv_url}
             onViewAnalysis={onViewCvAnalysis}
+            onAnalyse={onAnalyseCv}
+            analysing={analysingCv}
           />
         </div>
 
@@ -576,6 +1190,7 @@ export default function CandidateDetailPage() {
   const { candId, jobId } = useParams()
   const { user } = useAuth()
   const navigate = useNavigate()
+  const toast = useToast()
 
   const [candidate, setCandidate] = useState(null)
   const [jobCand, setJobCand] = useState(null)
@@ -589,8 +1204,29 @@ export default function CandidateDetailPage() {
   const [error, setError] = useState('')
   const [startTarget, setStartTarget] = useState(null)
   const [showEditModal, setShowEditModal] = useState(false)
+  const [showScoreEvidence, setShowScoreEvidence] = useState(false)
   const [refreshKey, setRefreshKey] = useState(0)
   const [cvAnalysis, setCvAnalysis] = useState(null)
+  const [analysingCv, setAnalysingCv] = useState(false)
+
+  // Analyse the candidate's already-stored CV against THIS job - no
+  // re-upload. The backend reuses the candidate's cand_cv_url file; we set
+  // the returned "processing" doc so the existing poll picks up completion.
+  async function handleAnalyseCv() {
+    if (!jobCand?.jobcand_id || analysingCv) return
+    setAnalysingCv(true)
+    try {
+      const fd = new FormData()
+      fd.append('jobcand_id', jobCand.jobcand_id)
+      const data = await api.analyseCv(fd)
+      setCvAnalysis(data)
+      setRefreshKey((k) => k + 1)
+    } catch (err) {
+      toast.error(err?.message || 'Could not start the CV analysis.')
+    } finally {
+      setAnalysingCv(false)
+    }
+  }
 
   // Load the CV analysis for this application and poll while it's still
   // processing, so the "View" button flips from spinner to available the
@@ -684,12 +1320,12 @@ export default function CandidateDetailPage() {
 
           if (intvUserRes.ok) {
             const interviewUsers = await intvUserRes.json()
-            const interviewerUserId = Array.isArray(interviewUsers)
+            const resolvedInterviewerUserId = Array.isArray(interviewUsers)
               ? interviewUsers[0]?.user_id
               : null
 
-            if (interviewerUserId) {
-              setInterviewerUserId(interviewerUserId)
+            if (resolvedInterviewerUserId) {
+              setInterviewerUserId(resolvedInterviewerUserId)
               const usersRes = await authedFetch(`/api/users`)
 
               if (usersRes.ok) {
@@ -718,6 +1354,44 @@ export default function CandidateDetailPage() {
     load()
   }, [candId, jobId, user?.comp_id, refreshKey])
 
+  async function onConfirmStart() {
+    try {
+      const existingRes = await authedFetch(
+        `/api/interviews?cand_id=${candId}&job_id=${jobId}`
+      )
+      if (existingRes.ok) {
+        const existing = await existingRes.json()
+        const resumable = existing.find(
+          (i) => i.intv_status === 'in_progress' || i.intv_status === 'scheduled'
+        )
+        if (resumable) {
+          navigate(`/interview/${resumable.intv_id}`)
+          return
+        }
+      }
+
+      const res = await authedFetch('/api/interviews', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          cand_id: candId,
+          job_id: jobId,
+          intv_date_time: new Date().toISOString(),
+          intv_status: 'in_progress',
+        }),
+      })
+      const interviewRecord = await res.json()
+      if (!res.ok) {
+        throw new Error(interviewRecord?.detail || 'Failed to start interview.')
+      }
+      navigate(`/interview/${interviewRecord.intv_id}`)
+    } catch (err) {
+      console.error('Failed to start interview', err)
+      alert(err.message || 'Failed to start interview.')
+      setStartTarget(null)
+    }
+  }
+
   if (loading) {
     return (
       <div className={page.loading}>
@@ -738,29 +1412,29 @@ export default function CandidateDetailPage() {
     <div className={page.shell}>
       <Sidebar />
 
-      <main className={page.main}>
-        <div className="mb-6 flex items-start justify-between">
-          <div>
-            <button
-              onClick={() => navigate(-1)}
-              className={`${flex.row} mb-3 gap-2 rounded-lg border border-neutral-200 bg-neutral-0 px-3 py-1.5 text-sm font-semibold text-neutral-600 transition-colors hover:border-primary-200 hover:bg-primary-500/10 hover:text-primary-600`}
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/>
-              </svg>
-              Back
-            </button>
+      <div className="flex-1 flex flex-col overflow-hidden">
+        <header className="bg-neutral-0 border-b border-neutral-200 px-10 py-6 shrink-0">
+          <button
+            onClick={() => navigate(-1)}
+            className={`${flex.row} mb-3 gap-2 rounded-lg border border-neutral-200 bg-neutral-0 px-3 py-1.5 text-sm font-semibold text-neutral-600 transition-colors hover:border-primary-200 hover:bg-primary-500/10 hover:text-primary-600`}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/>
+            </svg>
+            Back
+          </button>
 
-            <h1 className="text-4xl font-extrabold tracking-tight text-neutral-800">
-              Candidate
-            </h1>
-            <p className="mt-1 text-xs text-neutral-400">
-              Manage all candidates across jobs
-            </p>
-          </div>
-        </div>
+          <h1 className="text-4xl font-extrabold tracking-tight text-neutral-800">
+            Candidate
+          </h1>
+          <p className="mt-1 text-xs text-neutral-400">
+            Manage all candidates across jobs
+          </p>
+        </header>
 
-        <div className="mb-6 grid grid-cols-11 gap-5 items-stretch">
+        <main className="flex-1 overflow-y-auto px-10 py-4">
+
+        <div className="mb-3 grid grid-cols-11 gap-5 items-stretch">
           <div className="col-span-7">
             <CandidateInfoCard
               candidate={candidate}
@@ -768,12 +1442,16 @@ export default function CandidateDetailPage() {
               interview={interview}
               jobCand={jobCand}
               interviewer={interviewerName}
-              onStartInterview={() =>
+              onStartInterview={() => {
+                if (interview?.intv_status === 'in_progress') {
+                  navigate(`/interview/${interview.intv_id}`)
+                  return
+                }
                 setStartTarget({
                   name: candidate?.cand_full_name,
                   scheduled_at: interview?.intv_date_time,
                 })
-              }
+              }}
               onEdit={() => setShowEditModal(true)}
               cvAnalysis={cvAnalysis}
               onViewCvAnalysis={() => {
@@ -782,19 +1460,28 @@ export default function CandidateDetailPage() {
                   state: { analysis: cvAnalysis },
                 })
               }}
+              onAnalyseCv={handleAnalyseCv}
+              analysingCv={analysingCv}
             />
           </div>
           <div className="col-span-4">
             <CandidateScorePanel
               jobCand={jobCand}
               interview={interview}
+              onViewEvidence={() => setShowScoreEvidence(true)}
               onViewTranscription={() => {
-                if (!interview?.intv_transcript) return
-                console.log('Open transcript view')
+                if (!interview?.intv_id) return
+
+                openFileWithAuth(
+                  `/api/interviews/${interview.intv_id}/transcript-pdf`
+                ).catch((error) => {console.error('Failed to open transcript:',error)
+                })
               }}
             />
           </div>
         </div>
+
+        <InterviewPlanCard jobId={jobId} candId={candId} jobCand={jobCand} />
 
         <FeedbackPanel
           interview={interview}
@@ -802,25 +1489,31 @@ export default function CandidateDetailPage() {
           candidateTableHeight={230}
           onDownloadCandidateReport={() => {
             if (!interview?.intv_id) return
-            window.open(`/api/interviews/${interview.intv_id}/candidate-report`, '_blank')
+            // No filename arg: the server's Content-Disposition carries
+            // "<kind>-report-<candidate>-<interview datetime>.pdf".
+            downloadFileWithAuth(`/api/interviews/${interview.intv_id}/candidate-report`)
+              .catch((err) => toast.error(err.message || 'Failed to download the report.'))
           }}
           onDownloadInterviewerReport={() => {
             if (!interview?.intv_id) return
-            window.open(`/api/interviews/${interview.intv_id}/interviewer-report`, '_blank')
+            downloadFileWithAuth(`/api/interviews/${interview.intv_id}/interviewer-report`)
+              .catch((err) => toast.error(err.message || 'Failed to download the report.'))
           }}
         />
-      </main>
+        </main>
+      </div>
 
       {startTarget && (
         <StartInterviewModal
           candidate={startTarget}
           jobTitle={job?.title}
           onClose={() => setStartTarget(null)}
+          // Resume-or-create via onConfirmStart - the old inline handler
+          // only navigated when an interview record already existed, so
+          // confirming on a fresh candidate silently did nothing.
           onConfirm={() => {
             setStartTarget(null)
-            if (interview?.intv_id) {
-              navigate(`/interview/${interview.intv_id}`)
-            }
+            onConfirmStart()
           }}
         />
       )}
@@ -846,6 +1539,11 @@ export default function CandidateDetailPage() {
             setShowEditModal(false)
             setRefreshKey((k) => k + 1)
           }}
+        />
+      )}{showScoreEvidence && (
+        <ScoreEvidencePopup
+          ratings={jobCand?.ratings}
+          onClose={() => setShowScoreEvidence(false)}
         />
       )}
     </div>

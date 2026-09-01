@@ -28,6 +28,36 @@ export function authedFetch(url, init = {}) {
   return fetch(url, { ...init, headers })
 }
 
+// Download a file from an auth-protected endpoint and hand it to the
+// browser as a save-as. window.open can't carry the Bearer token, so we
+// fetch the bytes ourselves and click a temporary object-URL link.
+export async function downloadFileWithAuth(fileUrl, filename) {
+  const res = await authedFetch(fileUrl)
+  if (!res.ok) {
+    let message = `Download failed (${res.status})`
+    try {
+      const data = await res.json()
+      if (typeof data?.detail === 'string') message = data.detail
+    } catch {
+      /* non-JSON error body */
+    }
+    throw new ApiError(message, { status: res.status })
+  }
+  // Prefer the server's Content-Disposition filename (it carries the
+  // candidate name + interview datetime); an explicit `filename` arg wins.
+  const disposition = res.headers.get('content-disposition') || ''
+  const serverName = disposition.match(/filename="?([^";]+)"?/)?.[1]
+
+  const blobUrl = URL.createObjectURL(await res.blob())
+  const a = document.createElement('a')
+  a.href = blobUrl
+  a.download = filename || serverName || 'download'
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  setTimeout(() => URL.revokeObjectURL(blobUrl), 10_000)
+}
+
 // Auto-detects JSON vs FormData bodies:
 // - plain object → JSON encoded with Content-Type: application/json
 // - FormData     → sent raw (browser sets the multipart boundary header)
@@ -147,4 +177,42 @@ export const api = {
   updateCompany: (comp_id, payload) => request(`/companies/${comp_id}`,  { method: 'PUT', body: payload, auth: true }),
   updateCompanyLogo: (comp_id, formData) => request(`/companies/${comp_id}/logo`, { method: 'PATCH', body: formData, auth: true }),
 
+  //--cv-analysis------------------------------------------------------------------------------------
+  completeInterview: (interviewId, transcript) => request(`/interviews/${encodeURIComponent(interviewId)}/complete`, {method: 'POST', body: { transcript }, auth: true}),
+
+}
+
+//--get-transcript----------------------------------------------------------------------------------
+export async function openFileWithAuth(fileUrl) {
+  const newTab = window.open('', '_blank')
+
+  if (!newTab) {
+    throw new ApiError('Please allow pop-ups to view the PDF.')
+  }
+
+  try {
+    const response = await authedFetch(fileUrl)
+
+    if (!response.ok) {
+      const data = await response.json().catch(() => null)
+
+      throw new ApiError(
+        data?.detail || `Failed to open PDF (${response.status})`,
+        {
+          status: response.status,
+          detail: data?.detail,
+        }
+      )
+    }
+
+    const blob = await response.blob()
+    const blobUrl = URL.createObjectURL(blob)
+
+    newTab.location.href = blobUrl
+
+    setTimeout(() => {URL.revokeObjectURL(blobUrl)}, 300000)
+    } catch (error) {
+      newTab.close()
+      throw error
+    }
 }
