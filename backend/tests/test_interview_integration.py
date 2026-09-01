@@ -28,7 +28,7 @@ async def db_client():
             transport=httpx.ASGITransport(app=app),
             base_url="http://test",
         ) as c:
-            yield c, mock_db
+            yield c, mock_db, comp_id
     app.dependency_overrides.clear()
 
 
@@ -37,9 +37,13 @@ async def db_client():
 
 async def test_interview_session_starts_and_stores_candidate_data(db_client):
     """POST /api/interviews creates the session and persists it to the DB."""
-    client, db = db_client
+    client, db, comp_id = db_client
     cand_id = str(ObjectId())
     job_id = str(ObjectId())
+    await db.jobs.insert_one(
+        {"_id": ObjectId(job_id), "comp_id": comp_id, "title": "Test Job"}
+    )
+    await db.candidates.insert_one({"_id": ObjectId(cand_id), "comp_id": comp_id})
 
     response = await client.post(
         "/api/interviews",
@@ -71,7 +75,7 @@ async def test_interview_session_blocked_when_required_fields_missing(
     db_client, missing_field
 ):
     """POST /api/interviews must return 422 when a required field is absent."""
-    client, db = db_client
+    client, db, _comp_id = db_client
 
     payload = {
         "cand_id": str(ObjectId()),

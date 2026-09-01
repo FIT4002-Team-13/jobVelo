@@ -130,11 +130,12 @@ async def test_cv_analysis_returns_400_when_no_resume_and_no_existing_analysis(
     authed_db_client,
 ):
     """POST /api/cv-analysis without a CV file and no cached result must return 400."""
-    client, _db, _comp_id = authed_db_client
+    client, db, comp_id = authed_db_client
+    jobcand_id = await _seed_context(db, comp_id)
 
     response = await client.post(
         "/api/cv-analysis",
-        data={"jobcand_id": str(ObjectId())},
+        data={"jobcand_id": jobcand_id},
     )
 
     assert response.status_code == 400
@@ -148,8 +149,8 @@ async def test_interview_questions_returned_from_completed_cv_analysis(
     authed_db_client,
 ):
     """GET /api/cv-analysis/by-jobcand returns suggested questions for a completed analysis."""
-    client, db, _comp_id = authed_db_client
-    jobcand_id = str(ObjectId())
+    client, db, comp_id = authed_db_client
+    jobcand_id = await _seed_context(db, comp_id)
 
     await db.cv_analyses.insert_one(
         {
