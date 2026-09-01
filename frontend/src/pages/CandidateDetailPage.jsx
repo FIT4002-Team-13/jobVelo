@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 
 import Sidebar from '../components/common/Sidebar'
+import ReportSections from '../components/interview/ReportSections.jsx'
 import StartInterviewModal from '../components/job-candidate/StartInterviewModal'
 import EditCandidateForm from '../components/candidate/EditCandidateForm'
 import { card, flex, page } from '../styles/layout'
@@ -550,62 +551,8 @@ function CandidateScorePanel({ jobCand, interview, onViewEvidence, onViewTranscr
   )
 }
 
-function ReportCard({ title, children, bgClass, titleColor}) {
-  return (
-    <div className={`h-full rounded-2xl p-6 ${bgClass}`}>
-      <h3 className={`mb-1 text-md font-bold uppercase ${titleColor}`}>
-        {title}
-      </h3>
-      {children}
-    </div>
-  )
-}
-
-function BulletList({ items = [] }) {
-  if (!items.length) return null
-
-  return (
-    <ul className="mb-6 list-disc space-y-1 pl-5 text-sm leading-7 text-neutral-900">
-      {items.map((item, index) => (
-        <li key={`${item}-${index}`}>{item}</li>
-      ))}
-    </ul>
-  )
-}
-
-// One strengths/improvements card. When the interview produced no feedback
-// (e.g. it ended with no candidate speech, so the summary explains why), the
-// bullet list and justification are both empty - show a plain "Nothing
-// available." note instead of a bare heading with an empty body, and drop the
-// JUSTIFICATION sub-heading when there's nothing to justify.
-function FeedbackSectionCard({ title, titleColor, bgClass, items, justification }) {
-  const hasItems = items.length > 0
-  const hasJustification = Boolean(justification && justification.trim())
-
-  return (
-    <ReportCard title={title} titleColor={titleColor} bgClass={bgClass}>
-      {hasItems || hasJustification ? (
-        <>
-          <BulletList items={items} />
-          {hasJustification && (
-            <>
-              <h4 className={`mb-2 text-md font-bold uppercase ${titleColor}`}>
-                JUSTIFICATION
-              </h4>
-              <p className="text-sm leading-7 text-neutral-900">{justification}</p>
-            </>
-          )}
-        </>
-      ) : (
-        <p className="text-sm italic leading-7 text-neutral-400">Nothing available.</p>
-      )}
-    </ReportCard>
-  )
-}
-
 function FeedbackPanel({
   interview,
-  candidateTableHeight = 230,
   onDownloadCandidateReport,
   onDownloadInterviewerReport,
 }) {
@@ -625,25 +572,13 @@ function FeedbackPanel({
                           : activeTab === 'interviewer' ? interviewerReport
                           : null
   const hasActiveReport   = !!activeReport
-  // Fixed panel height regardless of tab or whether a report exists. A
-  // variable height used to let a taller empty state (e.g. the bias
-  // "not completed" block) overflow a short min-height and grow the card,
-  // so the same "nothing yet" states rendered at different heights across
-  // tabs. A stable box + flex-1 content makes every state fill identically.
   const hasAnyReport      = !!candidateReport || !!interviewerReport
-  const panelHeight       = candidateTableHeight
   // Bias is only evaluated once the interview has actually run. Reports are
   // written together with the bias log at completion, so either signal means
   // "the interview happened" - without it we'd claim "no bias" for interviews
   // that simply haven't started, which reads as a clean bill of health it
   // hasn't earned.
   const interviewCompleted = interview?.intv_status === 'completed' || hasAnyReport
-
-  const summary = activeReport?.summary ?? ''
-  const strengthsItems = activeReport?.strengths?.items ?? []
-  const strengthsJustification = activeReport?.strengths?.justification ?? ''
-  const improvementsItems = activeReport?.improvements?.items ?? []
-  const improvementsJustification = activeReport?.improvements?.justification ?? ''
 
   const handleDownload = () => {
     // Only fire the download when the report actually exists on the doc -
@@ -665,10 +600,7 @@ function FeedbackPanel({
     }`
 
   return (
-    <section
-      className={`${card.base} ${flex.col} w-full gap-3`}
-      style={{ minHeight: `${panelHeight}px` }}
-    >
+    <section className={`${card.base} ${flex.col} w-full gap-4`}>
       <div className={flex.rowBetween}>
         <h2 className="text-lg font-bold text-neutral-800">Reports</h2>
 
@@ -735,32 +667,19 @@ function FeedbackPanel({
       {isBiasTab ? (
         <BiasTabContent incidents={biasIncidents} completed={interviewCompleted} />
       ) : hasActiveReport ? (
-        <div className="grid flex-1 grid-cols-3 gap-6">
-          <ReportCard title="SUMMARY" bgClass="bg-neutral-50">
-            <p className="text-sm leading-7 text-neutral-900">{summary}</p>
-          </ReportCard>
-
-          <FeedbackSectionCard
-            title="STRENGTHS"
-            titleColor="text-mint-700"
-            bgClass="bg-mint-50"
-            items={strengthsItems}
-            justification={strengthsJustification}
-          />
-
-          <FeedbackSectionCard
-            title="IMPROVEMENTS"
-            titleColor="text-coral-500"
-            bgClass="bg-coral-50"
-            items={improvementsItems}
-            justification={improvementsJustification}
-          />
-        </div>
+        // US28: summary + strengths/improvements (each with timestamped
+        // transcript evidence behind a chevron) + the job-requirements
+        // mapping. Requirements are shown on the candidate tab only - the
+        // interviewer report evaluates question quality/pacing, not coverage.
+        <ReportSections
+          report={activeReport}
+          showRequirements={activeTab === 'candidate'}
+          variant="grid"
+        />
       ) : (
         // Per-tab empty state - shows on whichever tab is active when that
         // specific report hasn't been generated yet. Switching tabs still
-        // works, so a user can see the other tab's report if only one has
-        // landed.
+        // works, so a user can see the other tab's report if only one landed.
         <PanelEmptyState tone="neutral">
           <p className="text-md font-semibold text-neutral-500">
             No {activeTab} report generated yet.
@@ -1485,8 +1404,6 @@ export default function CandidateDetailPage() {
 
         <FeedbackPanel
           interview={interview}
-          jobCand={jobCand}
-          candidateTableHeight={230}
           onDownloadCandidateReport={() => {
             if (!interview?.intv_id) return
             // No filename arg: the server's Content-Disposition carries
