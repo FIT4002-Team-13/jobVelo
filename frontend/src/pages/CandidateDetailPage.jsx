@@ -1391,10 +1391,7 @@ export default function CandidateDetailPage() {
               onViewTranscription={() => {
                 if (!interview?.intv_id) return
 
-                openFileWithAuth(
-                  `/api/interviews/${interview.intv_id}/transcript-pdf`
-                ).catch((error) => {console.error('Failed to open transcript:',error)
-                })
+                navigate(`/interview/${interview.intv_id}`)
               }}
             />
           </div>
