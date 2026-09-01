@@ -127,7 +127,13 @@ class InterviewUpdate(BaseModel):
 
 
 class InterviewOut(BaseModel):
-    """Public representation of an interview document."""
+    """Public representation of an interview document.
+
+    Some older records legitimately have a null `intv_date_time` or missing
+    timestamps while the interview is still being created / migrated. Those
+    values are tolerated here so the API can still render the candidate page
+    instead of crashing during pydantic validation.
+    """
 
     intv_id: str
     cand_id: str
@@ -146,5 +152,5 @@ class InterviewOut(BaseModel):
     # Bias questions flagged live during the interview (empty for interviews
     # that predate the feature or had none). Surfaced on the persisted report.
     intv_bias_incidents: list[BiasIncident] = Field(default_factory=list)
-    intv_created_at: datetime
-    intv_updated_at: datetime
+    intv_created_at: datetime | None = None
+    intv_updated_at: datetime | None = None

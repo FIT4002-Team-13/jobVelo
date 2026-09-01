@@ -12,6 +12,9 @@ Thumbs.db
 .env.*.local
 !.env.example
 backend/.env.example 
+
+# Other
+highlighted_transcript_testing.json
 .claude
 
 

@@ -71,6 +71,10 @@ function formatTimer(seconds) {
   return `${m}:${s}`;
 }
 
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 function parseTimestamp(ts = "") {
   const [m, s] = ts.split(":").map(Number);
   return (m || 0) * 60 + (s || 0);
@@ -121,7 +125,57 @@ function downsampleBuffer(buffer, inputSampleRate, outputSampleRate = 16000) {
 
 // ── Sub-components ────────────────────────────────────────────────────────────
 
-function TranscriptEntry({ entry, highlighted }) {
+function HighlightedText({ text, highlights }) {
+  if (!text) return null;
+
+  const phrases = (highlights || [])
+    .map((item) => item.text)
+    .filter(Boolean)
+    .sort((a, b) => b.length - a.length);
+
+  if (!phrases.length) {
+    return <span>{text}</span>;
+  }
+
+  const pattern = new RegExp(`(${phrases.map(escapeRegExp).join("|")})`, "ig");
+  const parts = [];
+  let lastIndex = 0;
+  let match;
+
+  while ((match = pattern.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      parts.push(
+        <span key={`text-${lastIndex}-${match.index}`}>{text.slice(lastIndex, match.index)}</span>
+      );
+    }
+
+    const phrase = match[0];
+    const colorClass = "bg-yellow-100 text-yellow-800 border-yellow-300";
+
+    parts.push(
+      <span
+        key={`highlight-${match.index}-${phrase}`}
+        className={`rounded-md border px-1.5 py-0.5 font-semibold ${colorClass}`}
+      >
+        {phrase}
+      </span>
+    );
+    lastIndex = match.index + phrase.length;
+  }
+
+  if (lastIndex < text.length) {
+    parts.push(<span key={`tail-${lastIndex}`}>{text.slice(lastIndex)}</span>);
+  }
+
+  return <>{parts}</>;
+}
+
+function TranscriptEntry({ entry, highlights, showSpeaker = true, highlighted }) {
+  const relevantHighlights = (highlights || []).filter((item) => {
+    const phrase = item.text?.toLowerCase() || "";
+    return phrase && entry.text?.toLowerCase().includes(phrase);
+  });
+
   return (
     <div
       id={`transcript-entry-${entry.id}`}
@@ -139,7 +193,7 @@ function TranscriptEntry({ entry, highlighted }) {
       <div className={`${flex.col} gap-0.5 flex-1 min-w-0`}>
         <span className="text-xs text-neutral-400">{entry.timestamp}</span>
         <span className="text-sm text-neutral-700 leading-snug">
-          {entry.text}
+          <HighlightedText text={entry.text} highlights={relevantHighlights} />
         </span>
       </div>
     </div>
@@ -938,6 +992,7 @@ export default function InterviewPage() {
   const [, setStatus] = useState("Ready to start recording");
   const [isMicActive, setIsMicActive] = useState(false);
   const [isScreenSharing, setIsScreenSharing] = useState(false);
+  const [isMicMuted, setIsMicMuted] = useState(true);
   const [isPaused, setIsPaused] = useState(false);
   const [isCompleted, setIsCompleted] = useState(false);
   // Raw interview status from the server - drives the prep/live/debrief arc.
@@ -964,6 +1019,7 @@ export default function InterviewPage() {
   const [followUpQuestions, setFollowUpQuestions] = useState([]);
   const [, setFollowUpLoading] = useState(false);
   const [timer, setTimer] = useState(0);
+  const [highlights, setHighlights] = useState([]);
   const [sections, setSections] = useState([]);
   const [sectionStates, setSectionStates] = useState([]);
   const sectionIntervals = useRef([]);
@@ -1001,6 +1057,11 @@ export default function InterviewPage() {
   const isPausedRef = useRef(false);
   const videoRef = useRef(null);
   const transcriptContainerRef = useRef(null);
+  const highlightInFlightRef = useRef(false);
+  const lastHighlightRunRef = useRef(0);
+  const lastHighlightSignatureRef = useRef("");
+  const isMicMutedRef = useRef(true);
+
   const questionsRequestedJobRef = useRef(null);
   const questionsRef = useRef([]);
   const pendingCategoriesRef = useRef([]);
@@ -1240,7 +1301,57 @@ export default function InterviewPage() {
     isPausedRef.current = isPaused;
   }, [isPaused]);
 
-  function createTranscriptionSocket(speaker, partialRef, role) {
+  useEffect(() => {
+    isMicMutedRef.current = isMicMuted;
+  }, [isMicMuted]);
+
+  // useEffect(() => {
+  //   interviewerSourceRef.current = interviewerSource;
+  //   if (interviewerSource) {
+  //     setStatus("Listening…");
+  //   }
+  // }, [interviewerSource]);
+
+  // function chooseInterviewerSource(nextSource) {
+  //   interviewerSourceRef.current = nextSource;
+  //   setInterviewerSource(nextSource);
+  //   setStatus("Listening…");
+  // }
+
+  async function ensureMicAccess() {
+    if (micStreamRef.current && audioContextRef.current) {
+      return;
+    }
+
+    const interviewerLabel = user?.full_name || "Interviewer";
+    if (!wsRef.current) {
+      wsRef.current = createTranscriptionSocket(interviewerLabel, partialEntryRef);
+      // wsRef.current = createTranscriptionSocket("B", interviewerLabel, partialEntryRef);
+    }
+
+    const micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    micStreamRef.current = micStream;
+
+    const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    await audioContext.resume();
+    audioContextRef.current = audioContext;
+
+    const micSource = audioContext.createMediaStreamSource(micStream);
+    const micProcessor = audioContext.createScriptProcessor(4096, 1, 1);
+    processorRef.current = micProcessor;
+
+    micProcessor.onaudioprocess = (event) => {
+      if (isPausedRef.current || isMicMutedRef.current) return;
+      const inputBuffer = event.inputBuffer.getChannelData(0);
+      if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
+      wsRef.current.send(downsampleBuffer(inputBuffer, audioContext.sampleRate, 16000));
+    };
+
+    micSource.connect(micProcessor);
+    micProcessor.connect(audioContext.destination);
+  }
+  // function createTranscriptionSocket(sourceKey, speakerLabel, partialRef) {
+  function createTranscriptionSocket(speaker, partialRef) {
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     const socket = new WebSocket(
       `${protocol}//${window.location.host}/api/realtime/transcribe?role=${role}`
@@ -1252,6 +1363,13 @@ export default function InterviewPage() {
       try {
         const data = JSON.parse(event.data);
         if (data.type === "transcript" && typeof data.text === "string") {
+          // const activeSource = interviewerSourceRef.current;
+          // if (!activeSource) {
+          //   setStatus("Set interviewer source before writing transcript");
+          //   return;
+          // }
+          // const isInterviewer = sourceKey === activeSource;
+          // const speaker = isInterviewer ? "Interviewer" : "Candidate";
           appendTranscript(data.text, Boolean(data.is_final), speaker, partialRef);
         } else if (data.type === "bias_warning" && typeof data.quote === "string") {
           addBiasWarning(data);
@@ -1267,13 +1385,14 @@ export default function InterviewPage() {
   }
 
   async function startScreenShare() {
-    const interviewerLabel = user?.full_name || "Interviewer";
     const candidateLabel = candidateName || "Candidate";
 
     try {
       // Mic socket — always created. Tagged role="interviewer" so the
       // backend knows this connection carries the interviewer's own speech
       // and can run bias-checks on it (never on the candidate/display side).
+      setStatus("Requesting microphone access...");
+      await ensureMicAccess();
       wsRef.current = createTranscriptionSocket(interviewerLabel, partialEntryRef, "interviewer");
       setStatus("Requesting screen access...");
 
@@ -1287,30 +1406,10 @@ export default function InterviewPage() {
       });
       mediaStreamRef.current = displayStream;
 
-      setStatus("Requesting microphone access...");
-      const micStream = await navigator.mediaDevices.getUserMedia({
-        audio: true,
-      });
-      micStreamRef.current = micStream;
-
-      const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-      await audioContext.resume();
-      audioContextRef.current = audioContext;
-
-      // Mic processor → mic WebSocket (Interviewer)
-      const micSource = audioContext.createMediaStreamSource(micStream);
-      const micProcessor = audioContext.createScriptProcessor(4096, 1, 1);
-      processorRef.current = micProcessor;
-
-      micProcessor.onaudioprocess = (event) => {
-        if (isPausedRef.current) return;
-        const inputBuffer = event.inputBuffer.getChannelData(0);
-        if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
-        wsRef.current.send(downsampleBuffer(inputBuffer, audioContext.sampleRate, 16000));
-      };
-
-      micSource.connect(micProcessor);
-      micProcessor.connect(audioContext.destination);
+      const audioContext = audioContextRef.current;
+      if (!audioContext) {
+        throw new Error("Microphone audio context not ready");
+      }
 
       // Display audio processor → separate WebSocket (Candidate)
       // macOS getDisplayMedia returns video-only by default — skip if no audio tracks.
@@ -1354,21 +1453,9 @@ export default function InterviewPage() {
         track.onended = () => { void stopScreenShare(); };
       });
     } catch (error) {
-      if (audioContextRef.current) {
-        audioContextRef.current.close().catch(() => {});
-        audioContextRef.current = null;
-      }
       if (mediaStreamRef.current) {
         mediaStreamRef.current.getTracks().forEach((t) => t.stop());
         mediaStreamRef.current = null;
-      }
-      if (micStreamRef.current) {
-        micStreamRef.current.getTracks().forEach((t) => t.stop());
-        micStreamRef.current = null;
-      }
-      if (wsRef.current) {
-        wsRef.current.close();
-        wsRef.current = null;
       }
       if (wsDisplayRef.current) {
         wsDisplayRef.current.close();
@@ -1387,24 +1474,10 @@ export default function InterviewPage() {
   }
 
   async function stopScreenShare() {
-    // Stop media tracks first (synchronous) so the OS releases the screen
-    // recording session before any async work. If this runs during page unload
-    // via `void stopScreenShare()`, the async parts below may never execute —
-    // but the tracks must be stopped or macOS hangs the next getDisplayMedia.
+    // Stop display-specific resources without tearing down the independent mic stream.
     if (mediaStreamRef.current) {
       mediaStreamRef.current.getTracks().forEach((track) => track.stop());
       mediaStreamRef.current = null;
-    }
-
-    if (micStreamRef.current) {
-      micStreamRef.current.getTracks().forEach((track) => track.stop());
-      micStreamRef.current = null;
-    }
-
-    if (processorRef.current) {
-      processorRef.current.disconnect();
-      processorRef.current.onaudioprocess = null;
-      processorRef.current = null;
     }
 
     if (displayProcessorRef.current) {
@@ -1413,24 +1486,8 @@ export default function InterviewPage() {
       displayProcessorRef.current = null;
     }
 
-    if (audioContextRef.current) {
-      try {
-        await audioContextRef.current.close();
-      } catch (err) {
-        console.warn("Audio context close failed", err);
-      }
-      audioContextRef.current = null;
-    }
-
     if (videoRef.current) {
       videoRef.current.srcObject = null;
-    }
-
-    if (wsRef.current) {
-      if (wsRef.current.readyState === WebSocket.OPEN) {
-        wsRef.current.close();
-      }
-      wsRef.current = null;
     }
 
     if (wsDisplayRef.current) {
@@ -1635,6 +1692,48 @@ export default function InterviewPage() {
     timerRef.current = timer;
   }, [timer]);
 
+  async function runHighlightAnalysis(force = false) {
+    const snapshot = transcriptRef.current;
+    if (!snapshot?.length) {
+      setHighlights([]);
+      return;
+    }
+
+    const signature = snapshot
+      .slice(-20)
+      .map((entry) => `${entry.speaker}:${entry.text}`)
+      .join("||");
+    const now = Date.now();
+
+    if (!force && highlightInFlightRef.current) return;
+    if (!force && now - lastHighlightRunRef.current < 30000) {
+      if (signature === lastHighlightSignatureRef.current) return;
+    }
+
+    lastHighlightSignatureRef.current = signature;
+    lastHighlightRunRef.current = now;
+    highlightInFlightRef.current = true;
+
+    try {
+      const response = await authedFetch(`/api/interviews/${id}/highlights`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ transcript: snapshot.slice(-20) }),
+      });
+
+      if (!response.ok) {
+        return;
+      }
+
+      const data = await response.json();
+      setHighlights(Array.isArray(data.highlights) ? data.highlights : []);
+    } catch (error) {
+      console.warn("Highlight analysis failed", error);
+    } finally {
+      highlightInFlightRef.current = false;
+    }
+  }
+
   useEffect(() => {
     const interval = setInterval(() => {
       if (!isCompleted && transcriptRef.current.length) {
@@ -1648,6 +1747,7 @@ export default function InterviewPage() {
         }).then((r) => {
           if (!r.ok) console.error("Autosave failed:", r.status);
         });
+        void runHighlightAnalysis(false);
       }
     }, 30000);
     return () => clearInterval(interval);
@@ -1660,6 +1760,12 @@ export default function InterviewPage() {
     }, 0);
     entryCounterRef.current = maxId + 1;
   }
+
+  useEffect(() => {
+    if (!id) return;
+
+    void runHighlightAnalysis(true);
+  }, [id]);
 
   useEffect(() => {
     let hasLocal = false;
@@ -1787,13 +1893,27 @@ export default function InterviewPage() {
   }, [id]);
 
   useEffect(() => {
-    // Only generate suggestions for a LIVE interview:
-    //  - never for a finished one (reopening a completed transcript was
-    //    silently firing a fresh OpenAI run per visit);
-    //  - never during prep - the prep screen's question plan comes from the
-    //    CV analysis report, so paying for an OpenAI run before the
-    //    interview even starts was pure waste. Generation kicks off the
-    //    moment Begin Interview flips the status to in_progress.
+    if (isCompleted) {
+      void runHighlightAnalysis(true);
+    }
+  }, [isCompleted]);
+
+  useEffect(() => {
+    if (isCompleted) {
+      void runHighlightAnalysis(true);
+    }
+  }, [isCompleted]);
+
+  useEffect(() => {
+    /*
+    Only generate suggestions for a LIVE interview:
+     - never for a finished one (reopening a completed transcript was
+       silently firing a fresh OpenAI run per visit);
+     - never during prep - the prep screen's question plan comes from the
+       CV analysis report, so paying for an OpenAI run before the
+       interview even starts was pure waste. Generation kicks off the
+       moment Begin Interview flips the status to in_progress.
+    */
     if (
       !jobId ||
       isCompleted ||
@@ -2097,6 +2217,8 @@ export default function InterviewPage() {
   // re-uses the stored reports instead of a second LLM run.
   async function completeInterview() {
     if (reportState.phase === "generating") return;
+    
+    await runHighlightAnalysis(true);
 
     setReportState({ phase: "generating" });
     try {
@@ -2183,33 +2305,39 @@ export default function InterviewPage() {
             >
               View Resume
             </button>
-            {phase !== "prep" && (
-              <button
-                className={`${button.outline} ${
-                  isScreenSharing
-                    ? "bg-sky-100 text-sky-800 hover:bg-sky-200"
-                    : ""
-                } ${isCompleted ? "opacity-60 cursor-not-allowed" : ""}`}
-                onClick={() => !isCompleted && void toggleScreenShare()}
-                disabled={isCompleted}
-              >
-                {isScreenSharing ? "Stop screen share" : "Share screen"}
-              </button>
-            )}
-            {phase !== "prep" && (
-              <div
-                className={`${flex.row} gap-2 items-center text-neutral-700 font-semibold text-xl`}
-              >
-                <span>{formatTimer(timer)}</span>
-                <span
-                  className={`w-3 h-3 rounded-pill ${
-                    isScreenSharing && !isPaused && !isCompleted
-                      ? "bg-coral-500 animate-pulse"
-                      : "bg-neutral-300"
-                  }`}
-                />
-              </div>
-            )}
+            {phase !== "prep" && (<button
+              className={`${button.outline} ${
+                isMicMuted ? "bg-neutral-200 text-neutral-700" : "bg-sky-100 text-sky-800"
+              } ${isCompleted ? "opacity-60 cursor-not-allowed" : ""}`}
+              onClick={() => {
+                if (isCompleted) return;
+                if (isMicMuted) {
+                  void ensureMicAccess().then(() => setIsMicMuted(false));
+                  return;
+                }
+                setIsMicMuted(true);
+              }}
+              disabled={isCompleted}
+            >
+              {isMicMuted ? "Mic muted" : "Mic unmuted"}
+            </button>)}
+            {phase !== "prep" && (<button
+              className={`${button.outline} ${
+                isScreenSharing
+                  ? "bg-sky-100 text-sky-800 hover:bg-sky-200"
+                  : ""
+              } ${isCompleted ? "opacity-60 cursor-not-allowed" : ""}`}
+              onClick={() => !isCompleted && void toggleScreenShare()}
+              disabled={isCompleted}
+            >
+              {isScreenSharing ? "Stop screen share" : "Share screen"}
+            </button>)}
+            {phase !== "prep" && (<div
+              className={`${flex.row} gap-2 items-center text-neutral-700 font-semibold text-xl`}
+            >
+              <span>{formatTimer(timer)}</span>
+              <span className="w-3 h-3 rounded-pill bg-coral-500 animate-pulse" />
+            </div>)}
           </div>
         </div>
       </header>
@@ -2318,12 +2446,12 @@ export default function InterviewPage() {
                 </p>
               ) : (
                 transcript.map((entry, i) => (
-                  <div
+                  <div 
                     key={entry.id}
                     ref={(el) => (transcriptEntryRefs.current[i] = el)}
                     className={`rounded-lg transition-colors duration-700 ${highlightedEntryIdx === i || entry.id === highlightedEntryId ? "bg-yellow-50 ring-1 ring-yellow-300" : ""}`}
                   >
-                    <TranscriptEntry entry={entry} highlighted={entry.id === highlightedEntryId} />
+                  <TranscriptEntry key={entry.id} highlighted={entry.id === highlightedEntryId} highlights={highlights} entry={entry} />
                   </div>
                 ))
               )}

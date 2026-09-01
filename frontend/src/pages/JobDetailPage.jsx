@@ -568,6 +568,7 @@ function CandidatesTable({
                       <button
                         type="button"
                         onClick={(event) => {
+                          event.preventDefault();
                           event.stopPropagation();
                           onDelete?.(c);
                         }}
