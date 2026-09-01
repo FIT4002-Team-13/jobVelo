@@ -212,6 +212,9 @@ async def test_create_for_job_writes_candidate_and_link(authed_db_client):
     """A new candidate + job link are both written to the DB."""
     client, db, comp_id = authed_db_client
     job_id = str(ObjectId())
+    await db.jobs.insert_one(
+        {"_id": ObjectId(job_id), "comp_id": comp_id, "title": "Test Job"}
+    )
 
     response = await client.post(
         "/api/candidates/create-for-job",
@@ -231,6 +234,14 @@ async def test_create_for_job_writes_candidate_and_link(authed_db_client):
 async def test_create_for_job_reuses_existing_candidate(authed_db_client):
     """Same email across two jobs creates one candidate doc, not two."""
     client, db, comp_id = authed_db_client
+    job_id_1 = str(ObjectId())
+    job_id_2 = str(ObjectId())
+    await db.jobs.insert_one(
+        {"_id": ObjectId(job_id_1), "comp_id": comp_id, "title": "Job 1"}
+    )
+    await db.jobs.insert_one(
+        {"_id": ObjectId(job_id_2), "comp_id": comp_id, "title": "Job 2"}
+    )
 
     await client.post(
         "/api/candidates/create-for-job",
@@ -238,7 +249,7 @@ async def test_create_for_job_reuses_existing_candidate(authed_db_client):
             "cand_full_name": "Existing Person",
             "cand_email": "existing@example.com",
             "comp_id": str(comp_id),
-            "job_id": str(ObjectId()),
+            "job_id": job_id_1,
         },
     )
     await client.post(
@@ -247,7 +258,7 @@ async def test_create_for_job_reuses_existing_candidate(authed_db_client):
             "cand_full_name": "Existing Person",
             "cand_email": "existing@example.com",
             "comp_id": str(comp_id),
-            "job_id": str(ObjectId()),
+            "job_id": job_id_2,
         },
     )
 
@@ -259,6 +270,9 @@ async def test_create_for_job_second_link_to_same_job_is_idempotent(authed_db_cl
     """Linking the same candidate to the same job twice must not duplicate the link row."""
     client, db, comp_id = authed_db_client
     job_id = str(ObjectId())
+    await db.jobs.insert_one(
+        {"_id": ObjectId(job_id), "comp_id": comp_id, "title": "Test Job"}
+    )
 
     await client.post(
         "/api/candidates/create-for-job",

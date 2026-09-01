@@ -12,13 +12,18 @@ from bson import ObjectId
 from mongomock_motor import AsyncMongoMockClient
 
 import database as db_module
+from dependencies import get_current_comp_id, get_current_user
 from main import app
 
 
 @pytest.fixture
 async def db_client():
     mock_db = AsyncMongoMockClient()["testdb"]
+    comp_id = ObjectId()
+    fake_user = {"_id": ObjectId(), "comp_id": comp_id, "role": "interviewer"}
     with patch.object(db_module.mongo, "db", mock_db):
+        app.dependency_overrides[get_current_user] = lambda: fake_user
+        app.dependency_overrides[get_current_comp_id] = lambda: comp_id
         async with httpx.AsyncClient(
             transport=httpx.ASGITransport(app=app),
             base_url="http://test",

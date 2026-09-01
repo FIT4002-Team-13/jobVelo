@@ -14,6 +14,7 @@ from bson import ObjectId
 from mongomock_motor import AsyncMongoMockClient
 
 import database as db_module
+from dependencies import get_current_comp_id
 from main import app
 
 
@@ -29,10 +30,17 @@ async def db_client():
     app.dependency_overrides.clear()
 
 
-async def _seed_context(db) -> str:
+@pytest.fixture
+async def authed_db_client(db_client):
+    client, db = db_client
+    comp_id = ObjectId()
+    app.dependency_overrides[get_current_comp_id] = lambda: comp_id
+    yield client, db, comp_id
+
+
+async def _seed_context(db, comp_id: ObjectId) -> str:
     """Seed candidates, jobs, and job_candidates so the route can resolve
     the chain. Returns the jobcand_id string the route expects."""
-    comp_id = ObjectId()
     cand_id = ObjectId()
     job_id = ObjectId()
 
@@ -85,10 +93,10 @@ _FAKE_ANALYSIS_RESULT = {
 # ── TC-015 ─────────────────────────────────────────────────────────────────────
 
 
-async def test_cv_analysis_generated_for_candidate_with_resume(db_client):
+async def test_cv_analysis_generated_for_candidate_with_resume(authed_db_client):
     """POST /api/cv-analysis with a valid PDF creates an analysis doc."""
-    client, db = db_client
-    jobcand_id = await _seed_context(db)
+    client, db, comp_id = authed_db_client
+    jobcand_id = await _seed_context(db, comp_id)
 
     with (
         patch("routes.cv_analysis.save_upload", new_callable=AsyncMock) as mock_save,
@@ -119,10 +127,10 @@ async def test_cv_analysis_generated_for_candidate_with_resume(db_client):
 
 
 async def test_cv_analysis_returns_400_when_no_resume_and_no_existing_analysis(
-    db_client,
+    authed_db_client,
 ):
     """POST /api/cv-analysis without a CV file and no cached result must return 400."""
-    client, _db = db_client
+    client, _db, _comp_id = authed_db_client
 
     response = await client.post(
         "/api/cv-analysis",
@@ -136,9 +144,11 @@ async def test_cv_analysis_returns_400_when_no_resume_and_no_existing_analysis(
 # ── TC-017 ─────────────────────────────────────────────────────────────────────
 
 
-async def test_interview_questions_returned_from_completed_cv_analysis(db_client):
+async def test_interview_questions_returned_from_completed_cv_analysis(
+    authed_db_client,
+):
     """GET /api/cv-analysis/by-jobcand returns suggested questions for a completed analysis."""
-    client, db = db_client
+    client, db, _comp_id = authed_db_client
     jobcand_id = str(ObjectId())
 
     await db.cv_analyses.insert_one(
