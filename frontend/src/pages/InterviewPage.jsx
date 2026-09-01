@@ -1464,7 +1464,7 @@ export default function InterviewPage() {
   async function startMicOnly() {
     const interviewerLabel = user?.full_name || "Interviewer";
     try {
-      wsRef.current = createTranscriptionSocket(interviewerLabel, partialEntryRef);
+      wsRef.current = createTranscriptionSocket(interviewerLabel, partialEntryRef, "interviewer");
       setStatus("Requesting microphone access...");
 
       const micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -1525,7 +1525,7 @@ export default function InterviewPage() {
       mediaStreamRef.current = displayStream;
 
       if (displayStream.getAudioTracks().length > 0) {
-        wsDisplayRef.current = createTranscriptionSocket(candidateLabel, displayPartialEntryRef);
+        wsDisplayRef.current = createTranscriptionSocket(candidateLabel, displayPartialEntryRef, "candidate");
 
         const displaySource = audioContextRef.current.createMediaStreamSource(displayStream);
         const displayProcessor = audioContextRef.current.createScriptProcessor(4096, 1, 1);
