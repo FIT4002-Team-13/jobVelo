@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { flex, card, button, badge, modal, modal } from "../styles/layout";
+import { flex, card, button, badge, modal } from "../styles/layout";
 import { useAuth } from "../lib/AuthContext.jsx";
 
 import ReportSections from "../components/interview/ReportSections.jsx";
@@ -373,158 +373,6 @@ function InterviewReportModal({
   );
 }
 
-// ── Post-interview report modal ──────────────────────────────────────────────
-
-function ScoreDonut({ value }) {
-  const r = 36;
-  const c = 2 * Math.PI * r;
-  const pct = Math.max(0, Math.min(1, value / 10));
-  return (
-    <div
-      className={`${flex.col} gap-3 bg-neutral-0 border border-neutral-200 rounded-2xl p-4 w-[280px] h-[345px] shrink-0 overflow-y-auto scrollbar-hide`}
-    >
-      <div className={`${flex.rowBetween}`}>
-        <span className={`${badge.sm} ${q.categoryColor}`}>{q.category}</span>
-        <div className={`${flex.row} gap-2 text-neutral-400`}>
-          <button className="hover:text-mint-500 transition-colors py-1">
-            <svg
-              width="14"
-              height="14"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3z" />
-              <path d="M7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3" />
-            </svg>
-            <p className="text-base font-semibold text-neutral-700">
-              Generating interview report…
-            </p>
-            <p className="text-sm text-neutral-400">
-              Analysing the transcript. This usually takes a few seconds.
-            </p>
-          </div>
-        )}
-
-        {phase === "error" && (
-          <div className={`${flex.colCenter} gap-3 py-16 text-center`}>
-            <p className="text-base font-semibold text-coral-500">
-              Report generation failed.
-            </p>
-            {error && <p className="max-w-sm text-sm text-neutral-500">{error}</p>}
-            <div className={`${flex.row} gap-3 pt-2`}>
-              <button type="button" onClick={onClose} className={`${button.cancel} px-6 py-2`}>
-                Close
-              </button>
-              <button type="button" onClick={onRetry} className={button.primary}>
-                Retry
-              </button>
-            </div>
-          </div>
-        )}
-
-        {phase === "ready" && data && (
-          <div className={`${flex.col} gap-5`}>
-            {/* Header: who/what this report is about + report switcher */}
-            <div className={`${flex.colCenter} gap-2 pt-2`}>
-              {isBiasTab ? (
-                <div className={`h-16 w-16 rounded-pill ${flex.rowCenter} bg-amber-100 text-amber-600`}>
-                  <svg
-                    width="30" height="30" viewBox="0 0 24 24" fill="none"
-                    stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
-                  >
-                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-                    <line x1="12" y1="8" x2="12" y2="12" />
-                    <line x1="12" y1="16" x2="12.01" y2="16" />
-                  </svg>
-                </div>
-              ) : (
-                <div
-                  className={`h-16 w-16 rounded-pill ${flex.rowCenter} text-xl font-bold text-white ${avatarColor(headerName)}`}
-                >
-                  {initials(headerName)}
-                </div>
-              )}
-              <div className="text-center">
-                <h2 className="text-2xl font-bold text-neutral-800">
-                  {isBiasTab ? "Bias & Compliance" : headerName}
-                </h2>
-                <p className="text-sm text-neutral-400">
-                  {isBiasTab ? "Questions flagged during the interview" : headerRole}
-                </p>
-              </div>
-              <div className={`${flex.row} gap-2 pt-1`}>
-                <button
-                  type="button"
-                  onClick={() => setActiveTab("candidate")}
-                  className={tabClass(isCandidateTab)}
-                >
-                  CANDIDATE
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setActiveTab("interviewer")}
-                  className={tabClass(activeTab === "interviewer")}
-                >
-                  INTERVIEWER
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setActiveTab("bias")}
-                  className={`rounded-xl px-4 py-0.5 text-sm font-semibold transition-colors ${flex.row} items-center gap-1.5 ${
-                    isBiasTab
-                      ? "bg-amber-500 text-white"
-                      : "bg-amber-100 text-amber-700 hover:bg-amber-200"
-                  }`}
-                >
-                  BIAS
-                  {biasCount > 0 && (
-                    <span
-                      className={`rounded-pill px-1.5 text-[10px] font-bold leading-4 ${
-                        isBiasTab ? "bg-white/30 text-white" : "bg-amber-500 text-white"
-                      }`}
-                    >
-                      {biasCount}
-                    </span>
-                  )}
-                </button>
-              </div>
-            </div>
-
-            {isCandidateTab ? (
-              <ReportBody report={data.candidate_report} scores={data.scores} />
-            ) : isBiasTab ? (
-              <BiasTabBody incidents={data.bias_incidents} />
-            ) : (
-              <ReportBody report={data.interviewer_report} scores={null} />
-            )}
-
-            <div className={`${flex.row} gap-3 pt-1`}>
-              <button
-                type="button"
-                onClick={onClose}
-                className={`${button.cancel} flex-1 py-2.5`}
-              >
-                Back
-              </button>
-              <button
-                type="button"
-                onClick={onDone}
-                className={`${button.primary} flex-1`}
-              >
-                Done
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
 // A single suggested question card in the horizontal strip. It stretches to
 // the strip's height (items-stretch on the row) rather than a fixed 345px,
 // so it never gets clipped; the question scrolls internally if very long and
@@ -532,10 +380,35 @@ function ScoreDonut({ value }) {
 // text, roomier spacing.
 function QuestionCard({ q, onMoreLike, onIgnore, isGeneratingSimilar }) {
   const [whyOpen, setWhyOpen] = useState(false);
+  // Breathe the glow for a few seconds when the card first appears as "new"
+  // (freshly-generated follow-up), then let it settle so the strip isn't
+  // permanently animated.
+  const [glow, setGlow] = useState(Boolean(q.isNew));
+  useEffect(() => {
+    if (!q.isNew) return undefined;
+    const t = setTimeout(() => setGlow(false), 6000);
+    return () => clearTimeout(t);
+  }, [q.isNew]);
+
   return (
-    <div className="flex w-[290px] shrink-0 flex-col rounded-2xl border border-neutral-200 bg-neutral-0 p-4">
+    <div
+      className={`flex w-[290px] shrink-0 flex-col rounded-2xl border bg-neutral-0 p-4 ${
+        glow ? "new-question-glow" : "border-neutral-200"
+      }`}
+    >
       <div className="mb-3 flex items-center justify-between gap-2 shrink-0">
-        <span className={`${badge.sm} ${q.categoryColor}`}>{q.category}</span>
+        <div className="flex min-w-0 items-center gap-1.5">
+          <span className={`${badge.sm} ${q.categoryColor}`}>{q.category}</span>
+          {q.isFollowUp && (
+            <span className="inline-flex items-center gap-1 rounded-pill bg-primary-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-primary-600">
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="9 14 4 9 9 4" />
+                <path d="M4 9h10a6 6 0 0 1 6 6v2" />
+              </svg>
+              Follow-up
+            </span>
+          )}
+        </div>
         <div className={`${flex.row} gap-1 text-neutral-300`}>
           <button className="rounded-lg p-1 transition-colors hover:bg-mint-50 hover:text-mint-500">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -1483,7 +1356,10 @@ export default function InterviewPage() {
   async function startMicOnly() {
     const interviewerLabel = user?.full_name || "Interviewer";
     try {
-      wsRef.current = createTranscriptionSocket(interviewerLabel, partialEntryRef);
+      // role="interviewer" is REQUIRED - the backend only runs the live bias
+      // check on the interviewer's own mic connection. Without it, biased
+      // questions are never flagged.
+      wsRef.current = createTranscriptionSocket(interviewerLabel, partialEntryRef, "interviewer");
       setStatus("Requesting microphone access...");
 
       const micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -1544,7 +1420,9 @@ export default function InterviewPage() {
       mediaStreamRef.current = displayStream;
 
       if (displayStream.getAudioTracks().length > 0) {
-        wsDisplayRef.current = createTranscriptionSocket(candidateLabel, displayPartialEntryRef);
+        // role="candidate": the display-audio side is the candidate's speech,
+        // which drives follow-up question generation (and must NOT be bias-checked).
+        wsDisplayRef.current = createTranscriptionSocket(candidateLabel, displayPartialEntryRef, "candidate");
 
         const displaySource = audioContextRef.current.createMediaStreamSource(displayStream);
         const displayProcessor = audioContextRef.current.createScriptProcessor(4096, 1, 1);
@@ -1926,7 +1804,9 @@ export default function InterviewPage() {
         .map((entry) => `${entry.speaker}: ${entry.text}`)
         .join("\n");
 
-      const response = await fetch(
+      // authedFetch (not bare fetch) so this keeps working if the endpoint
+      // ever gains an auth dependency - matches the initial-questions call.
+      const response = await authedFetch(
         `/api/interview-questions/${jobId}/follow-up`,
         {
           method: "POST",
@@ -1941,7 +1821,7 @@ export default function InterviewPage() {
         }
       );
 
-      const data = await response.json();
+      const data = await response.json().catch(() => ({}));
 
       if (!response.ok) {
         throw new Error(

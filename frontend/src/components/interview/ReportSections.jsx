@@ -179,17 +179,23 @@ function PointSection({ title, tint, items }) {
 function RequirementSection({ requirements }) {
   return (
     <SectionCard title="Job Requirements" tint="primary" count={requirements.length}>
-      <ul className="flex flex-col gap-2">
-        {requirements.map((r, i) => (
-          <RequirementRow
-            key={`${r.requirement}-${i}`}
-            requirement={r.requirement}
-            addressed={r.addressed}
-            justification={r.justification}
-            evidence={r.evidence}
-          />
-        ))}
-      </ul>
+      {requirements.length === 0 ? (
+        <p className="pl-4 text-sm italic text-neutral-400">
+          No job requirements were mapped for this interview.
+        </p>
+      ) : (
+        <ul className="flex flex-col gap-2">
+          {requirements.map((r, i) => (
+            <RequirementRow
+              key={`${r.requirement}-${i}`}
+              requirement={r.requirement}
+              addressed={r.addressed}
+              justification={r.justification}
+              evidence={r.evidence}
+            />
+          ))}
+        </ul>
+      )}
     </SectionCard>
   )
 }
@@ -204,7 +210,11 @@ function RequirementSection({ requirements }) {
 export default function ReportSections({ report, showRequirements = false, variant = 'grid' }) {
   const summary = report?.summary?.trim()
   const requirements = showRequirements ? report?.requirements_mapping ?? [] : []
-  const showReq = requirements.length > 0
+  // On the candidate tab the Job Requirements card ALWAYS shows (with an empty
+  // note when the LLM mapped none) - it's a separate axis from strengths /
+  // improvements and shouldn't silently vanish just because those came out
+  // short, which is exactly the case that read as "requirements are missing".
+  const showReq = showRequirements
 
   const summaryBox = summary ? (
     <div className="rounded-2xl bg-neutral-50 p-4">

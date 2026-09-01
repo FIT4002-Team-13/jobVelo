@@ -111,14 +111,10 @@ function JobCard({ job, onEdit, onDelete }) {
   // fully-populated ones. Each "missing" value renders as a muted italic
   // placeholder (status pill = neutral chip, numbers = 0) instead of an
   // empty string that would collapse the line and ruin the grid rhythm.
-  // Display-status override: once any candidate on this job has completed
-  // an interview, a "Pending" pill would be misleading - show In Progress.
-  // A job explicitly marked Completed keeps its label.
-  const storedStatus   = job.status        || null
-  const status =
-    interviewState.completed && storedStatus !== "Completed"
-      ? "In Progress"
-      : storedStatus
+  // The parent stamps each job with `display_status` (Pending / In Progress /
+  // Completed) derived from candidate interview completion, so the pill and
+  // the filter menu can never disagree. Fall back to the raw status defensively.
+  const status = job.display_status ?? job.status ?? null
   const description    = job.description?.trim()
   const interviewers   = job.interviewers?.length ?? 0
   const filled         = job.candidates_filled ?? 0

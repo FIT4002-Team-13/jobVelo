@@ -461,16 +461,21 @@ Rules:
   labeled lines are sparse or absent, say so plainly in
   candidate_report.summary and leave its strengths/improvements items empty
   rather than guessing.
-- `requirements_mapping` (candidate_report only): extract 3-6 of the most
-  important skills/responsibilities/expectations stated in the job
-  description (fall back to the job title if the description is thin). Each
-  `requirement` is a short phrase in your own words, not copied verbatim.
-  Set `addressed: true` only when the candidate's own labeled lines actually
-  speak to that requirement; when true, include 1-2 supporting quotes if a
-  clear line exists (otherwise leave `evidence` empty - same no-fabrication
-  rule). When `addressed` is false, leave `evidence` an empty array (there is
-  nothing to quote). Leave the whole list empty if there's no candidate
-  speech to evaluate.
+- `requirements_mapping` (candidate_report only): ALWAYS populate this with
+  3-6 of the most important skills/responsibilities/expectations from the job
+  description (fall back to the job title if the description is thin). These
+  come from the JOB, not the candidate - so produce them even when the
+  candidate's answers were thin, brief, evasive, or off-topic. A sparse
+  interview does NOT mean an empty list; it means more requirements are
+  simply marked `addressed: false` (a Gap). This list must be populated
+  independently of how many strengths/improvements you found - never omit it
+  just because those lists came out short. Each `requirement` is a short
+  phrase in your own words, not copied verbatim. Set `addressed: true` only
+  when the candidate's own labeled lines actually speak to that requirement;
+  when true, include 1-2 supporting quotes if a clear line exists (otherwise
+  leave `evidence` empty - same no-fabrication rule). When `addressed` is
+  false, leave `evidence` an empty array. The ONLY case where this list may
+  be empty is when there is NO candidate speech at all in the transcript.
 - Plain, conversational English. Refer to people as "they"/"them".
 - Score against the target role's expectations; be honest, not generous.
   A thin or evasive transcript should score low.
