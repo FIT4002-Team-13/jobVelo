@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
 import { form } from '../../styles/layout'
 
-export default function InterviewerCombobox({ value, onChange, options }) {
+export default function InterviewerCombobox({ value, onChange, options, onOpenChange }) {
   const [query, setQuery] = useState(value?.label || '')
   const [open, setOpen] = useState(false)
   const ref = useRef(null)
+  const dropdownRef = useRef(null)
 
   useEffect(() => {
     setQuery(value?.label || '')
@@ -17,6 +18,15 @@ export default function InterviewerCombobox({ value, onChange, options }) {
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
   }, [])
+
+  useEffect(() => {
+    onOpenChange?.(open)
+  }, [open, onOpenChange])
+
+  useEffect(() => {
+    if (!open || !dropdownRef.current) return
+    dropdownRef.current.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+  }, [open])
 
   const q = query.toLowerCase().trim()
   const filtered = q
@@ -43,7 +53,7 @@ export default function InterviewerCombobox({ value, onChange, options }) {
       />
 
       {open && (
-        <div className="scrollbar-primary absolute z-20 left-0 right-0 top-full mt-1 max-h-48 overflow-y-auto rounded-xl border border-neutral-200 bg-white shadow-lg">
+        <div ref={dropdownRef} className="scrollbar-primary absolute z-20 left-0 right-0 top-full mt-1 max-h-48 overflow-y-auto rounded-xl border border-neutral-200 bg-white shadow-lg scroll-mb-8">
           {filtered.length === 0 ? (
             <div className="px-3 py-2 text-xs text-neutral-400">
               {options.length === 0

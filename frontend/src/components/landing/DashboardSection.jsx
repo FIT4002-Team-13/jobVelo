@@ -1,17 +1,29 @@
 import { motion } from 'framer-motion'
+import { CalendarCheck2, CalendarClock, CalendarDays } from 'lucide-react'
 
+// Miniature of the REAL dashboard: the sidebar's MAIN/GROUP nav, the white
+// stat cards with tinted icon squares, and the Jobs / Candidates panels
+// with the app's actual status vocabulary (Pending / In Progress /
+// Completed for jobs, Scheduled / Completed / Not Scheduled for
+// candidates) - so what the landing page promises is what the product
+// shows after login.
 const jobs = [
-  { title: 'Front-End Developer', tag: 'Open',     tagClass: 'bg-mint-100 text-mint-600' },
-  { title: 'Back-End Dev',        tag: 'Open',     tagClass: 'bg-mint-100 text-mint-600' },
-  { title: 'Marketing QA',        tag: 'Closed',   tagClass: 'bg-coral-100 text-coral-600' },
-  { title: 'Front-End Developer', tag: 'Open',     tagClass: 'bg-mint-100 text-mint-600' },
+  { title: 'Front-End Developer', count: '2/3', tag: 'In Progress', tagClass: 'bg-primary-500 text-white' },
+  { title: 'Data Analyst',        count: '1/2', tag: 'Pending',     tagClass: 'bg-coral-500 text-white' },
+  { title: 'Marketing Lead',      count: '3/3', tag: 'Completed',   tagClass: 'bg-mint-500 text-white' },
 ]
 
 const candidates = [
-  { name: 'Bain Khoso',    badge: 'New',   badgeClass: 'bg-primary-100 text-primary-600' },
-  { name: 'Sara Doe',      badge: 'Hired', badgeClass: 'bg-mint-100 text-mint-600' },
-  { name: 'John Smith',    badge: 'New',   badgeClass: 'bg-primary-100 text-primary-600' },
-  { name: 'Spongebob',     badge: 'Done',  badgeClass: 'bg-coral-100 text-coral-600' },
+  { name: 'Sara Doe',    badge: 'SCHEDULED',     badgeClass: 'bg-primary-100 text-primary-600' },
+  { name: 'John Smith',  badge: 'COMPLETED',     badgeClass: 'bg-mint-100 text-mint-700' },
+  { name: 'Dave Miller', badge: 'IN PROGRESS',   badgeClass: 'bg-amber-100 text-amber-700' },
+  { name: 'Amy Chen',    badge: 'NOT SCHEDULED', badgeClass: 'bg-neutral-100 text-neutral-500' },
+]
+
+const stats = [
+  { n: 2, label: 'Today',     icon: <CalendarDays size={11} className="text-mint-600" />,  tint: 'bg-mint-100' },
+  { n: 4, label: 'Completed', icon: <CalendarCheck2 size={11} className="text-sky-500" />, tint: 'bg-sky-100' },
+  { n: 3, label: 'Up-coming', icon: <CalendarClock size={11} className="text-coral-500" />, tint: 'bg-coral-100' },
 ]
 
 export default function DashboardSection() {
@@ -46,8 +58,8 @@ export default function DashboardSection() {
           <ul className="mt-7 space-y-3 text-neutral-700">
             {[
               'Live status across every role',
-              'Smart shortlist powered by AI',
-              'One-click interview scheduling',
+              'AI scores and rankings after every interview',
+              'Schedules, candidates and jobs in one place',
             ].map((f) => (
               <li key={f} className="flex items-center gap-3">
                 <span className="h-6 w-6 rounded-pill bg-mint-100 grid place-items-center text-mint-500">✓</span>
@@ -64,22 +76,29 @@ export default function DashboardSection() {
 function DashboardMock() {
   return (
     <div className="relative mx-auto max-w-[560px] rounded-2xl bg-white shadow-xl border border-neutral-100 overflow-hidden">
-      <div className="grid grid-cols-[180px_1fr]">
-        {/* Sidebar */}
-        <aside className="bg-neutral-50 p-4 space-y-2 border-r border-neutral-100">
-          <div className="text-[11px] font-extrabold text-ink mb-3">smart recruit</div>
-          {['Dashboard', 'Candidates', 'Jobs', 'Settings'].map((item, i) => (
+      <div className="grid grid-cols-[150px_1fr]">
+        {/* Sidebar - mirrors the real MAIN / GROUP nav split. */}
+        <aside className="bg-neutral-50 p-4 border-r border-neutral-100 flex flex-col">
+          <div className="text-[11px] font-extrabold text-ink mb-3">jobVelo</div>
+          <div className="text-[8px] font-bold tracking-wider text-neutral-400 mb-1">MAIN</div>
+          {['Dashboard', 'Schedules'].map((item, i) => (
             <div
               key={item}
-              className={`text-xs px-2.5 py-2 rounded-md ${
+              className={`text-[10px] px-2 py-1.5 rounded-md ${
                 i === 0 ? 'bg-primary-500 text-white font-semibold' : 'text-neutral-500'
               }`}
             >
               {item}
             </div>
           ))}
-          <div className="pt-8 flex items-center gap-2 text-xs text-neutral-600">
-            <div className="h-6 w-6 rounded-pill bg-primary-200" />
+          <div className="text-[8px] font-bold tracking-wider text-neutral-400 mt-2.5 mb-1">GROUP</div>
+          {['Jobs', 'Candidates'].map((item) => (
+            <div key={item} className="text-[10px] px-2 py-1.5 rounded-md text-neutral-500">
+              {item}
+            </div>
+          ))}
+          <div className="mt-auto pt-6 flex items-center gap-1.5 text-[10px] text-neutral-600">
+            <div className="h-5 w-5 rounded-pill bg-primary-500 grid place-items-center text-[7px] font-bold text-white">JD</div>
             John Doe
           </div>
         </aside>
@@ -88,15 +107,17 @@ function DashboardMock() {
         <div className="p-5">
           <div className="text-sm font-bold mb-1">Hello, John Doe</div>
           <div className="text-[10px] text-neutral-500 mb-3">Summary</div>
+          {/* White stat cards with tinted icon squares - the real card anatomy. */}
           <div className="grid grid-cols-3 gap-2 mb-5">
-            {[
-              { n: 1, label: 'Interviews',  bg: 'bg-mint-100',   ink: 'text-mint-600' },
-              { n: 4, label: 'Completed',   bg: 'bg-primary-100', ink: 'text-primary-600' },
-              { n: 3, label: 'Up coming',   bg: 'bg-coral-100',  ink: 'text-coral-600' },
-            ].map((s) => (
-              <div key={s.label} className={`rounded-md ${s.bg} p-2.5`}>
-                <div className={`text-lg font-extrabold ${s.ink}`}>{s.n}</div>
-                <div className="text-[9px] text-neutral-500">{s.label}</div>
+            {stats.map((s) => (
+              <div key={s.label} className="flex items-center gap-1.5 rounded-lg border border-neutral-200 bg-white p-2 shadow-sm">
+                <div className={`grid h-6 w-6 shrink-0 place-items-center rounded-md ${s.tint}`}>
+                  {s.icon}
+                </div>
+                <div className="min-w-0">
+                  <div className="text-sm font-extrabold leading-none text-neutral-800">{s.n}</div>
+                  <div className="text-[8px] text-neutral-400">{s.label}</div>
+                </div>
               </div>
             ))}
           </div>
@@ -105,10 +126,13 @@ function DashboardMock() {
             <div>
               <div className="text-[10px] font-semibold text-neutral-700 mb-1.5">Jobs</div>
               <div className="space-y-1.5">
-                {jobs.map((j, i) => (
-                  <div key={i} className="flex items-center justify-between bg-neutral-50 rounded-md px-2 py-1.5">
-                    <span className="text-[10px] text-neutral-700 truncate">{j.title}</span>
-                    <span className={`text-[8px] px-1.5 py-0.5 rounded-pill ${j.tagClass}`}>{j.tag}</span>
+                {jobs.map((j) => (
+                  <div key={j.title} className="rounded-md border border-neutral-100 bg-white px-2 py-1.5 shadow-sm">
+                    <div className="flex items-center justify-between gap-1">
+                      <span className="text-[10px] font-semibold text-neutral-700 truncate">{j.title}</span>
+                      <span className={`shrink-0 text-[7px] font-bold px-1.5 py-0.5 rounded-pill ${j.tagClass}`}>{j.tag}</span>
+                    </div>
+                    <div className="text-[8px] text-neutral-400">Candidates: {j.count}</div>
                   </div>
                 ))}
               </div>
@@ -116,10 +140,10 @@ function DashboardMock() {
             <div>
               <div className="text-[10px] font-semibold text-neutral-700 mb-1.5">Candidates</div>
               <div className="space-y-1.5">
-                {candidates.map((c, i) => (
-                  <div key={i} className="flex items-center justify-between bg-neutral-50 rounded-md px-2 py-1.5">
+                {candidates.map((c) => (
+                  <div key={c.name} className="flex items-center justify-between gap-1 rounded-md border border-neutral-100 bg-white px-2 py-1.5 shadow-sm">
                     <span className="text-[10px] text-neutral-700 truncate">{c.name}</span>
-                    <span className={`text-[8px] px-1.5 py-0.5 rounded-pill ${c.badgeClass}`}>{c.badge}</span>
+                    <span className={`shrink-0 text-[7px] font-bold px-1.5 py-0.5 rounded-pill ${c.badgeClass}`}>{c.badge}</span>
                   </div>
                 ))}
               </div>

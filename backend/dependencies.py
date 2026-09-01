@@ -37,12 +37,16 @@ async def get_current_user(token: str | None = Depends(oauth2_scheme)) -> dict:
 
     user_id = payload.get("sub")
     if not user_id or not ObjectId.is_valid(user_id):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token subject")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token subject"
+        )
 
     db = get_db()
     user = await db.users.find_one({"_id": ObjectId(user_id)})
     if not user:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User no longer exists")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="User no longer exists"
+        )
     return user
 
 
@@ -79,6 +83,7 @@ def require_role(*allowed: str):
     Returns the user dict so the route can also accept it directly:
         user = Depends(require_role("admin"))
     """
+
     async def _checker(user: dict = Depends(get_current_user)) -> dict:
         if user.get("role") not in allowed:
             raise HTTPException(

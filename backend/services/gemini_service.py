@@ -149,10 +149,12 @@ async def analyse_cv(
         types.Part.from_bytes(data=cv_bytes, mime_type=cv_mime_type),
     ]
     if cover_letter_bytes and cover_letter_mime_type:
-        parts.append(types.Part.from_bytes(
-            data=cover_letter_bytes,
-            mime_type=cover_letter_mime_type,
-        ))
+        parts.append(
+            types.Part.from_bytes(
+                data=cover_letter_bytes,
+                mime_type=cover_letter_mime_type,
+            )
+        )
 
     # One compact header that gives the model: target role, doc count, JD
     # block (or "no JD" marker). Keeping this tight is the second biggest

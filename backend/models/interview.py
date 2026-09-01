@@ -6,7 +6,9 @@ from typing import Literal
 from pydantic import BaseModel, Field, field_validator
 
 # Interview cycle for scheduling + running + post-interview state.
-InterviewStatus = Literal["not_scheduled", "scheduled", "in_progress", "completed", "cancelled"]
+InterviewStatus = Literal[
+    "not_scheduled", "scheduled", "in_progress", "completed", "cancelled"
+]
 
 
 class TranscriptEntry(BaseModel):
@@ -42,6 +44,21 @@ class FeedbackPoint(BaseModel):
 
     point: str
     evidence: list[EvidenceRef] = Field(default_factory=list)
+    
+class BiasIncident(BaseModel):
+    """One question the live bias checker flagged during the interview.
+
+    Mirrors the shape of the `bias_warning` websocket messages the frontend
+    already receives (see services.openai_service.check_bias), plus an
+    interview-clock `timestamp` (mm:ss) captured when it fired so the report
+    can point the interviewer back to the moment. Bounded strings so a
+    hostile/buggy client can't post an oversized body."""
+
+    quote: str = Field(..., max_length=2000)
+    category: str | None = Field(default=None, max_length=200)
+    reason: str | None = Field(default=None, max_length=2000)
+    suggestion: str | None = Field(default=None, max_length=2000)
+    timestamp: str | None = Field(default=None, max_length=20)
 
 
 class InterviewFeedbackSection(BaseModel):
@@ -88,11 +105,15 @@ class InterviewFeedback(BaseModel):
     """
 
     summary: str | None = None
-    strengths: InterviewFeedbackSection = Field(default_factory=InterviewFeedbackSection)
-    improvements: InterviewFeedbackSection = Field(default_factory=InterviewFeedbackSection)
-    # Only meaningful on the candidate report - stays empty on the
-    # interviewer report, which isn't evaluated against job requirements.
-    requirements_mapping: list[RequirementMapping] = Field(default_factory=list)
+    strengths: InterviewFeedbackSection = Field(
+        default_factory=InterviewFeedbackSection
+    )
+    improvements: InterviewFeedbackSection = Field(
+        default_factory=InterviewFeedbackSection
+    )
+    requirements_mapping: list[RequirementMapping] = Field(
+        default_factory=list
+    )
 
 
 class InterviewScores(BaseModel):
@@ -110,16 +131,26 @@ class InterviewCompleteRequest(BaseModel):
 
     transcript: list[TranscriptEntry] | None = None
     duration_seconds: int | None = Field(default=None, ge=0)
+    bias_incidents: list[BiasIncident] | None = Field(default=None, max_length=500)
 
 
 class InterviewCompleteOut(BaseModel):
-    """Everything the post-interview report popup renders."""
+    """Everything the post-interview report popup renders.
+
+    `scores` is None on a cached re-read whose job_candidates link no longer
+    holds the mirrored ratings - better absent than fabricated 0.0s."""
 
     intv_id: str
     intv_status: InterviewStatus
-    scores: InterviewScores
+    scores: InterviewScores | None = None
     candidate_report: InterviewFeedback
     interviewer_report: InterviewFeedback
+
+    transcript: list[TranscriptEntry] | None = Field(default=None, max_length=5000)
+    duration_seconds: int | None = Field(default=None, ge=0)
+    # Bias questions flagged live during the interview, echoed back so the
+    # completion popup can show them in the report. Empty when none fired.
+    bias_incidents: list[BiasIncident] = Field(default_factory=list)
     # True when the reports came from a previous completion (no new LLM run).
     cached: bool = False
 
@@ -149,6 +180,7 @@ class InterviewUpdate(BaseModel):
     intv_duration_seconds: int | None = None
     intv_candidate_report: InterviewFeedback | None = None
     intv_interviewer_report: InterviewFeedback | None = None
+    intv_sections: list[dict] | None = None
 
 
 class InterviewOut(BaseModel):
@@ -167,5 +199,9 @@ class InterviewOut(BaseModel):
     intv_duration_seconds: int | None = None
     intv_candidate_report: InterviewFeedback | None = None
     intv_interviewer_report: InterviewFeedback | None = None
+    intv_sections: list[dict] | None = None
+    # Bias questions flagged live during the interview (empty for interviews
+    # that predate the feature or had none). Surfaced on the persisted report.
+    intv_bias_incidents: list[BiasIncident] = Field(default_factory=list)
     intv_created_at: datetime
     intv_updated_at: datetime

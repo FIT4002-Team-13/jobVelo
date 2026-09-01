@@ -95,6 +95,10 @@ export default function EditCandidateForm({
 }) {
   const { user } = useAuth()
 
+  const initialScheduledAt = initialData?.interview_datetime
+    ? initialData.interview_datetime.slice(0, 16)
+    : ''
+
   const [formState, setFormState] = useState({
     cand_id: initialData?.cand_id || '',
     application_id: initialData?.application_id || '',
@@ -104,9 +108,7 @@ export default function EditCandidateForm({
     job_id: initialData?.job_id || '',
     interviewer: initialData?.interviewer || '',
     interviewer_user_id: initialData?.interviewer_user_id || '',
-    scheduled_at: initialData?.interview_datetime
-    ? initialData.interview_datetime.slice(0, 16)   // "2025-06-01T10:00"
-    : '',
+    scheduled_at: initialScheduledAt,
   })
 
   const [cvFile, setCvFile] = useState(null)
@@ -116,6 +118,7 @@ export default function EditCandidateForm({
     getFileName(initialData?.cover_letter_url)
   )
   const [interviewers, setInterviewers] = useState([])
+  const [interviewerOpen, setInterviewerOpen] = useState(false)
 
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
@@ -259,7 +262,7 @@ export default function EditCandidateForm({
 
   return (
     <div className={modal.overlay}>
-      <div className={`${modal.panel} max-w-2xl max-h-[90vh] overflow-y-auto`}>
+      <div className={`${modal.panel} scrollbar-primary max-w-2xl max-h-[90vh] overflow-y-auto transition-[padding] ${interviewerOpen ? 'pb-52' : ''}`}>
         <button
           type="button"
           onClick={onClose}
@@ -363,6 +366,7 @@ export default function EditCandidateForm({
                   setField('interviewer_user_id', userId)
                 }}
                 options={interviewers}
+                onOpenChange={setInterviewerOpen}
               />
             </div>
 

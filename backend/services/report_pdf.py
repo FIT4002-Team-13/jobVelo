@@ -13,21 +13,28 @@ from fpdf import FPDF
 from fpdf.enums import XPos, YPos
 
 # Brand palette (mirrors frontend/tailwind.config.js).
-_INK = (30, 41, 59)        # neutral-800
-_MUTED = (100, 116, 139)   # neutral-500
-_FAINT = (148, 163, 184)   # neutral-400
+_INK = (30, 41, 59)  # neutral-800
+_MUTED = (100, 116, 139)  # neutral-500
+_FAINT = (148, 163, 184)  # neutral-400
 _PRIMARY = (93, 137, 233)  # primary-500
-_TRACK = (241, 245, 249)   # neutral-100
-_MINT = (63, 212, 147)     # mint-500
-_CORAL = (255, 115, 118)   # coral-500
+_TRACK = (241, 245, 249)  # neutral-100
+_MINT = (63, 212, 147)  # mint-500
+_MINT_INK = (34, 130, 87)  # mint-700 (readable on white)
+_CORAL = (255, 115, 118)  # coral-500
+_AMBER = (217, 119, 6)  # amber-600
 
 # The built-in Helvetica font is latin-1 only; map the common unicode
 # punctuation LLM output tends to contain, then replace anything left.
 _CHAR_MAP = {
-    "—": "-", "–": "-",         # em/en dash
-    "‘": "'", "’": "'",         # curly single quotes
-    "“": '"', "”": '"',         # curly double quotes
-    "…": "...", "•": "-", "·": "-",
+    "—": "-",
+    "–": "-",  # em/en dash
+    "‘": "'",
+    "’": "'",  # curly single quotes
+    "“": '"',
+    "”": '"',  # curly double quotes
+    "…": "...",
+    "•": "-",
+    "·": "-",
 }
 
 
@@ -121,15 +128,99 @@ def _score_bar(pdf: _ReportPDF, label: str, value: float, colour: tuple) -> None
     pdf.cell(48, 6, _latin(label))
 
     pdf.set_fill_color(*_TRACK)
-    pdf.rect(bar_x, y + 1.4, bar_w, bar_h, style="F", round_corners=True, corner_radius=1.6)
+    pdf.rect(
+        bar_x, y + 1.4, bar_w, bar_h, style="F", round_corners=True, corner_radius=1.6
+    )
     filled = max(0.0, min(1.0, value / 10)) * bar_w
     if filled > 0:
         pdf.set_fill_color(*colour)
-        pdf.rect(bar_x, y + 1.4, filled, bar_h, style="F", round_corners=True, corner_radius=1.6)
+        pdf.rect(
+            bar_x,
+            y + 1.4,
+            filled,
+            bar_h,
+            style="F",
+            round_corners=True,
+            corner_radius=1.6,
+        )
 
     pdf.set_xy(bar_x + bar_w + 4, y)
     pdf.set_font("Helvetica", "B", 10)
     pdf.cell(0, 6, f"{value:.1f}/10", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+
+
+def _bias_section(pdf: _ReportPDF, incidents: list[dict]) -> None:
+    """Render the bias log flagged live during the interview. Each incident:
+    category + interview-clock timestamp, the quote, the risk reason, and a
+    neutral rephrasing suggestion. An empty list still prints a reassuring
+    "none flagged" line so the reader knows the check ran."""
+    _heading(pdf, "Bias & Compliance")
+
+    if not incidents:
+        _body(
+            pdf,
+            "No potentially biased or legally-risky questions were flagged "
+            "during this interview.",
+        )
+        return
+
+    count = len(incidents)
+    pdf.set_font("Helvetica", "I", 9)
+    pdf.set_text_color(*_MUTED)
+    noun = "question" if count == 1 else "questions"
+    pdf.multi_cell(
+        0,
+        5,
+        _latin(f"{count} {noun} flagged by the live bias checker."),
+        new_x=XPos.LMARGIN,
+        new_y=YPos.NEXT,
+    )
+    pdf.ln(1)
+
+    for incident in incidents:
+        category = (incident.get("category") or "Flagged question").strip()
+        timestamp = (incident.get("timestamp") or "").strip()
+
+        # Category (amber) + timestamp on one line.
+        pdf.set_font("Helvetica", "B", 10)
+        pdf.set_text_color(*_AMBER)
+        pdf.cell(pdf.get_string_width(_latin(category)) + 3, 5.5, _latin(category))
+        if timestamp:
+            pdf.set_font("Helvetica", "", 9)
+            pdf.set_text_color(*_FAINT)
+            pdf.cell(0, 5.5, _latin(timestamp))
+        pdf.ln(5.5)
+
+        # The flagged quote (italic ink).
+        quote = (incident.get("quote") or "").strip()
+        if quote:
+            pdf.set_font("Helvetica", "I", 10)
+            pdf.set_text_color(*_INK)
+            pdf.multi_cell(
+                0, 5, _latin(f'"{quote}"'), new_x=XPos.LMARGIN, new_y=YPos.NEXT
+            )
+
+        # Why it was flagged (muted).
+        reason = (incident.get("reason") or "").strip()
+        if reason:
+            pdf.set_font("Helvetica", "", 9)
+            pdf.set_text_color(*_MUTED)
+            pdf.multi_cell(0, 5, _latin(reason), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+
+        # Neutral rephrasing (mint).
+        suggestion = (incident.get("suggestion") or "").strip()
+        if suggestion:
+            pdf.set_font("Helvetica", "", 9)
+            pdf.set_text_color(*_MINT_INK)
+            pdf.multi_cell(
+                0,
+                5,
+                _latin(f"Try instead: {suggestion}"),
+                new_x=XPos.LMARGIN,
+                new_y=YPos.NEXT,
+            )
+
+        pdf.ln(2)
 
 
 def build_interview_report_pdf(
@@ -144,6 +235,7 @@ def build_interview_report_pdf(
     status: str | None,
     scores: dict | None,  # {communication, skill, problem_solving} for candidate kind
     transcript: list[dict] | None = None,  # [{speaker, timestamp, text}, ...]
+    bias_incidents: list[dict] | None = None,  # interviewer kind only
 ) -> bytes:
     pdf = _ReportPDF()
     pdf.set_auto_page_break(True, margin=18)
@@ -158,7 +250,13 @@ def build_interview_report_pdf(
     pdf.set_font("Helvetica", "", 10)
     pdf.set_text_color(*_MUTED)
     generated = datetime.now(timezone.utc).strftime("%d %b %Y, %H:%M UTC")
-    pdf.cell(0, 5.5, _latin(f"{subject} - generated {generated}"), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+    pdf.cell(
+        0,
+        5.5,
+        _latin(f"{subject} - generated {generated}"),
+        new_x=XPos.LMARGIN,
+        new_y=YPos.NEXT,
+    )
     pdf.ln(4)
 
     # ── Interview details ────────────────────────────────────────────────
@@ -167,7 +265,9 @@ def build_interview_report_pdf(
         if interview_datetime
         else None
     )
-    duration = f"{max(1, round(duration_seconds / 60))} min" if duration_seconds else None
+    duration = (
+        f"{max(1, round(duration_seconds / 60))} min" if duration_seconds else None
+    )
     details = [
         ("Candidate", candidate_name),
         ("Role", job_title),
@@ -203,9 +303,11 @@ def build_interview_report_pdf(
             pdf.set_font("Helvetica", "B", 11)
             pdf.set_text_color(*_INK)
             pdf.cell(
-                0, 6,
+                0,
+                6,
                 _latin(f"Overall: {sum(values) / len(values):.1f}/10"),
-                new_x=XPos.LMARGIN, new_y=YPos.NEXT,
+                new_x=XPos.LMARGIN,
+                new_y=YPos.NEXT,
             )
 
     # ── Report body ──────────────────────────────────────────────────────
@@ -251,6 +353,9 @@ def build_interview_report_pdf(
             if not (req.get("evidence") or addressed) and req.get("justification"):
                 _justification(pdf, req.get("justification"))
             pdf.ln(0.5)
+    # ── Bias log (interviewer report only - it's the interviewer's conduct)
+    if kind == "interviewer":
+        _bias_section(pdf, bias_incidents or [])
 
     # ── Section 2: full transcription, always on its own page ────────────
     entries = [e for e in (transcript or []) if (e.get("text") or "").strip()]
@@ -258,13 +363,19 @@ def build_interview_report_pdf(
         pdf.add_page()
         pdf.set_font("Helvetica", "B", 14)
         pdf.set_text_color(*_INK)
-        pdf.cell(0, 9, _latin("Interview Transcription"), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+        pdf.cell(
+            0, 9, _latin("Interview Transcription"), new_x=XPos.LMARGIN, new_y=YPos.NEXT
+        )
         pdf.set_font("Helvetica", "", 9)
         pdf.set_text_color(*_MUTED)
         pdf.cell(
-            0, 5,
-            _latin(f"{len(entries)} entries - timestamps are minutes:seconds from the start"),
-            new_x=XPos.LMARGIN, new_y=YPos.NEXT,
+            0,
+            5,
+            _latin(
+                f"{len(entries)} entries - timestamps are minutes:seconds from the start"
+            ),
+            new_x=XPos.LMARGIN,
+            new_y=YPos.NEXT,
         )
         pdf.ln(3)
 
@@ -283,7 +394,13 @@ def build_interview_report_pdf(
 
             pdf.set_font("Helvetica", "", 10)
             pdf.set_text_color(*_MUTED)
-            pdf.multi_cell(0, 5, _latin(entry.get("text") or ""), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+            pdf.multi_cell(
+                0,
+                5,
+                _latin(entry.get("text") or ""),
+                new_x=XPos.LMARGIN,
+                new_y=YPos.NEXT,
+            )
             pdf.ln(2)
 
     return bytes(pdf.output())

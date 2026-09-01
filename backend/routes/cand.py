@@ -46,14 +46,20 @@ def candidate_helper(candidate: dict, cand_status: str | None = None) -> Candida
     now = datetime.now(timezone.utc)
     return CandidateOut(
         cand_id=str(candidate["_id"]),
-        cand_full_name=candidate.get("cand_full_name") or candidate.get("name") or "Unknown",
+        cand_full_name=candidate.get("cand_full_name")
+        or candidate.get("name")
+        or "Unknown",
         cand_email=candidate.get("cand_email") or "unknown@unknown.test",
         cand_phone=candidate.get("cand_phone"),
         cand_cv_url=candidate.get("cand_cv_url"),
         cand_cover_letter_url=candidate.get("cand_cover_letter_url"),
         comp_id=str(candidate.get("comp_id") or ""),
-        cand_created_at=candidate.get("cand_created_at") or candidate.get("created_at") or now,
-        cand_updated_at=candidate.get("cand_updated_at") or candidate.get("updated_at") or now,
+        cand_created_at=candidate.get("cand_created_at")
+        or candidate.get("created_at")
+        or now,
+        cand_updated_at=candidate.get("cand_updated_at")
+        or candidate.get("updated_at")
+        or now,
         cand_status=cand_status,
     )
 
@@ -149,16 +155,31 @@ async def create_candidate_for_job(
     now = datetime.now(timezone.utc)
     comp_oid = comp_id  # JWT-derived
 
+    # 0. The target job must exist AND belong to the caller's company -
+    #    otherwise links could be attached to another tenant's job (or to a
+    #    garbage id, orphaning the link from day one).
+    if not ObjectId.is_valid(payload.job_id) or not await db.jobs.find_one(
+        {"_id": ObjectId(payload.job_id), "comp_id": comp_oid}, {"_id": 1}
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Job not found.",
+        )
+
     candidate = None
 
-    # 1. If a candidate id is supplied, prefer that exact candidate.
+    # 1. If a candidate id is supplied, prefer that exact candidate - but
+    #    only within the caller's company (an unscoped lookup here let one
+    #    company read and update another company's candidate).
     if payload.cand_id:
         if not ObjectId.is_valid(payload.cand_id):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Invalid candidate id.",
             )
-        candidate = await db.candidates.find_one({"_id": ObjectId(payload.cand_id)})
+        candidate = await db.candidates.find_one(
+            {"_id": ObjectId(payload.cand_id), "comp_id": comp_oid}
+        )
 
     # 2. Fall back to matching by email within the same company.
     if not candidate:
@@ -190,15 +211,21 @@ async def create_candidate_for_job(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Failed to create candidate.",
             )
-        
+
     # 4. Optionally refresh editable candidate fields with the newest popup data.
     else:
         candidate_updates = {}
-        if payload.cand_full_name and payload.cand_full_name != candidate.get("cand_full_name"):
+        if payload.cand_full_name and payload.cand_full_name != candidate.get(
+            "cand_full_name"
+        ):
             candidate_updates["cand_full_name"] = payload.cand_full_name
-        if payload.cand_phone is not None and payload.cand_phone != candidate.get("cand_phone"):
+        if payload.cand_phone is not None and payload.cand_phone != candidate.get(
+            "cand_phone"
+        ):
             candidate_updates["cand_phone"] = payload.cand_phone
-        if payload.cand_cv_url is not None and payload.cand_cv_url != candidate.get("cand_cv_url"):
+        if payload.cand_cv_url is not None and payload.cand_cv_url != candidate.get(
+            "cand_cv_url"
+        ):
             candidate_updates["cand_cv_url"] = payload.cand_cv_url
         if (
             payload.cand_cover_letter_url is not None
@@ -251,26 +278,46 @@ async def create_candidate_for_job(
 
         message = "Candidate created and linked to job successfully."
 
-    # 6. Create interview + interviewer link whenever an interviewer is assigned.
-    if payload.interviewer_user_id:
-        scheduled_dt = None
-        if payload.scheduled_at:
-            try:
-                scheduled_dt = datetime.fromisoformat(payload.scheduled_at)
-            except ValueError:
-                pass
+    # 6. Create interview + interviewer link whenever a date or interviewer is assigned.
+    scheduled_dt = None
+    if payload.scheduled_at:
+        try:
+            scheduled_dt = datetime.fromisoformat(payload.scheduled_at)
+        except ValueError:
+            pass
 
+    if scheduled_dt or payload.interviewer_user_id:
         intv_status = "scheduled" if scheduled_dt else "not_scheduled"
 
         existing_interview = await db.interviews.find_one(
             {"cand_id": cand_id_str, "job_id": payload.job_id}
         )
 
+        # A finished (or cancelled) interview is immutable: re-submitting the
+        # add-candidate popup must not flip it back to scheduled, orphaning
+        # its reports/scores, nor replace its interviewer links. Same guard
+        # as applications.update_application.
+        if existing_interview and existing_interview.get("intv_status") in (
+            "completed",
+            "cancelled",
+        ):
+            return {
+                "message": message,
+                "candidate": candidate_helper(candidate).model_dump(),
+                "job_candidate": job_candidate_helper(job_candidate),
+            }
+
         if existing_interview:
             intv_id = str(existing_interview["_id"])
             await db.interviews.update_one(
                 {"_id": existing_interview["_id"]},
-                {"$set": {"intv_date_time": scheduled_dt, "intv_status": intv_status, "intv_updated_at": now}},
+                {
+                    "$set": {
+                        "intv_date_time": scheduled_dt,
+                        "intv_status": intv_status,
+                        "intv_updated_at": now,
+                    }
+                },
             )
         else:
             intv_result = await db.interviews.insert_one(
@@ -289,15 +336,16 @@ async def create_candidate_for_job(
             )
             intv_id = str(intv_result.inserted_id)
 
-        await db.interview_users.delete_many({"intv_id": intv_id})
-        await db.interview_users.insert_one(
-            {
-                "user_id": payload.interviewer_user_id,
-                "intv_id": intv_id,
-                "intvuser_created_at": now,
-                "intvuser_updated_at": now,
-            }
-        )
+        if payload.interviewer_user_id:
+            await db.interview_users.delete_many({"intv_id": intv_id})
+            await db.interview_users.insert_one(
+                {
+                    "user_id": payload.interviewer_user_id,
+                    "intv_id": intv_id,
+                    "intvuser_created_at": now,
+                    "intvuser_updated_at": now,
+                }
+            )
 
     return {
         "message": message,
@@ -364,7 +412,9 @@ async def list_candidates(
         s = (intv.get("intv_status") or "").upper().replace("_", " ")
         if s == "SCHEDULED":
             statuses[cid] = "SCHEDULED"
-        elif s in ("EVALUATED", "HIRED", "REJECTED") and statuses.get(cid) != "SCHEDULED":
+        elif (
+            s in ("EVALUATED", "HIRED", "REJECTED") and statuses.get(cid) != "SCHEDULED"
+        ):
             statuses[cid] = s
         elif s == "NOT SCHEDULED" and cid not in statuses:
             statuses[cid] = "NOT SCHEDULED"
@@ -512,7 +562,7 @@ async def upload_cover_letter(
     old_url = candidate.get("cand_cover_letter_url") or ""
     old_prefix = "/api/files/candidate_docs/"
     if old_url.startswith(old_prefix):
-        delete_upload(old_url.removeprefix("/api/files/"))
+        await delete_upload(old_url.removeprefix("/api/files/"))
 
     now = datetime.now(timezone.utc)
     await db.candidates.update_one(

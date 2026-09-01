@@ -37,6 +37,7 @@ async def lifespan(app: FastAPI):
         await seed_mock_data()
     except Exception:
         app.state.mongo_available = False
+        raise
     else:
         app.state.mongo_available = True
     yield
@@ -79,6 +80,7 @@ app.include_router(interview_question.router)
 app.include_router(interview.router)
 app.include_router(user_interview.router)
 app.include_router(applications.router)
+
 
 @app.get("/api/health")
 async def health() -> dict[str, str]:
