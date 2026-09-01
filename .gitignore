@@ -11,5 +11,8 @@ Thumbs.db
 .env.local
 .env.*.local
 !.env.example
-
+backend/.env.example 
 .claude
+
+
+issues-to-fix.md

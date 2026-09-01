@@ -1,5 +1,6 @@
 import { BrowserRouter, Route, Routes } from 'react-router-dom'
 import { AuthProvider } from './lib/AuthContext.jsx'
+import { ToastProvider } from './components/common/ToastContext.jsx'
 import RequireAuth from './components/auth/RequireAuth.jsx'
 import RequireRole from './components/auth/RequireRole.jsx'
 import LandingPage from './pages/LandingPage.jsx'
@@ -7,17 +8,21 @@ import LoginPage from './pages/LoginPage.jsx'
 import SignupPage from './pages/SignupPage.jsx'
 import CreateCompanyPage from './pages/CreateCompanyPage.jsx'
 import DashboardPage from './pages/DashboardPage.jsx'
+import SchedulesPage from './pages/SchedulesPage.jsx'
 import AdminDashboardPage from './pages/AdminDashboardPage.jsx'
 import JobsPage from './pages/JobsPage'
 import JobDetailPage from './pages/JobDetailPage'
+import Profile from './pages/ProfilePage.jsx'
 import CvAnalysisPage from './pages/CvAnalysisPage'
 import InterviewPage from './pages/InterviewPage'
 import CandidateDetailPage from './pages/CandidateDetailPage.jsx'
 import ApplicationsPage from './pages/ApplicationsPage.jsx'
+import ErrorPage, { AppErrorBoundary } from './pages/ErrorPage.jsx'
 
 export default function App() {
   return (
     <AuthProvider>
+      <ToastProvider>
       {/* Opt in to React Router v7 behaviour early to silence the deprecation
           warnings printed on every page load. These flags only affect timing
           (startTransition) + splat-route resolution; nothing in our routes
@@ -25,6 +30,9 @@ export default function App() {
       <BrowserRouter
         future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
       >
+        {/* Any component that throws during render shows the friendly 500
+            screen instead of React's blank white page. */}
+        <AppErrorBoundary>
         <Routes>
           <Route path="/" element={<LandingPage />} />
           <Route path="/login" element={<LoginPage />} />
@@ -42,9 +50,17 @@ export default function App() {
             path="/admin/dashboard"
             element={
               <RequireAuth>
-                <RequireRole allow={['admin']} fallback="/dashboard">
+                <RequireRole allow={['admin']}>
                   <AdminDashboardPage />
                 </RequireRole>
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/schedules"
+            element={
+              <RequireAuth>
+                <SchedulesPage />
               </RequireAuth>
             }
           />
@@ -61,6 +77,14 @@ export default function App() {
             element={
               <RequireAuth>
                 <JobDetailPage />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/profile"
+            element={
+              <RequireAuth>
+                <Profile />
               </RequireAuth>
             }
           />
@@ -83,10 +107,28 @@ export default function App() {
               </RequireAuth>
             }
           />
-          <Route path="/candidates/:candId/:jobId" element={<CandidateDetailPage />} />
-          <Route path="/candidates" element={<ApplicationsPage />} />
+          <Route
+            path="/candidates/:candId/:jobId"
+            element={
+              <RequireAuth>
+                <CandidateDetailPage />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/candidates"
+            element={
+              <RequireAuth>
+                <ApplicationsPage />
+              </RequireAuth>
+            }
+          />
+          {/* Catch-all: any route not declared above lands on the 404. */}
+          <Route path="*" element={<ErrorPage code={404} />} />
         </Routes>
+        </AppErrorBoundary>
       </BrowserRouter>
+      </ToastProvider>
     </AuthProvider>
   )
 }

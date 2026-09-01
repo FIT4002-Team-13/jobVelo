@@ -206,8 +206,10 @@ async def signup_company(
         user_res = await db.users.insert_one(user_doc)
     except DuplicateKeyError as e:
         # Best-effort rollback - drop the orphan company + logo file.
+        # delete_upload is async under GridFS - without the await the
+        # coroutine was created and thrown away, so the logo lingered.
         await db.companies.delete_one({"_id": comp_res.inserted_id})
-        delete_upload(logo_path)
+        await delete_upload(logo_path)
         msg = str(e).lower()
         if "email" in msg:
             raise HTTPException(status_code=409, detail="Email already registered")

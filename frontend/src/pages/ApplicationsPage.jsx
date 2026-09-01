@@ -3,10 +3,12 @@ import { useNavigate } from 'react-router-dom'
 import Sidebar from '../components/common/Sidebar'
 import AddCandidateForm from '../components/candidate/AddCandidateForm'
 import EditCandidateForm from '../components/candidate/EditCandidateForm'
+import DeleteCandidateModal from '../components/job-candidate/DeleteCandidateModal'
 import { SortMenu, FilterMenu } from '../components/job-candidate/TableControls'
 import { page, card, button, badge } from '../styles/layout'
 import { useAuth } from '../lib/AuthContext.jsx'
-import { authedFetch } from '../lib/api.js'
+import { useToast } from '../components/common/ToastContext.jsx'
+import { api, authedFetch } from '../lib/api.js'
 
 function getInitials(name = '') {
   const safeName = typeof name === 'string' ? name.trim() : ''
@@ -38,8 +40,13 @@ function statusClass(status) {
       return 'bg-neutral-100 text-neutral-500'
     case 'SCHEDULED':
       return 'bg-primary-100 text-primary-600'
+    case 'IN PROGRESS':
+      return 'bg-amber-100 text-amber-700'
+    case 'COMPLETED':
     case 'EVALUATED':
       return 'bg-mint-100 text-mint-700'
+    case 'CANCELLED':
+      return 'bg-coral-100 text-coral-700'
     case 'HIRED':
       return 'bg-mint-500 text-white'
     case 'REJECTED':
@@ -52,6 +59,26 @@ function statusClass(status) {
 function formatScore(score) {
   if (score == null) return '--'
   return Number(score).toFixed(1)
+}
+
+function getCandidateScore(ratings) {
+  if (!ratings) return null
+
+  const scores = [
+    ratings.communication?.score,
+    ratings.technical_skills?.score,
+    ratings.problem_solving?.score,
+  ].filter(
+    (score) =>
+      typeof score === 'number' &&
+      Number.isFinite(score)
+  )
+
+  if (scores.length === 0) return null
+
+  const average = scores.reduce((total, score) => total + score, 0) / scores.length
+
+  return Math.round(average * 10) / 10
 }
 
 function formatShortDate(iso) {
@@ -69,15 +96,16 @@ const SORT_OPTIONS = [
 ]
 
 // Kept in sync with the dashboard candidates panel + JobDetailPage candidate
-// filter so the same statuses are filterable wherever the user looks. HIRED
-// and REJECTED rows can still exist in the data; they show up under "All"
-// but aren't surfaced as their own filter chips here - rare enough that the
-// noise wasn't worth the extra dropdown options.
+// filter so the same statuses are filterable wherever the user looks. The
+// values mirror what the rows can actually hold (the interview status,
+// upper-cased) - listing a status the data can never produce just gives the
+// user a filter that silently matches nothing.
 const FILTER_OPTIONS = [
   { value: '',              label: 'All'           },
   { value: 'NOT SCHEDULED', label: 'Not Scheduled' },
   { value: 'SCHEDULED',     label: 'Scheduled'     },
-  { value: 'EVALUATED',     label: 'Evaluated'     },
+  { value: 'IN PROGRESS',     label: 'In Progress' },
+  { value: 'COMPLETED',     label: 'Completed'     },
 ]
 
 // Previously had a bespoke OptionsPopup component here - replaced by the
@@ -87,6 +115,7 @@ const FILTER_OPTIONS = [
 export default function ApplicationsPage() {
   const { user } = useAuth()
   const navigate = useNavigate()
+  const toast = useToast()
 
   const [rows, setRows] = useState([])
   const [jobs, setJobs] = useState([])
@@ -100,6 +129,10 @@ export default function ApplicationsPage() {
   const [showAddModal, setShowAddModal] = useState(false)
   const [showEditModal, setShowEditModal] = useState(false)
   const [selectedRow, setSelectedRow] = useState(null)
+  // Row queued for deletion - null when the confirm modal is closed.
+  const [deleteTarget, setDeleteTarget] = useState(null)
+  // application_id currently being analysed (click guard for the CV cell).
+  const [analysingId, setAnalysingId] = useState(null)
 
   async function loadApplications() {
     const res = await authedFetch(
@@ -108,6 +141,39 @@ export default function ApplicationsPage() {
     if (!res.ok) throw new Error('Failed to load applications.')
     const data = await res.json()
     setRows(Array.isArray(data) ? data : [])
+  }
+
+  // Analyse the candidate's already-stored CV against this job - no
+  // re-upload. application_id IS the job-candidate link id, so the backend
+  // reuses the stored PDF. Refresh once to show "Analysing…", then poll the
+  // single analysis until it lands and refresh the row to "View".
+  async function handleAnalyseCv(row) {
+    const jobcandId = row?.application_id
+    if (!jobcandId || analysingId) return
+    setAnalysingId(jobcandId)
+    try {
+      const fd = new FormData()
+      fd.append('jobcand_id', jobcandId)
+      await api.analyseCv(fd)
+      await loadApplications()
+      const poll = async () => {
+        try {
+          const a = await api.getCvAnalysisByJobcand(jobcandId)
+          if (a?.status === 'processing') {
+            setTimeout(poll, 4000)
+          } else {
+            await loadApplications()
+            setAnalysingId(null)
+          }
+        } catch {
+          setAnalysingId(null)
+        }
+      }
+      setTimeout(poll, 4000)
+    } catch (err) {
+      toast.error(err?.message || 'Could not start the CV analysis.')
+      setAnalysingId(null)
+    }
   }
 
   useEffect(() => {
@@ -152,10 +218,24 @@ export default function ApplicationsPage() {
       return matchesSearch && matchesFilter
     })
 
+    function relevance(row) {
+      if (!needle) return 0
+      const name = (row.candidate_name || '').toLowerCase()
+      if (name === needle) return 0
+      if (name.startsWith(needle + ' ')) return 1
+      const idx = name.indexOf(needle)
+      if (idx === -1) return Number.MAX_SAFE_INTEGER
+      return 10 + idx
+    }
+
     next = [...next].sort((a, b) => {
+      if (needle) {
+        const relDiff = relevance(a) - relevance(b)
+        if (relDiff !== 0) return relDiff
+      }
       switch (sortValue) {
         case 'score':
-          return (b.score ?? -Infinity) - (a.score ?? -Infinity)
+          return ((getCandidateScore(b.ratings) ?? -Infinity) - (getCandidateScore(a.ratings) ?? -Infinity))
         case 'name_asc':
           return (a.candidate_name || '').localeCompare(b.candidate_name || '')
         case 'name_desc':
@@ -173,6 +253,7 @@ export default function ApplicationsPage() {
     try {
       await loadApplications()
       setShowAddModal(false)
+      toast.success('Candidate added.')
     } catch (err) {
       setError(err.message || 'Failed to refresh applications.')
     }
@@ -183,6 +264,7 @@ export default function ApplicationsPage() {
       await loadApplications()
       setShowEditModal(false)
       setSelectedRow(null)
+      toast.success('Candidate updated.')
     } catch (err) {
       setError(err.message || 'Failed to refresh applications.')
     }
@@ -197,11 +279,8 @@ export default function ApplicationsPage() {
     <div className={page.shell}>
       <Sidebar />
 
-      <main className={page.main}>
-        {/* Header + controls render unconditionally - same skeleton as
-            JobsPage, where loading/error/empty states appear as a small
-            status line BELOW the controls instead of blanking the page. */}
-        <div className="mb-6 flex items-start justify-between">
+      <div className="flex-1 flex flex-col overflow-hidden">
+        <header className="bg-neutral-0 border-b border-neutral-200 px-10 py-6 shrink-0 flex items-start justify-between">
           <div>
             <h1 className="text-4xl font-extrabold tracking-tight text-neutral-800">
               Applications
@@ -218,7 +297,9 @@ export default function ApplicationsPage() {
           >
             <span className="text-lg leading-none">+</span> Add Candidate
           </button>
-        </div>
+        </header>
+
+        <main className="flex-1 overflow-y-auto px-10 py-8">
 
         {/* Controls row - matches the JobsPage search/sort/filter styling so
             the two pages read identically: same search-bar size, same icon'd
@@ -291,7 +372,9 @@ export default function ApplicationsPage() {
                   <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-neutral-500">
                     Date
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-neutral-500"></th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-neutral-500">
+                    Actions
+                  </th>
                 </tr>
               </thead>
 
@@ -331,8 +414,9 @@ export default function ApplicationsPage() {
 
                       <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                         {/* Once an analysis exists the cell links to the CV
-                            analysis report; the raw-PDF link only remains for
-                            legacy rows that have a file but no analysis. */}
+                            analysis report; a candidate with a CV but no
+                            analysis for this job gets an "Analyse CV" trigger
+                            that reuses the stored PDF (no re-upload). */}
                         {row.cv_analysis_status === 'completed' ? (
                           <button
                             type="button"
@@ -341,7 +425,7 @@ export default function ApplicationsPage() {
                           >
                             View
                           </button>
-                        ) : row.cv_analysis_status === 'processing' ? (
+                        ) : row.cv_analysis_status === 'processing' || analysingId === row.application_id ? (
                           <span
                             className="inline-flex items-center gap-1.5 text-neutral-400"
                             title="The CV is being analysed."
@@ -359,21 +443,38 @@ export default function ApplicationsPage() {
                             Analysing…
                           </span>
                         ) : row.cv_analysis_status === 'failed' ? (
-                          <span
-                            className="text-coral-500"
-                            title="Analysis failed. Re-upload the CV via Edit to retry."
-                          >
-                            Failed
-                          </span>
+                          // Retry re-runs against the candidate's stored CV
+                          // (server tears down the failed analysis - no
+                          // re-upload). Only offer it when there's a CV to
+                          // reuse; otherwise it stays a plain "Failed" note.
+                          row.cv_url ? (
+                            <button
+                              type="button"
+                              onClick={() => handleAnalyseCv(row)}
+                              disabled={!!analysingId}
+                              title="Analysis failed. Click to retry against the stored CV."
+                              className="font-semibold text-coral-600 hover:underline disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                              Retry
+                            </button>
+                          ) : (
+                            <span
+                              className="text-coral-500"
+                              title="Analysis failed. Re-upload the CV via Edit to retry."
+                            >
+                              Failed
+                            </span>
+                          )
                         ) : row.cv_url ? (
-                          <a
-                            href={row.cv_url}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="text-coral-500 hover:underline"
+                          <button
+                            type="button"
+                            onClick={() => handleAnalyseCv(row)}
+                            disabled={!!analysingId}
+                            title="Analyse the candidate's CV against this job"
+                            className="font-semibold text-primary-500 hover:underline disabled:cursor-not-allowed disabled:opacity-50"
                           >
-                            PDF
-                          </a>
+                            Analyse CV
+                          </button>
                         ) : (
                           '--'
                         )}
@@ -395,7 +496,7 @@ export default function ApplicationsPage() {
                       </td>
 
                       <td className="px-4 py-3 font-semibold text-neutral-700">
-                        {formatScore(row.score)}
+                        {formatScore(getCandidateScore(row.ratings))}
                       </td>
 
                       <td className="px-4 py-3 text-neutral-500 whitespace-nowrap">
@@ -403,28 +504,88 @@ export default function ApplicationsPage() {
                       </td>
 
                       <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            setSelectedRow(row)
-                            setShowEditModal(true)
-                          }}
-                          className="text-neutral-400 hover:text-neutral-700"
-                          title="Edit candidate"
-                        >
-                          <svg
-                            width="18"
-                            height="18"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="2"
+                        {/* Same icon trio as the JobDetailPage candidates
+                            table (view / edit / delete), same order and
+                            styling, so the two tables read identically. */}
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            title="View candidate details"
+                            aria-label="View candidate details"
+                            onClick={() => openCandidate(row)}
+                            className="flex h-7 w-7 items-center justify-center rounded-lg text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-neutral-600"
                           >
-                            <path d="M12 20h9" />
-                            <path d="M16.5 3.5a2.121 2.121 0 1 1 3 3L7 19l-4 1 1-4 12.5-12.5z" />
-                          </svg>
-                        </button>
+                            <svg
+                              width="14"
+                              height="14"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="2"
+                            >
+                              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                              <circle cx="12" cy="12" r="3" />
+                            </svg>
+                          </button>
+                          {/* Editing is locked once the interview is finished -
+                              mirrors the backend guard that keeps completed/
+                              cancelled interviews immutable. */}
+                          <button
+                            type="button"
+                            disabled={row.status === 'COMPLETED' || row.status === 'CANCELLED'}
+                            onClick={() => {
+                              if (row.status === 'COMPLETED' || row.status === 'CANCELLED') return
+                              setSelectedRow(row)
+                              setShowEditModal(true)
+                            }}
+                            className={`flex h-7 w-7 items-center justify-center rounded-lg transition-colors ${
+                              row.status === 'COMPLETED' || row.status === 'CANCELLED'
+                                ? 'cursor-not-allowed text-neutral-200'
+                                : 'text-neutral-400 hover:bg-neutral-100 hover:text-neutral-600'
+                            }`}
+                            title={
+                              row.status === 'COMPLETED' || row.status === 'CANCELLED'
+                                ? 'This interview is finished - the application can no longer be edited.'
+                                : 'Edit candidate'
+                            }
+                            aria-label="Edit candidate"
+                          >
+                            <svg
+                              width="14"
+                              height="14"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="2"
+                            >
+                              <path d="M12 20h9" />
+                              <path d="M16.5 3.5a2.121 2.121 0 1 1 3 3L7 19l-4 1 1-4 12.5-12.5z" />
+                            </svg>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setDeleteTarget(row)}
+                            title="Remove this candidate from the job"
+                            aria-label="Delete candidate"
+                            className="flex h-7 w-7 items-center justify-center rounded-lg text-coral-500 transition-colors hover:bg-coral-50 hover:text-coral-700"
+                          >
+                            <svg
+                              width="14"
+                              height="14"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="2"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            >
+                              <polyline points="3 6 5 6 21 6" />
+                              <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+                              <path d="M10 11v6M14 11v6" />
+                              <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+                            </svg>
+                          </button>
+                        </div>
                       </td>
                     </tr>
                 ))}
@@ -434,7 +595,8 @@ export default function ApplicationsPage() {
         </div>
             )
         )}
-      </main>
+        </main>
+      </div>
 
       {showAddModal && (
         <AddCandidateForm
@@ -453,6 +615,25 @@ export default function ApplicationsPage() {
             setSelectedRow(null)
           }}
           onSaved={handleEditSaved}
+        />
+      )}
+
+      {deleteTarget && (
+        <DeleteCandidateModal
+          // The modal reads `name` + `id` and DELETEs
+          // /api/jobs/{jobId}/candidates/{id} - application_id IS the
+          // job-candidate link id, so the same modal works here verbatim.
+          candidate={{
+            id: deleteTarget.application_id,
+            name: deleteTarget.candidate_name,
+          }}
+          jobId={deleteTarget.job_id}
+          onClose={() => setDeleteTarget(null)}
+          onDeleted={(linkId) => {
+            setRows((prev) => prev.filter((r) => r.application_id !== linkId))
+            setDeleteTarget(null)
+            toast.success('Candidate removed from the job.')
+          }}
         />
       )}
     </div>

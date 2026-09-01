@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, CalendarDays, Briefcase, Users } from 'lucide-react';
+import { LayoutDashboard, CalendarDays, Briefcase, Users, KeyRound } from 'lucide-react';
 import logoFull from '../../assets/logo-final.png';
 import { useAuth } from '../../lib/AuthContext.jsx';
 
@@ -35,10 +35,16 @@ export default function Sidebar({ user: userProp }) {
     { label: 'Schedules',   path: '/schedules',    icon: <CalendarDays    size={16} />, group: 'MAIN'  },
     { label: 'Jobs',        path: '/jobs',         icon: <Briefcase       size={16} />, group: 'GROUP' },
     { label: 'Candidates',  path: '/candidates',   icon: <Users           size={16} />, group: 'GROUP' },
+    // Admin-only: the invitation-key page. Rendering is gated on role here
+    // AND the route itself sits behind RequireRole, so a non-admin neither
+    // sees the item nor can deep-link past it.
+    { label: 'Invitations', path: '/admin/dashboard', icon: <KeyRound size={16} />, group: 'ADMIN' },
   ];
 
+  const isAdmin = user?.role === 'admin';
   const mainItems  = navItems.filter(i => i.group === 'MAIN');
   const groupItems = navItems.filter(i => i.group === 'GROUP');
+  const adminItems = isAdmin ? navItems.filter(i => i.group === 'ADMIN') : [];
 
 
   const navLink = (item) => {
@@ -91,11 +97,21 @@ export default function Sidebar({ user: userProp }) {
 
         <span className="text-xs font-bold text-neutral-400 tracking-[0.08em] px-2 pt-4 pb-1.5">GROUP</span>
         {groupItems.map(navLink)}
+
+        {adminItems.length > 0 && (
+          <>
+            <span className="text-xs font-bold text-neutral-400 tracking-[0.08em] px-2 pt-4 pb-1.5">ADMIN</span>
+            {adminItems.map(navLink)}
+          </>
+        )}
       </nav>
 
       {/* User + Logout */}
       <div className="p-4 border-t border-neutral-200">
-        <div className="flex items-center gap-2.5 mb-3">
+        <div
+          onClick={() => navigate('/profile')}
+          className="flex items-center gap-2.5 mb-3 p-2 rounded-lg cursor-pointer hover:bg-neutral-100 transition"
+        >
           <div className="w-9 h-9 rounded-pill bg-primary-500 flex items-center justify-center text-white font-bold text-sm shrink-0">
             {initials}
           </div>

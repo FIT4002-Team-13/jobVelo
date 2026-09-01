@@ -4,6 +4,7 @@ import Sidebar from '../components/common/Sidebar'
 import JobFormModal from '../components/job-candidate/JobFormModal'
 import { SortMenu, FilterMenu, makeSorter } from '../components/job-candidate/TableControls'
 import { authedFetch } from '../lib/api.js'
+import { useToast } from '../components/common/ToastContext.jsx'
 import { button, modal, page } from '../styles/layout'
 
 const JOB_STATUS_OPTIONS = [
@@ -101,25 +102,6 @@ function EmptyAvatar() {
 
 function JobCard({ job, onEdit, onDelete }) {
   const navigate = useNavigate()
-  const [interviewState, setInterviewState] = useState({ loading: true, completed: false })
-
-  useEffect(() => {
-    let active = true
-    async function load() {
-      try {
-        const res = await fetch(`/api/interviews?job_id=${job.id}`)
-        if (!res.ok) throw new Error('Failed to load interviews')
-        const interviews = await res.json()
-        if (!active) return
-        const completed = interviews.some((item) => item.intv_status === 'completed')
-        setInterviewState({ loading: false, completed })
-      } catch {
-        if (active) setInterviewState({ loading: false, completed: false })
-      }
-    }
-    load()
-    return () => { active = false }
-  }, [job.id])
 
   // Show up to 3 avatars; anything beyond collapses into a grey "+N" chip.
   const visibleAvatars = job.interviewers?.slice(0, 3) ?? []
@@ -129,7 +111,9 @@ function JobCard({ job, onEdit, onDelete }) {
   // fully-populated ones. Each "missing" value renders as a muted italic
   // placeholder (status pill = neutral chip, numbers = 0) instead of an
   // empty string that would collapse the line and ruin the grid rhythm.
-  const status         = job.status        || null
+  // The display status (completed-interview override included) is computed
+  // once by the page so the filter menu and this pill can never disagree.
+  const status         = job.display_status || null
   const description    = job.description?.trim()
   const interviewers   = job.interviewers?.length ?? 0
   const filled         = job.candidates_filled ?? 0
@@ -175,11 +159,6 @@ function JobCard({ job, onEdit, onDelete }) {
           {interviewers}
         </span>
         interviewers
-        {interviewState.loading ? (
-          <span className="ml-2 text-neutral-400">Checking…</span>
-        ) : interviewState.completed ? (
-          <span className="ml-2 font-semibold text-mint-600">Completed</span>
-        ) : null}
       </div>
 
       {/* Avatars - render dashed placeholders when nobody is assigned so the
@@ -268,6 +247,7 @@ function DeleteConfirmModal({ job, onClose, onDeleted }) {
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function JobsPage() {
+  const toast = useToast()
   const [jobs, setJobs]             = useState([])
   const [loading, setLoading]       = useState(true)
   const [error, setError]           = useState(null)
@@ -276,33 +256,96 @@ export default function JobsPage() {
   const [statusFilters, setStatusFilters] = useState([])        // empty = all
   const [formModal, setFormModal]   = useState(null)
   const [deleteTarget, setDeleteTarget] = useState(null)
+  // Per-job count of DISTINCT candidates with a completed interview -
+  // drives the display override on cards AND the status filter, so a
+  // card's label always matches what the filter menu selects.
+  const [completedByJob, setCompletedByJob] = useState(() => ({}))
 
   useEffect(() => {
+    // Guard both the HTTP status and the payload shape: on an expired token
+    // the API returns {detail: ...}, and storing that into array state used
+    // to white-screen the page at `.filter is not a function`.
     authedFetch('/api/jobs')
-      .then(r => r.json())
-      .then(setJobs)
+      .then(async r => {
+        if (!r.ok) throw new Error('Failed to load jobs.')
+        const data = await r.json()
+        if (!Array.isArray(data)) throw new Error('Failed to load jobs.')
+        setJobs(data)
+      })
       .catch(() => setError('Failed to load jobs.'))
       .finally(() => setLoading(false))
+
+    // One company-wide interviews fetch instead of one per card (the old
+    // per-card version was 50 requests for 50 jobs). Best-effort: if it
+    // fails, cards simply show their stored status without the override.
+    authedFetch('/api/interviews')
+      .then(async r => {
+        if (!r.ok) return
+        const interviews = await r.json()
+        if (!Array.isArray(interviews)) return
+        // Distinct candidates per job, so repeat interviews for the same
+        // candidate don't overcount toward "everyone is done".
+        const candsByJob = {}
+        for (const i of interviews) {
+          if (i.intv_status !== 'completed' || !i.job_id) continue
+          ;(candsByJob[i.job_id] ??= new Set()).add(i.cand_id)
+        }
+        setCompletedByJob(
+          Object.fromEntries(
+            Object.entries(candsByJob).map(([jobId, cands]) => [jobId, cands.size])
+          )
+        )
+      })
+      .catch(() => {})
   }, [])
 
   function handleSaved(saved) {
+    // Read create-vs-edit off the modal mode BEFORE closing it.
+    const isNew = formModal === 'create'
     setJobs(prev => {
       const idx = prev.findIndex(j => j.id === saved.id)
       return idx === -1 ? [saved, ...prev] : prev.map(j => j.id === saved.id ? saved : j)
     })
     setFormModal(null)
+    toast.success(
+      isNew
+        ? `Job "${saved.title || 'Untitled role'}" created.`
+        : `Job "${saved.title || 'Untitled role'}" updated.`
+    )
   }
 
   function handleDeleted(id) {
+    const deleted = jobs.find(j => j.id === id)
     setJobs(prev => prev.filter(j => j.id !== id))
     setDeleteTarget(null)
+    toast.success(`Job "${deleted?.title || 'Untitled role'}" deleted.`)
   }
+
+  // Stamp each job with the status the card will actually display:
+  //   - every candidate on the job has completed their interview -> Completed
+  //   - some (but not all) have completed -> In Progress
+  //   - a job explicitly marked Completed keeps its label either way
+  // Filtering runs on this same value so the pill and the filter menu can
+  // never disagree.
+  const jobsWithStatus = jobs.map(j => {
+    const filled = j.candidates_filled ?? 0
+    const done = completedByJob[j.id] ?? 0
+    const display_status =
+      j.status === 'Completed'
+        ? 'Completed'
+        : filled > 0 && done >= filled
+        ? 'Completed'
+        : done > 0
+        ? 'In Progress'
+        : j.status || null
+    return { ...j, display_status }
+  })
 
   // search → filter by status → sort. Each stage is independent so order
   // doesn't actually matter, but read top-down it matches user mental model.
-  const filtered = jobs
-    .filter(j => j.title.toLowerCase().includes(search.toLowerCase()))
-    .filter(j => statusFilters.length === 0 || statusFilters.includes(j.status))
+  const filtered = jobsWithStatus
+    .filter(j => (j.title ?? '').toLowerCase().includes(search.toLowerCase()))
+    .filter(j => statusFilters.length === 0 || statusFilters.includes(j.display_status))
   const sorter = makeSorter(sortKey, { nameField: 'title', dateField: 'job_created_at' })
   const display = sorter ? [...filtered].sort(sorter) : filtered
 
@@ -310,8 +353,8 @@ export default function JobsPage() {
     <div className={page.shell}>
       <Sidebar />
 
-      <main className={page.main}>
-        <div className="flex items-start justify-between mb-6">
+      <div className="flex-1 flex flex-col overflow-hidden">
+        <header className="bg-neutral-0 border-b border-neutral-200 px-10 py-6 shrink-0 flex items-start justify-between">
           <div>
             <h1 className="text-4xl font-extrabold tracking-tight text-neutral-800">Job Posting</h1>
             <p className="text-xs text-neutral-400 mt-1">Manage your open positions</p>
@@ -323,7 +366,9 @@ export default function JobsPage() {
           >
             <span className="text-lg leading-none">+</span> Create Job
           </button>
-        </div>
+        </header>
+
+        <main className="flex-1 overflow-y-auto px-10 py-8">
 
         <div className="flex justify-end items-center gap-3 mb-5">
           <div className="flex items-center gap-2 border border-neutral-200 rounded-xl px-3 py-1.5 bg-neutral-0">
@@ -353,7 +398,8 @@ export default function JobsPage() {
               </div>
             )
         )}
-      </main>
+        </main>
+      </div>
 
       {formModal && (
         <JobFormModal

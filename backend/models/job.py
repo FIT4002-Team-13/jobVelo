@@ -78,10 +78,10 @@ class JobOut(BaseModel):
     recruitment_start: str = ""
     recruitment_end: str = ""
     candidates_total: int = 1
-    candidates_filled: int = 0           # derived; see class docstring
+    candidates_filled: int = 0  # derived; see class docstring
     salary: str = ""
     salary_type: str = ""
     status: str = "Pending"
-    interviewers: list[str] = []         # derived; see class docstring
+    interviewers: list[str] = []  # derived; see class docstring
     job_created_at: datetime | None = None
     job_last_update_datetime: datetime | None = None
