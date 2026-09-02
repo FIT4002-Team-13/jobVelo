@@ -112,10 +112,8 @@ test('US3 - successful save shows confirmation message', async ({ page }) => {
 })
 
 test('US3 - logo upload sends PATCH request to update company logo', async ({ page }) => {
-  let patchCalled = false
   await setupAdminWithCompany(page)
   await page.route('**/api/companies/**/logo', (route) => {
-    patchCalled = true
     route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -123,10 +121,15 @@ test('US3 - logo upload sends PATCH request to update company logo', async ({ pa
     })
   })
   await goToCompanyTab(page)
-  await page.locator('input[type="file"]').setInputFiles({
-    name: 'logo.png',
-    mimeType: 'image/png',
-    buffer: Buffer.from('fake-png-content'),
-  })
-  expect(patchCalled).toBe(true)
+  const [response] = await Promise.all([
+    page.waitForResponse(
+      (res) => res.url().includes('/logo') && res.request().method() === 'PATCH'
+    ),
+    page.locator('input[type="file"]').setInputFiles({
+      name: 'logo.png',
+      mimeType: 'image/png',
+      buffer: Buffer.from('fake-png-content'),
+    }),
+  ])
+  expect(response.ok()).toBe(true)
 })
