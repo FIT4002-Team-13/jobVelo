@@ -6,7 +6,6 @@ export default function InterviewPostInterviewPage({
   transcriptEntryRefs,
   highlightedEntryIdx,
   highlightedEntryId,
-  onNoteChange,
   onViewReport,
   onBack,
   candId,

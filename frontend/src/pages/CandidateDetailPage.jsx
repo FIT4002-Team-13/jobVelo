@@ -8,7 +8,7 @@ import EditCandidateForm from '../components/candidate/EditCandidateForm'
 import { card, flex, page } from '../styles/layout'
 import { useAuth } from '../lib/AuthContext.jsx'
 import { useToast } from '../components/common/ToastContext.jsx'
-import { api, authedFetch, downloadFileWithAuth, openFileWithAuth } from '../lib/api.js'
+import { api, authedFetch, downloadFileWithAuth } from '../lib/api.js'
 
 import ScoreEvidencePopup from "../components/candidate/ScoreEvidencePopup";
 

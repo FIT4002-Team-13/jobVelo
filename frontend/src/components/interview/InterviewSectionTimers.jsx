@@ -1,4 +1,5 @@
 import { flex } from "../../styles/layout";
+import { formatTimer } from "../../utils/time.js";
 
 export const SECTION_COLORS = [
   { border: "border-primary-200", activeBorder: "border-primary-300", ring: "ring-primary-100", badge: "bg-primary-100 text-primary-700", pauseBg: "bg-primary-100 hover:bg-primary-200 text-primary-600", timer: "text-primary-600" },
@@ -6,12 +7,6 @@ export const SECTION_COLORS = [
   { border: "border-mint-200", activeBorder: "border-mint-300", ring: "ring-mint-100", badge: "bg-mint-100 text-mint-700", pauseBg: "bg-mint-100 hover:bg-mint-200 text-mint-600", timer: "text-mint-600" },
   { border: "border-coral-200", activeBorder: "border-coral-300", ring: "ring-coral-100", badge: "bg-coral-100 text-coral-700", pauseBg: "bg-coral-100 hover:bg-coral-200 text-coral-600", timer: "text-coral-600" },
 ];
-
-export function formatTimer(seconds) {
-  const m = String(Math.floor(seconds / 60)).padStart(2, "0");
-  const s = String(seconds % 60).padStart(2, "0");
-  return `${m}:${s}`;
-}
 
 export function SectionCard({ section, st, color, onStart, onPause, onResume, onDone, locked }) {
   const budget = section.suggested_minutes * 60;
