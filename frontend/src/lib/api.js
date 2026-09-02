@@ -3,7 +3,8 @@
 
 import { getToken } from './authStore.js'
 
-const BASE = '/api'
+const BASE = import.meta.env.VITE_API_URL || '/api'
+const FETCH_BASE = import.meta.env.VITE_API_URL?.replace('/api', '') || ''
 
 export class ApiError extends Error {
   constructor(message, { status, detail } = {}) {
@@ -25,7 +26,9 @@ export function authedFetch(url, init = {}) {
   const token = getToken()
   const headers = { ...(init.headers || {}) }
   if (token) headers.Authorization = `Bearer ${token}`
-  return fetch(url, { ...init, headers })
+  return fetch(`${FETCH_BASE}${url}`, { ...init, headers })
+  // return fetch(url, { ...init, headers })
+
 }
 
 // Download a file from an auth-protected endpoint and hand it to the

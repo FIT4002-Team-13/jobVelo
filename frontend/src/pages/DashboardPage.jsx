@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { Briefcase, Users, CalendarCheck2, CalendarClock, CalendarDays } from 'lucide-react'
 import Sidebar from '../components/common/Sidebar'
-import { api, authedFetch } from '../lib/api.js'
+import { api, authedFetch } from '../lib/api'
 import { SortMenu, FilterMenu, makeSorter } from '../components/job-candidate/TableControls'
 import { page } from '../styles/layout'
 
