@@ -3,7 +3,10 @@ import { Link } from 'react-router-dom'
 import { Briefcase, Users, CalendarCheck2, CalendarClock, CalendarDays } from 'lucide-react'
 import Sidebar from '../components/common/Sidebar'
 import { api, authedFetch } from '../lib/api.js'
+import { JOB_STATUS_STYLES, CANDIDATE_STATUS_STYLES, FALLBACK_STATUS_CLASS } from '../utils/status.js'
 import { SortMenu, FilterMenu, makeSorter } from '../components/job-candidate/TableControls'
+import EmptyState from '../components/common/EmptyState'
+import Pagination from '../components/common/Pagination'
 import { page } from '../styles/layout'
 
 // Filter options for the dashboard's two panels.
@@ -25,27 +28,7 @@ const CANDIDATE_FILTER_OPTIONS = [
   { value: 'COMPLETED',     label: 'Completed'     },
 ]
 
-// Solid-fill status pills - kept in sync with JobsPage + JobDetailPage.
-// Pending = warning (coral), In Progress = active (primary), Completed = done (mint).
-const STATUS_STYLES = {
-  Pending:       'bg-coral-500 text-white',
-  'In Progress': 'bg-primary-500 text-white',
-  Completed:     'bg-mint-500 text-white',
-}
 
-// Candidate status pills - mirror the JobDetailPage palette so the same
-// status looks identical wherever it shows. Soft tint here (vs solid for
-// jobs) because candidates appear in a denser list and solid would shout.
-const CANDIDATE_STATUS_STYLES = {
-  'NOT SCHEDULED': 'bg-neutral-100 text-neutral-500',
-  SCHEDULED:       'bg-primary-100 text-primary-600',
-  'IN PROGRESS':   'bg-amber-100 text-amber-700',
-  COMPLETED:       'bg-mint-100 text-mint-700',
-  CANCELLED:       'bg-coral-100 text-coral-700',
-  EVALUATED:       'bg-mint-100 text-mint-700',
-  HIRED:           'bg-mint-500 text-white',
-  REJECTED:        'bg-coral-100 text-coral-700',
-}
 
 // ── Summary card configs ────────────────────────────────────────────────────
 // Personal (non-admin) cards. Same white-card + tinted-icon anatomy as the
@@ -123,55 +106,6 @@ function SummaryStatCard({ icon, iconTint, label, value, deltaText, deltaClass }
         </p>
         <p className={`text-xs font-semibold ${deltaClass}`}>{deltaText}</p>
       </div>
-    </div>
-  )
-}
-
-// Shown inside the Jobs / Candidates panels when the list is empty.
-function EmptyState({ message, hint }) {
-  return (
-    <div className="bg-neutral-0 border border-dashed border-neutral-200 rounded-xl px-4 py-6 text-center">
-      <p className="text-sm font-medium text-neutral-500">{message}</p>
-      {hint && <p className="text-xs text-neutral-400 mt-1">{hint}</p>}
-    </div>
-  )
-}
-
-// Compact Prev/Next + page indicator. Used by both panels so the pagination
-// affordance reads identically across the page.
-//
-// Parent owns the page state; this component only renders + emits clicks.
-// Renders nothing when totalPages <= 1 - no point showing controls for a
-// single page.
-function Pagination({ page, totalPages, onPrev, onNext }) {
-  if (totalPages <= 1) return null
-  return (
-    <div className="flex items-center gap-2 text-xs text-neutral-500">
-      <button
-        type="button"
-        onClick={onPrev}
-        disabled={page === 0}
-        aria-label="Previous page"
-        className="w-7 h-7 flex items-center justify-center rounded-lg border border-neutral-200 text-neutral-500 hover:bg-neutral-50 hover:text-neutral-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-      >
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-          <polyline points="15 18 9 12 15 6" />
-        </svg>
-      </button>
-      <span className="tabular-nums font-medium">
-        Page <span className="text-neutral-700">{page + 1}</span> / {totalPages}
-      </span>
-      <button
-        type="button"
-        onClick={onNext}
-        disabled={page >= totalPages - 1}
-        aria-label="Next page"
-        className="w-7 h-7 flex items-center justify-center rounded-lg border border-neutral-200 text-neutral-500 hover:bg-neutral-50 hover:text-neutral-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-      >
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-          <polyline points="9 18 15 12 9 6" />
-        </svg>
-      </button>
     </div>
   )
 }
@@ -520,7 +454,7 @@ export default function DashboardPage() {
                         Candidates: {job.candidates_filled ?? 0}/{job.candidates_total ?? 0}
                       </p>
                     </div>
-                    <span className={`text-xs font-bold px-3 py-1 rounded-pill ${STATUS_STYLES[job.display_status] ?? 'bg-neutral-100 text-neutral-500'}`}>
+                    <span className={`text-xs font-bold px-3 py-1 rounded-pill ${JOB_STATUS_STYLES[job.display_status] ?? FALLBACK_STATUS_CLASS}`}>
                       {job.display_status}
                     </span>
                   </Link>
@@ -592,8 +526,7 @@ export default function DashboardPage() {
                     </div>
                     <span
                       className={`text-xs font-bold px-3 py-1 rounded-pill ${
-                        CANDIDATE_STATUS_STYLES[c.cand_status]
-                          ?? 'bg-neutral-100 text-neutral-400'
+                        CANDIDATE_STATUS_STYLES[c.cand_status] ?? FALLBACK_STATUS_CLASS
                       }`}
                     >
                       {c.cand_status ?? 'No application'}

@@ -10,12 +10,14 @@ const AVATAR_COLORS = [
 ];
 
 export function initials(name = "") {
-  return name
-    .split(" ")
-    .map((w) => w[0])
-    .join("")
+  const safe = typeof name === 'string' ? name.trim() : ''
+  if (!safe) return '--'
+  return safe
+    .split(/\s+/)
+    .filter(Boolean)
     .slice(0, 2)
-    .toUpperCase();
+    .map((w) => w[0].toUpperCase())
+    .join('')
 }
 
 export function avatarColor(name = "") {

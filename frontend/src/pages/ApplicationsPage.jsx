@@ -9,57 +9,9 @@ import { page, card, button, badge } from '../styles/layout'
 import { useAuth } from '../lib/AuthContext.jsx'
 import { useToast } from '../components/common/ToastContext.jsx'
 import { api, authedFetch } from '../lib/api.js'
-
-function getInitials(name = '') {
-  const safeName = typeof name === 'string' ? name.trim() : ''
-  const initials = safeName
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0].toUpperCase())
-    .join('')
-
-  return initials || '--'
-}
-
-function avatarColor(name = '') {
-  const colors = ['bg-primary-500', 'bg-sky-500', 'bg-mint-500', 'bg-coral-500']
-  const safeName = typeof name === 'string' ? name : ''
-  let hash = 0
-  for (const c of safeName) hash = (hash * 31 + c.charCodeAt(0)) & 0xffffffff
-  return colors[Math.abs(hash) % colors.length]
-}
-
-// Unified palette - mirrors JobDetailPage / DashboardPage / CandidateDetailPage
-// so the same status reads identically across the app. Key change: SCHEDULED
-// now flips to primary blue (was grey) so it's visually distinct from
-// NOT SCHEDULED, which stays grey.
-function statusClass(status) {
-  switch (status) {
-    case 'NOT SCHEDULED':
-      return 'bg-neutral-100 text-neutral-500'
-    case 'SCHEDULED':
-      return 'bg-primary-100 text-primary-600'
-    case 'IN PROGRESS':
-      return 'bg-amber-100 text-amber-700'
-    case 'COMPLETED':
-    case 'EVALUATED':
-      return 'bg-mint-100 text-mint-700'
-    case 'CANCELLED':
-      return 'bg-coral-100 text-coral-700'
-    case 'HIRED':
-      return 'bg-mint-500 text-white'
-    case 'REJECTED':
-      return 'bg-coral-100 text-coral-700'
-    default:
-      return 'bg-neutral-100 text-neutral-500'
-  }
-}
-
-function formatScore(score) {
-  if (score == null) return '--'
-  return Number(score).toFixed(1)
-}
+import { formatScore, formatShortDate } from '../utils/format.js'
+import { initials as getInitials, avatarColor } from '../utils/avatar.js'
+import { CANDIDATE_STATUS_STYLES, FALLBACK_STATUS_CLASS } from '../utils/status.js'
 
 function getCandidateScore(ratings) {
   if (!ratings) return null
@@ -79,13 +31,6 @@ function getCandidateScore(ratings) {
   const average = scores.reduce((total, score) => total + score, 0) / scores.length
 
   return Math.round(average * 10) / 10
-}
-
-function formatShortDate(iso) {
-  if (!iso) return '--'
-  const d = new Date(iso)
-  if (Number.isNaN(d.getTime())) return '--'
-  return d.toLocaleDateString('en-AU', { month: 'short', day: 'numeric' })
 }
 
 const SORT_OPTIONS = [
@@ -407,7 +352,7 @@ export default function ApplicationsPage() {
                       </td>
 
                       <td className="px-4 py-3">
-                        <span className={`${badge.sm} ${statusClass(row.status)}`}>
+                        <span className={`${badge.sm} ${CANDIDATE_STATUS_STYLES[row.status] ?? FALLBACK_STATUS_CLASS}`}>
                           {row.status}
                         </span>
                       </td>
