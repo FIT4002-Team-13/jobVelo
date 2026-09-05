@@ -1154,6 +1154,7 @@ export default function JobDetailPage() {
             phone: editTarget.phone,
             job_id: id,
             interviewer: editTarget.interviewer || "",
+            interviewer_user_id: editTarget.interviewer_user_id || "",
             interview_datetime: editTarget.scheduled_at || null,
             cv_url: editTarget.cv_url,
             cover_letter_url: editTarget.cover_letter_url,

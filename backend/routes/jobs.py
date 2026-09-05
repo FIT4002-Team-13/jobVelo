@@ -538,6 +538,7 @@ async def list_candidates_for_job(
                 else "NOT SCHEDULED",
                 "scheduled_at": scheduled_at,
                 "interviewer": interviewer_name,
+                "interviewer_user_id": user_id,
                 "ratings": ratings or None,
                 "score": avg,
                 "intv_completed": completed_interview is not None,
