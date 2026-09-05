@@ -515,6 +515,8 @@ async def update_application(
                     "intvuser_updated_at": now,
                 }
             )
+    else:
+        await db.interview_users.delete_many({"intv_id": intv_id_str})
 
     return {
         "ok": True,

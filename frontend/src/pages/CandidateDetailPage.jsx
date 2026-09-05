@@ -1250,7 +1250,7 @@ export default function CandidateDetailPage() {
               if (usersRes.ok) {
                 const usersData = await usersRes.json()
                 const matchedUser = Array.isArray(usersData)
-                  ? usersData.find((u) => u.userid === interviewerUserId)
+                  ? usersData.find((u) => u.userid === resolvedInterviewerUserId)
                   : null
 
                 setInterviewerName(
