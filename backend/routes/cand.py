@@ -1,10 +1,19 @@
 from __future__ import annotations
 
+import json
 import uuid
 from datetime import datetime, timezone
 
 from bson import ObjectId
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    File,
+    HTTPException,
+    UploadFile,
+    status,
+)
 
 from database import get_db
 from dependencies import get_current_comp_id
@@ -15,8 +24,61 @@ from models.candidate import (
     CandidateUpdate,
 )
 from services.file_storage import delete_upload, save_upload
+from services.openai_service import generate_interview_plan
 
 router = APIRouter(prefix="/api/candidates", tags=["candidates"])
+
+
+async def _auto_generate_plan(jobcand_id: str, job_id: str, cand_id: str) -> None:
+    """Background: generate and persist an interview plan for a new job-candidate link."""
+    try:
+        db = get_db()
+        job = (
+            await db.jobs.find_one({"_id": ObjectId(job_id)})
+            if ObjectId.is_valid(job_id)
+            else None
+        )
+        cand = (
+            await db.candidates.find_one({"_id": ObjectId(cand_id)})
+            if ObjectId.is_valid(cand_id)
+            else None
+        )
+        jc = (
+            await db.job_candidates.find_one({"_id": ObjectId(jobcand_id)})
+            if ObjectId.is_valid(jobcand_id)
+            else None
+        )
+
+        job_title = (job or {}).get("title", "the role")
+        job_description = (job or {}).get("description")
+        candidate_name = (cand or {}).get("cand_full_name", "the candidate")
+
+        cv_analysis = None
+        if jc:
+            raw = jc.get("cv_analysis")
+            if isinstance(raw, str):
+                try:
+                    cv_analysis = json.loads(raw)
+                except json.JSONDecodeError:
+                    pass
+            elif isinstance(raw, dict):
+                cv_analysis = raw
+
+        sections = await generate_interview_plan(
+            job_title, job_description, candidate_name, cv_analysis
+        )
+        if sections:
+            await db.job_candidates.update_one(
+                {"_id": ObjectId(jobcand_id)},
+                {
+                    "$set": {
+                        "plan_sections": sections,
+                        "updated_at": datetime.now(timezone.utc),
+                    }
+                },
+            )
+    except Exception:
+        pass
 
 
 def _comp_oid(comp_id: str) -> ObjectId:
@@ -137,6 +199,7 @@ async def create_candidate(
 @router.post("/create-for-job", status_code=status.HTTP_201_CREATED)
 async def create_candidate_for_job(
     payload: CandidateCreateForJob,
+    background_tasks: BackgroundTasks,
     comp_id: ObjectId = Depends(get_current_comp_id),
 ) -> dict:
     """Combined popup flow.
@@ -250,6 +313,7 @@ async def create_candidate_for_job(
         }
     )
 
+    new_link = False
     if existing_job_candidate:
         job_candidate = existing_job_candidate
         message = "Candidate already linked to this job."
@@ -276,7 +340,16 @@ async def create_candidate_for_job(
                 detail="Failed to create candidate-job link.",
             )
 
+        new_link = True
         message = "Candidate created and linked to job successfully."
+
+    if new_link:
+        background_tasks.add_task(
+            _auto_generate_plan,
+            str(job_candidate["_id"]),
+            payload.job_id,
+            cand_id_str,
+        )
 
     # 6. Create interview + interviewer link whenever a date or interviewer is assigned.
     scheduled_dt = None

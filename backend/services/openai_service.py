@@ -341,8 +341,9 @@ async def generate_interview_plan(
     total_minutes: int | None = None,
 ) -> list[dict]:
     """Return AI-suggested interview sections (name, description, suggested_minutes)."""
+    has_description = bool(job_description and job_description.strip())
     desc_block = (
-        f"\nJob description:\n{job_description[:1500]}" if job_description else ""
+        f"\nJob description:\n{job_description[:1500]}" if has_description else ""
     )
 
     cv_block = ""
@@ -363,18 +364,49 @@ async def generate_interview_plan(
         if parts:
             cv_block = "\n\nCandidate CV analysis:\n" + "\n".join(parts)
 
-    time_constraint = (
-        f" The total of all suggested_minutes values must sum to exactly {total_minutes} minutes."
-        if total_minutes
-        else ""
-    )
+    if has_description or cv_block:
+        tailoring_instruction = (
+            "Tailor the remaining sections to probe the candidate's specific background, "
+            "skills, and any gaps identified above."
+        )
+    else:
+        tailoring_instruction = (
+            "No job description or CV analysis is available, so generate well-rounded generic "
+            f"sections appropriate for any {job_title} interview: for example, relevant experience, "
+            "technical or role-specific skills, behavioural questions, and situational problem-solving."
+        )
+
+    if total_minutes:
+        remaining = max(1, total_minutes - 5)  # 5 reserved for the mandatory intro
+        per_min = min(5, remaining)
+        per_max = min(20, remaining)
+        max_extra = max(1, remaining // per_min)
+        min_extra = max(1, remaining // per_max)
+        total_section_min = 1 + min_extra
+        total_section_max = min(6, 1 + max_extra)
+        section_range = (
+            str(total_section_min)
+            if total_section_min >= total_section_max
+            else f"{total_section_min} to {total_section_max}"
+        )
+        duration_range = (
+            f"exactly {per_min}"
+            if per_min == per_max
+            else f"between {per_min} and {per_max}"
+        )
+        time_constraint = f" The total of all suggested_minutes values must sum to exactly {total_minutes} minutes."
+    else:
+        section_range = "4 to 6"
+        duration_range = "between 5 and 20"
+        time_constraint = ""
+
     prompt = (
         f"You are preparing an interview plan for {candidate_name} applying for the role of {job_title}.{desc_block}{cv_block}\n\n"
-        "Generate 4 to 6 interview sections that a structured interview should cover for this role. "
+        f"Generate {section_range} interview sections that a structured interview should cover for this role. "
         "The first section must always be an Introduction lasting exactly 5 minutes. "
-        "Tailor the remaining sections to probe the candidate's specific background, skills, and any gaps identified above. "
+        f"{tailoring_instruction} "
         "For each section return: a short name (2-4 words), a one-sentence description of what to explore, "
-        f"and a suggested duration in minutes (between 5 and 20).{time_constraint} "
+        f"and a suggested duration in minutes ({duration_range}).{time_constraint} "
         'Reply with valid JSON only — an array of objects with keys "name", "description", "suggested_minutes". '
         'The first object must be {"name": "Introduction", "description": "Welcome the candidate and outline the interview structure.", "suggested_minutes": 5}.'
     )
