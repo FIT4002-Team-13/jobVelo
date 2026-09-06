@@ -25,3 +25,14 @@ export function formatShortDate(iso) {
   if (Number.isNaN(d.getTime())) return '--'
   return d.toLocaleDateString('en-AU', { month: 'short', day: 'numeric' })
 }
+
+export function getAverageScore(ratings) {
+  if (!ratings) return null
+  const scores = [
+    ratings.communication?.score,
+    ratings.technical_skills?.score,
+    ratings.problem_solving?.score,
+  ].filter((score) => typeof score === 'number' && Number.isFinite(score))
+  if (scores.length === 0) return null
+  return Math.round((scores.reduce((t, s) => t + s, 0) / scores.length) * 10) / 10
+}

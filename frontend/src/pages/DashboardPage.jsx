@@ -58,10 +58,65 @@ const PERSONAL_CARDS = [
   },
 ]
 
-// Default page size for both panels. Five rows fits the dashboard layout
-// without forcing the viewport to scroll - "View All" remains the path
-// for someone who actually wants to browse the full list.
 const PAGE_SIZE = 5
+
+function useJobPanel(jobs, completedByJob) {
+  const [search,  setSearch]  = useState('')
+  const [sortKey, setSortKey] = useState('latest')
+  const [filter,  setFilter]  = useState('')
+  const [page,    setPage]    = useState(0)
+
+  const sorter = makeSorter(sortKey, { nameField: 'title', dateField: 'job_created_at' })
+  const needle = search.trim().toLowerCase()
+  const withStatus = jobs.map((j) => {
+    const filled = j.candidates_filled ?? 0
+    const done   = completedByJob[j.id ?? j._id] ?? 0
+    const display_status =
+      j.status === 'Completed' ? 'Completed'
+      : filled > 0 && done >= filled ? 'Completed'
+      : done > 0 ? 'In Progress'
+      : j.status
+    return { ...j, display_status }
+  })
+  const visible = withStatus
+    .filter((j) => !needle || (j.title ?? '').toLowerCase().includes(needle))
+    .filter((j) => !filter || j.display_status === filter)
+  const sorted     = sorter ? [...visible].sort(sorter) : visible
+  const totalPages = Math.max(1, Math.ceil(sorted.length / PAGE_SIZE))
+  const safePage   = Math.min(page, totalPages - 1)
+  const paged      = sorted.slice(safePage * PAGE_SIZE, (safePage + 1) * PAGE_SIZE)
+
+  return { search, setSearch, sortKey, setSortKey, filter, setFilter, setPage, sorted, totalPages, safePage, paged }
+}
+
+function useCandidatePanel(candidates) {
+  const [search,  setSearch]  = useState('')
+  const [sortKey, setSortKey] = useState('latest')
+  const [filter,  setFilter]  = useState('')
+  const [page,    setPage]    = useState(0)
+
+  const sorter = makeSorter(sortKey, { nameField: 'cand_full_name', dateField: 'cand_created_at' })
+  const needle = search.trim().toLowerCase()
+  const visible = candidates.filter((c) => {
+    // Dashboard is a glance-view of the active pipeline. A candidate with no
+    // application (cand_status is null) is just a stored profile - not in
+    // the pipeline yet - and showing them here would burn dashboard slots
+    // on rows the recruiter can't act on.
+    if (!c.cand_status) return false
+    if (needle) {
+      const haystack = `${c.cand_full_name ?? ''} ${c.cand_email ?? ''}`.toLowerCase()
+      if (!haystack.includes(needle)) return false
+    }
+    if (filter && c.cand_status !== filter) return false
+    return true
+  })
+  const sorted     = sorter ? [...visible].sort(sorter) : visible
+  const totalPages = Math.max(1, Math.ceil(sorted.length / PAGE_SIZE))
+  const safePage   = Math.min(page, totalPages - 1)
+  const paged      = sorted.slice(safePage * PAGE_SIZE, (safePage + 1) * PAGE_SIZE)
+
+  return { search, setSearch, sortKey, setSortKey, filter, setFilter, setPage, sorted, totalPages, safePage, paged }
+}
 
 // ── Sub-components ───────────────────────────────────────────────────────────
 
@@ -130,64 +185,8 @@ export default function DashboardPage() {
   // (completed / upcoming counts) without another fetch.
   const [allInterviews, setAllInterviews] = useState([])
 
-  // Search + sort + filter state, one set per panel.
-  const [jobSearch,        setJobSearch]        = useState('')
-  const [jobSortKey,       setJobSortKey]       = useState('latest')
-  const [jobFilter,        setJobFilter]        = useState('')
-  const [candSearch,       setCandSearch]       = useState('')
-  const [candSortKey,      setCandSortKey]      = useState('latest')
-  const [candFilter,       setCandFilter]       = useState('')
-
-  // Pagination state, one page index per panel. Reset to 0 when a search
-  // or filter change shrinks the list out from under the current page
-  // (handled below via the `safePage` clamp - cheaper than a useEffect).
-  const [jobPage,  setJobPage]  = useState(0)
-  const [candPage, setCandPage] = useState(0)
-
-  // Derived lists - search → filter → sort. Computed each render; cheap
-  // enough at dashboard sizes that useMemo is overkill.
-  const jobSorter = makeSorter(jobSortKey, { nameField: 'title', dateField: 'job_created_at' })
-  const jobNeedle = jobSearch.trim().toLowerCase()
-  // Stamp each job with the status the row will actually display and
-  // filter on that same value, mirroring JobsPage:
-  //   all candidates completed -> Completed; some -> In Progress;
-  //   an explicitly-Completed job keeps its label.
-  const jobsWithStatus = jobs.map(j => {
-    const filled = j.candidates_filled ?? 0
-    const done = completedByJob[j.id ?? j._id] ?? 0
-    const display_status =
-      j.status === 'Completed'
-        ? 'Completed'
-        : filled > 0 && done >= filled
-        ? 'Completed'
-        : done > 0
-        ? 'In Progress'
-        : j.status
-    return { ...j, display_status }
-  })
-  const visibleJobs = jobsWithStatus
-    .filter(j => !jobNeedle || (j.title ?? '').toLowerCase().includes(jobNeedle))
-    .filter(j => !jobFilter || j.display_status === jobFilter)
-  const sortedJobs = jobSorter ? [...visibleJobs].sort(jobSorter) : visibleJobs
-
-  const candSorter = makeSorter(candSortKey, { nameField: 'cand_full_name', dateField: 'cand_created_at' })
-  const candNeedle = candSearch.trim().toLowerCase()
-  const visibleCandidates = candidates.filter((c) => {
-    // Dashboard is a glance-view of the active pipeline. A candidate with no
-    // application (cand_status is null) is just a stored profile - not in
-    // the pipeline yet - and showing them here would burn dashboard slots
-    // on rows the recruiter can't act on. Browse / clean-up of profile-only
-    // candidates belongs on a dedicated /candidates page later.
-    if (!c.cand_status) return false
-    if (candNeedle) {
-      const haystack = `${c.cand_full_name ?? ''} ${c.cand_email ?? ''}`.toLowerCase()
-      if (!haystack.includes(candNeedle)) return false
-    }
-    // candFilter is '' for "All"; otherwise the selected status.
-    if (candFilter && c.cand_status !== candFilter) return false
-    return true
-  })
-  const sortedCandidates = candSorter ? [...visibleCandidates].sort(candSorter) : visibleCandidates
+  const jobPanel  = useJobPanel(jobs, completedByJob)
+  const candPanel = useCandidatePanel(candidates)
 
   // Pagination: clamp the current page against the (possibly) shrunken
   // result set, then slice for display. We clamp at render-time instead
@@ -265,12 +264,6 @@ export default function DashboardPage() {
     },
   ]
 
-  const jobTotalPages   = Math.max(1, Math.ceil(sortedJobs.length        / PAGE_SIZE))
-  const candTotalPages  = Math.max(1, Math.ceil(sortedCandidates.length  / PAGE_SIZE))
-  const safeJobPage     = Math.min(jobPage,  jobTotalPages  - 1)
-  const safeCandPage    = Math.min(candPage, candTotalPages - 1)
-  const pagedJobs       = sortedJobs.slice(safeJobPage  * PAGE_SIZE, (safeJobPage  + 1) * PAGE_SIZE)
-  const pagedCandidates = sortedCandidates.slice(safeCandPage * PAGE_SIZE, (safeCandPage + 1) * PAGE_SIZE)
 
   useEffect(() => {
     async function load() {
@@ -422,13 +415,13 @@ export default function DashboardPage() {
               <div className="flex items-center gap-3">
                 <SearchBar
                   placeholder="Position Name"
-                  value={jobSearch}
-                  onChange={setJobSearch}
+                  value={jobPanel.search}
+                  onChange={jobPanel.setSearch}
                 />
-                <SortMenu value={jobSortKey} onChange={setJobSortKey} />
+                <SortMenu value={jobPanel.sortKey} onChange={jobPanel.setSortKey} />
                 <FilterMenu
-                  values={[jobFilter]}
-                  onChange={(newValues) => setJobFilter(newValues[0] ?? '')}
+                  values={[jobPanel.filter]}
+                  onChange={(newValues) => jobPanel.setFilter(newValues[0] ?? '')}
                   options={JOB_STATUS_OPTIONS}
                   singleSelect
                 />
@@ -436,10 +429,10 @@ export default function DashboardPage() {
             </div>
 
             <div className="flex flex-col gap-2.5">
-              {sortedJobs.length === 0 ? (
+              {jobPanel.sorted.length === 0 ? (
                 <EmptyState message="No jobs yet" hint="Create one from the Jobs page." />
               ) : (
-                pagedJobs.map((job) => (
+                jobPanel.paged.map((job) => (
                   // Whole row is now a Link to the job-detail page - matches
                   // how the JobsPage grid behaves and saves users the trip
                   // through /jobs just to drill into a job they can see here.
@@ -468,12 +461,12 @@ export default function DashboardPage() {
                 not (the empty <div /> placeholder takes care of layout). */}
             <div className="flex items-center justify-between mt-3">
               <Pagination
-                page={safeJobPage}
-                totalPages={jobTotalPages}
-                onPrev={() => setJobPage((p) => Math.max(0, p - 1))}
-                onNext={() => setJobPage((p) => Math.min(jobTotalPages - 1, p + 1))}
+                page={jobPanel.safePage}
+                totalPages={jobPanel.totalPages}
+                onPrev={() => jobPanel.setPage((p) => Math.max(0, p - 1))}
+                onNext={() => jobPanel.setPage((p) => Math.min(jobPanel.totalPages - 1, p + 1))}
               />
-              {jobTotalPages <= 1 && <div />}
+              {jobPanel.totalPages <= 1 && <div />}
               <Link to="/jobs" className="text-sm font-semibold text-primary-500 hover:text-primary-600">
                 &gt; View All
               </Link>
@@ -487,15 +480,15 @@ export default function DashboardPage() {
               <div className="flex items-center gap-3">
                 <SearchBar
                   placeholder="Candidate Name"
-                  value={candSearch}
-                  onChange={setCandSearch}
+                  value={candPanel.search}
+                  onChange={candPanel.setSearch}
                 />
-                <SortMenu value={candSortKey} onChange={setCandSortKey} />
+                <SortMenu value={candPanel.sortKey} onChange={candPanel.setSortKey} />
                 {/* Candidate filter is single-select so it stays consistent
                     with the JobDetailPage one (which has 2 options today). */}
                 <FilterMenu
-                  values={[candFilter]}
-                  onChange={(newValues) => setCandFilter(newValues[0] ?? '')}
+                  values={[candPanel.filter]}
+                  onChange={(newValues) => candPanel.setFilter(newValues[0] ?? '')}
                   options={CANDIDATE_FILTER_OPTIONS}
                   singleSelect
                 />
@@ -503,13 +496,13 @@ export default function DashboardPage() {
             </div>
 
             <div className="flex flex-col gap-2.5">
-              {pagedCandidates.length === 0 ? (
+              {candPanel.paged.length === 0 ? (
                 <EmptyState
                   message="No candidates yet"
                   hint="Candidates appear here once someone is added to a job."
                 />
               ) : (
-                pagedCandidates.map((c) => (
+                candPanel.paged.map((c) => (
                   // Whole row is a Link to the candidate-detail page now -
                   // matches how the /candidates table behaves. The Link uses
                   // the underlying cand_id + job_id captured during the
@@ -540,12 +533,12 @@ export default function DashboardPage() {
                 page, View-All on the right. Same layout as the Jobs panel. */}
             <div className="flex items-center justify-between mt-3">
               <Pagination
-                page={safeCandPage}
-                totalPages={candTotalPages}
-                onPrev={() => setCandPage((p) => Math.max(0, p - 1))}
-                onNext={() => setCandPage((p) => Math.min(candTotalPages - 1, p + 1))}
+                page={candPanel.safePage}
+                totalPages={candPanel.totalPages}
+                onPrev={() => candPanel.setPage((p) => Math.max(0, p - 1))}
+                onNext={() => candPanel.setPage((p) => Math.min(candPanel.totalPages - 1, p + 1))}
               />
-              {candTotalPages <= 1 && <div />}
+              {candPanel.totalPages <= 1 && <div />}
               <Link to="/candidates" className="text-sm font-semibold text-primary-500 hover:text-primary-600">
                 &gt; View All
               </Link>

@@ -9,29 +9,10 @@ import { page, card, button, badge } from '../styles/layout'
 import { useAuth } from '../lib/AuthContext.jsx'
 import { useToast } from '../components/common/ToastContext.jsx'
 import { api, authedFetch } from '../lib/api.js'
-import { formatScore, formatShortDate } from '../utils/format.js'
+import { formatScore, formatShortDate, getAverageScore } from '../utils/format.js'
 import { initials as getInitials, avatarColor } from '../utils/avatar.js'
 import { CANDIDATE_STATUS_STYLES, FALLBACK_STATUS_CLASS } from '../utils/status.js'
 
-function getCandidateScore(ratings) {
-  if (!ratings) return null
-
-  const scores = [
-    ratings.communication?.score,
-    ratings.technical_skills?.score,
-    ratings.problem_solving?.score,
-  ].filter(
-    (score) =>
-      typeof score === 'number' &&
-      Number.isFinite(score)
-  )
-
-  if (scores.length === 0) return null
-
-  const average = scores.reduce((total, score) => total + score, 0) / scores.length
-
-  return Math.round(average * 10) / 10
-}
 
 const SORT_OPTIONS = [
   { value: 'date', label: 'Date' },
@@ -180,7 +161,7 @@ export default function ApplicationsPage() {
       }
       switch (sortValue) {
         case 'score':
-          return ((getCandidateScore(b.ratings) ?? -Infinity) - (getCandidateScore(a.ratings) ?? -Infinity))
+          return ((getAverageScore(b.ratings) ?? -Infinity) - (getAverageScore(a.ratings) ?? -Infinity))
         case 'name_asc':
           return (a.candidate_name || '').localeCompare(b.candidate_name || '')
         case 'name_desc':
@@ -441,7 +422,7 @@ export default function ApplicationsPage() {
                       </td>
 
                       <td className="px-4 py-3 font-semibold text-neutral-700">
-                        {formatScore(getCandidateScore(row.ratings))}
+                        {formatScore(getAverageScore(row.ratings))}
                       </td>
 
                       <td className="px-4 py-3 text-neutral-500 whitespace-nowrap">
