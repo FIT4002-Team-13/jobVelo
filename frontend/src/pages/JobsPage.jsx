@@ -1,75 +1,56 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import Sidebar from '../components/common/Sidebar'
 import JobFormModal from '../components/job-candidate/JobFormModal'
 import JobCard from '../components/job-candidate/JobCard'
 import DeleteJobModal from '../components/job-candidate/DeleteJobModal'
-import { SortMenu, FilterMenu, makeSorter } from '../components/job-candidate/TableControls'
-import { authedFetch } from '../lib/api.js'
+import { SortMenu, FilterMenu } from '../components/job-candidate/TableControls'
+import { api } from '../lib/api.js'
 import { useToast } from '../components/common/ToastContext.jsx'
 import { button, page } from '../styles/layout'
 import { JOB_STATUS_OPTIONS } from '../utils/constants.js'
+import { useAsync } from '../hooks/useAsync.js'
+import { useTableControls } from '../hooks/useTableControls.js'
+
+// One company-wide interviews fetch instead of one per card (the old
+// per-card version was 50 requests for 50 jobs). Best-effort: if it fails,
+// cards simply show their stored status without the completed override.
+async function loadJobsData() {
+  const [jobsData, interviews] = await Promise.all([
+    api.listJobs(),
+    api.listInterviews().catch(() => []),
+  ])
+  // Distinct candidates per job, so repeat interviews for the same
+  // candidate don't overcount toward "everyone is done".
+  const candsByJob = {}
+  for (const i of interviews) {
+    if (i.intv_status !== 'completed' || !i.job_id) continue
+    ;(candsByJob[i.job_id] ??= new Set()).add(i.cand_id)
+  }
+  const completedByJob = Object.fromEntries(
+    Object.entries(candsByJob).map(([jobId, cands]) => [jobId, cands.size])
+  )
+  return { jobs: Array.isArray(jobsData) ? jobsData : [], completedByJob }
+}
 
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function JobsPage() {
   const toast = useToast()
-  const [jobs, setJobs]             = useState([])
-  const [loading, setLoading]       = useState(true)
-  const [error, setError]           = useState(null)
-  const [search, setSearch]         = useState('')
-  const [sortKey, setSortKey]       = useState('latest')        // default: newest first
-  const [statusFilters, setStatusFilters] = useState([])        // empty = all
+  const { data, setData, loading, error } = useAsync(loadJobsData, [])
+  const jobs = data?.jobs ?? []
+  const completedByJob = data?.completedByJob ?? {}
+
   const [formModal, setFormModal]   = useState(null)
   const [deleteTarget, setDeleteTarget] = useState(null)
-  // Per-job count of DISTINCT candidates with a completed interview -
-  // drives the display override on cards AND the status filter, so a
-  // card's label always matches what the filter menu selects.
-  const [completedByJob, setCompletedByJob] = useState(() => ({}))
-
-  useEffect(() => {
-    // Guard both the HTTP status and the payload shape: on an expired token
-    // the API returns {detail: ...}, and storing that into array state used
-    // to white-screen the page at `.filter is not a function`.
-    authedFetch('/api/jobs')
-      .then(async r => {
-        if (!r.ok) throw new Error('Failed to load jobs.')
-        const data = await r.json()
-        if (!Array.isArray(data)) throw new Error('Failed to load jobs.')
-        setJobs(data)
-      })
-      .catch(() => setError('Failed to load jobs.'))
-      .finally(() => setLoading(false))
-
-    // One company-wide interviews fetch instead of one per card (the old
-    // per-card version was 50 requests for 50 jobs). Best-effort: if it
-    // fails, cards simply show their stored status without the override.
-    authedFetch('/api/interviews')
-      .then(async r => {
-        if (!r.ok) return
-        const interviews = await r.json()
-        if (!Array.isArray(interviews)) return
-        // Distinct candidates per job, so repeat interviews for the same
-        // candidate don't overcount toward "everyone is done".
-        const candsByJob = {}
-        for (const i of interviews) {
-          if (i.intv_status !== 'completed' || !i.job_id) continue
-          ;(candsByJob[i.job_id] ??= new Set()).add(i.cand_id)
-        }
-        setCompletedByJob(
-          Object.fromEntries(
-            Object.entries(candsByJob).map(([jobId, cands]) => [jobId, cands.size])
-          )
-        )
-      })
-      .catch(() => {})
-  }, [])
 
   function handleSaved(saved) {
     // Read create-vs-edit off the modal mode BEFORE closing it.
     const isNew = formModal === 'create'
-    setJobs(prev => {
-      const idx = prev.findIndex(j => j.id === saved.id)
-      return idx === -1 ? [saved, ...prev] : prev.map(j => j.id === saved.id ? saved : j)
+    setData(prev => {
+      const prevJobs = prev?.jobs ?? []
+      const idx = prevJobs.findIndex(j => j.id === saved.id)
+      const nextJobs = idx === -1 ? [saved, ...prevJobs] : prevJobs.map(j => j.id === saved.id ? saved : j)
+      return { ...prev, jobs: nextJobs }
     })
     setFormModal(null)
     toast.success(
@@ -81,7 +62,7 @@ export default function JobsPage() {
 
   function handleDeleted(id) {
     const deleted = jobs.find(j => j.id === id)
-    setJobs(prev => prev.filter(j => j.id !== id))
+    setData(prev => ({ ...prev, jobs: (prev?.jobs ?? []).filter(j => j.id !== id) }))
     setDeleteTarget(null)
     toast.success(`Job "${deleted?.title || 'Untitled role'}" deleted.`)
   }
@@ -106,13 +87,11 @@ export default function JobsPage() {
     return { ...j, display_status }
   })
 
-  // search → filter by status → sort. Each stage is independent so order
-  // doesn't actually matter, but read top-down it matches user mental model.
-  const filtered = jobsWithStatus
-    .filter(j => (j.title ?? '').toLowerCase().includes(search.toLowerCase()))
-    .filter(j => statusFilters.length === 0 || statusFilters.includes(j.display_status))
-  const sorter = makeSorter(sortKey, { nameField: 'title', dateField: 'job_created_at' })
-  const display = sorter ? [...filtered].sort(sorter) : filtered
+  const table = useTableControls(jobsWithStatus, {
+    matchesSearch: (j, needle) => (j.title ?? '').toLowerCase().includes(needle),
+    matchesFilter: (j, filters) => filters.length === 0 || filters.includes(j.display_status),
+    sortFields: { nameField: 'title', dateField: 'job_created_at' },
+  })
 
   return (
     <div className={page.shell}>
@@ -137,25 +116,25 @@ export default function JobsPage() {
 
         <div className="flex justify-end items-center gap-3 mb-5">
           <div className="flex items-center gap-2 border border-neutral-200 rounded-xl px-3 py-1.5 bg-neutral-0">
-            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Position Name"
+            <input value={table.search} onChange={e => table.setSearch(e.target.value)} placeholder="Position Name"
               className="outline-none border-none bg-transparent text-sm text-neutral-600 placeholder:text-neutral-400 w-32" />
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-neutral-400">
               <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
             </svg>
           </div>
-          <SortMenu value={sortKey} onChange={setSortKey} />
-          <FilterMenu values={statusFilters} onChange={setStatusFilters} options={JOB_STATUS_OPTIONS} />
+          <SortMenu value={table.sortKey} onChange={table.setSortKey} />
+          <FilterMenu values={table.filters} onChange={table.setFilters} options={JOB_STATUS_OPTIONS} />
         </div>
 
         {loading && <p className="text-sm text-neutral-400">Loading…</p>}
         {error   && <p className="text-sm text-coral-500">{error}</p>}
 
         {!loading && !error && (
-          display.length === 0
+          table.paged.length === 0
             ? <p className="text-sm text-neutral-400">No jobs found.</p>
             : (
               <div className="grid grid-cols-3 gap-4">
-                {display.map(job => (
+                {table.paged.map(job => (
                   <JobCard key={job.id} job={job}
                     onEdit={j => setFormModal(j)}
                     onDelete={j => setDeleteTarget(j)} />

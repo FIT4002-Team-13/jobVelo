@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { flex, form as f, button, modal } from '../../styles/layout'
 import { useAuth } from '../../lib/AuthContext.jsx'
-import { authedFetch } from '../../lib/api.js'
+import { api, ApiError } from '../../lib/api.js'
 import { toPositiveInt, parseSalary } from '../../lib/validators.js'
 import { JOB_STATUSES } from '../../utils/constants.js'
 
@@ -110,23 +110,12 @@ export default function JobFormModal({ initialJob, onClose, onSaved }) {
         : { comp_id: user.comp_id }),
     }
     try {
-      const res = await authedFetch(
-        isEdit ? `/api/jobs/${initialJob.id}` : '/api/jobs',
-        { method: isEdit ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) },
-      )
-      if (!res.ok) {
-        // Surface FastAPI's actual error so 422s aren't silently "Request failed."
-        const data = await res.json().catch(() => null)
-        const detail = data?.detail
-        const message =
-          typeof detail === 'string' ? detail
-          : Array.isArray(detail)    ? detail.map((d) => `${d.loc?.join('.')}: ${d.msg}`).join(' • ')
-          :                            `Request failed (${res.status})`
-        throw new Error(message)
-      }
-      onSaved(await res.json())
+      const saved = isEdit ? await api.updateJob(initialJob.id, body) : await api.createJob(body)
+      onSaved(saved)
     } catch (err) {
-      setError(err.message)
+      // ApiError.message is already FastAPI's detail (string or joined list) -
+      // see request()'s 422 handling in lib/api.js.
+      setError(err instanceof ApiError ? err.message : (err.message || 'Request failed.'))
     } finally {
       setSubmitting(false)
     }

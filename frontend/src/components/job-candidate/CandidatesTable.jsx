@@ -1,10 +1,10 @@
-import { useState } from 'react'
 import { SortMenu, FilterMenu, makeSorter } from './TableControls'
 import { flex, card, badge } from '../../styles/layout'
 import { CANDIDATE_STATUS_STYLES, FALLBACK_STATUS_CLASS } from '../../utils/status.js'
 import { formatScore, formatDateTime } from '../../utils/format.js'
 import { initials, avatarColor } from '../../utils/avatar.js'
 import { CANDIDATE_FILTER_OPTIONS } from '../../utils/constants.js'
+import { useTableControls } from '../../hooks/useTableControls.js'
 
 export default function CandidatesTable({
   candidates,
@@ -19,24 +19,19 @@ export default function CandidatesTable({
   onDownloadTranscript,
 }) {
   const isInterviewer = user?.role === 'interviewer'
-  const [search, setSearch] = useState('')
-  const [sortKey, setSortKey] = useState('latest')
-  const [statusFilters, setStatusFilters] = useState([])
 
-  const needle = search.trim().toLowerCase()
-  const filtered = candidates.filter((c) => {
-    if (needle && !(c.name ?? '').toLowerCase().includes(needle)) return false
-    if (statusFilters.length > 0 && !statusFilters.includes(c.status)) return false
-    return true
+  // Rankings always sorts by score, regardless of the Sort menu's key - the
+  // menu itself is disabled on that tab (see the "Rankings are sorted by
+  // score" placeholder below).
+  const table = useTableControls(candidates, {
+    matchesSearch: (c, needle) => (c.name ?? '').toLowerCase().includes(needle),
+    matchesFilter: (c, filters) => filters.length === 0 || filters.includes(c.status),
+    compare: (a, b, sortKey) =>
+      tab === 'RANKINGS'
+        ? (b.score ?? -Infinity) - (a.score ?? -Infinity)
+        : (makeSorter(sortKey, { nameField: 'name', dateField: 'scheduled_at' }) ?? (() => 0))(a, b),
   })
-
-  let sorted
-  if (tab === 'RANKINGS') {
-    sorted = [...filtered].sort((a, b) => (b.score ?? -Infinity) - (a.score ?? -Infinity))
-  } else {
-    const sorter = makeSorter(sortKey, { nameField: 'name', dateField: 'scheduled_at' })
-    sorted = sorter ? [...filtered].sort(sorter) : filtered
-  }
+  const { search, setSearch, sortKey, setSortKey, filters: statusFilters, setFilters: setStatusFilters, sorted } = table
 
   return (
     <div>

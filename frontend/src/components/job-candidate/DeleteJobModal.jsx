@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { authedFetch } from '../../lib/api.js'
+import { api } from '../../lib/api.js'
 import { modal, button } from '../../styles/layout'
 
 export default function DeleteJobModal({ job, onClose, onDeleted }) {
@@ -9,11 +9,10 @@ export default function DeleteJobModal({ job, onClose, onDeleted }) {
   async function handleDelete() {
     setDeleting(true)
     try {
-      const res = await authedFetch(`/api/jobs/${job.id}`, { method: 'DELETE' })
-      if (!res.ok) throw new Error('Failed to delete.')
+      await api.deleteJob(job.id)
       onDeleted(job.id)
     } catch (err) {
-      setError(err.message)
+      setError(err.message || 'Failed to delete.')
       setDeleting(false)
     }
   }

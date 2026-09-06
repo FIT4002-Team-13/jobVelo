@@ -31,7 +31,7 @@ from services.openai_service import (
     generate_interview_reports,
     rate_candidate_skills,
 )
-from services.transcrip import build_transcript_pdf
+from services.transcript import build_transcript_pdf
 
 logger = logging.getLogger(__name__)
 

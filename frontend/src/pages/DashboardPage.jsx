@@ -1,14 +1,15 @@
-import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { Briefcase, Users, CalendarCheck2, CalendarClock, CalendarDays } from 'lucide-react'
 import Sidebar from '../components/common/Sidebar'
-import { api, authedFetch } from '../lib/api.js'
+import { api } from '../lib/api.js'
 import { JOB_STATUS_STYLES, CANDIDATE_STATUS_STYLES, FALLBACK_STATUS_CLASS } from '../utils/status.js'
 import { JOB_STATUS_OPTIONS as BASE_JOB_STATUS_OPTIONS, CANDIDATE_FILTER_OPTIONS as BASE_CANDIDATE_FILTER_OPTIONS, withAllOption } from '../utils/constants.js'
-import { SortMenu, FilterMenu, makeSorter } from '../components/job-candidate/TableControls'
+import { SortMenu, FilterMenu } from '../components/job-candidate/TableControls'
 import EmptyState from '../components/common/EmptyState'
 import Pagination from '../components/common/Pagination'
 import { page } from '../styles/layout'
+import { useAsync } from '../hooks/useAsync.js'
+import { useTableControls } from '../hooks/useTableControls.js'
 
 // Filter options for the dashboard's two panels, with an "All" entry
 // prepended. Kept in sync with the filter on JobDetailPage so the UX is
@@ -48,62 +49,60 @@ const PERSONAL_CARDS = [
 
 const PAGE_SIZE = 5
 
-function useJobPanel(jobs, completedByJob) {
-  const [search,  setSearch]  = useState('')
-  const [sortKey, setSortKey] = useState('latest')
-  const [filter,  setFilter]  = useState('')
-  const [page,    setPage]    = useState(0)
+// Step 1: who am I? Need userid before /api/applications can scope to "my
+// candidates" - matches the /candidates page filter. Step 2: parallel fetch
+// the rest; each is independently best-effort (defaults on failure) so one
+// flaky endpoint doesn't blank the whole dashboard.
+async function loadDashboardData() {
+  const me = await api.me()
 
-  const sorter = makeSorter(sortKey, { nameField: 'title', dateField: 'job_created_at' })
-  const needle = search.trim().toLowerCase()
-  const withStatus = jobs.map((j) => {
-    const filled = j.candidates_filled ?? 0
-    const done   = completedByJob[j.id ?? j._id] ?? 0
-    const display_status =
-      j.status === 'Completed' ? 'Completed'
-      : filled > 0 && done >= filled ? 'Completed'
-      : done > 0 ? 'In Progress'
-      : j.status
-    return { ...j, display_status }
-  })
-  const visible = withStatus
-    .filter((j) => !needle || (j.title ?? '').toLowerCase().includes(needle))
-    .filter((j) => !filter || j.display_status === filter)
-  const sorted     = sorter ? [...visible].sort(sorter) : visible
-  const totalPages = Math.max(1, Math.ceil(sorted.length / PAGE_SIZE))
-  const safePage   = Math.min(page, totalPages - 1)
-  const paged      = sorted.slice(safePage * PAGE_SIZE, (safePage + 1) * PAGE_SIZE)
+  // Candidates panel reads from /api/applications?user_id=<me> instead of
+  // /api/candidates so it shows the SAME rows as the /candidates page (one
+  // per application where the current user is the interviewer, scoped to
+  // the company server-side).
+  const [summary, jobsData, apps, interviews] = await Promise.all([
+    api.getDashboardSummary().catch(() => null),
+    api.listJobs().catch(() => []),
+    api.listApplications({ user_id: me.userid }).catch(() => []),
+    api.listInterviews().catch(() => []),
+  ])
 
-  return { search, setSearch, sortKey, setSortKey, filter, setFilter, setPage, sorted, totalPages, safePage, paged }
-}
+  const jobs = Array.isArray(jobsData) ? jobsData : []
+  const allInterviews = Array.isArray(interviews) ? interviews : []
 
-function useCandidatePanel(candidates) {
-  const [search,  setSearch]  = useState('')
-  const [sortKey, setSortKey] = useState('latest')
-  const [filter,  setFilter]  = useState('')
-  const [page,    setPage]    = useState(0)
+  // Distinct candidates per job with a completed interview, so repeat
+  // interviews don't overcount - drives the same display override JobsPage
+  // uses, so the pill here never disagrees with the one on the Jobs page.
+  const candsByJob = {}
+  for (const i of allInterviews) {
+    if (i.intv_status !== 'completed' || !i.job_id) continue
+    ;(candsByJob[i.job_id] ??= new Set()).add(i.cand_id)
+  }
+  const completedByJob = Object.fromEntries(
+    Object.entries(candsByJob).map(([jobId, cands]) => [jobId, cands.size])
+  )
 
-  const sorter = makeSorter(sortKey, { nameField: 'cand_full_name', dateField: 'cand_created_at' })
-  const needle = search.trim().toLowerCase()
-  const visible = candidates.filter((c) => {
-    // Dashboard is a glance-view of the active pipeline. A candidate with no
-    // application (cand_status is null) is just a stored profile - not in
-    // the pipeline yet - and showing them here would burn dashboard slots
-    // on rows the recruiter can't act on.
-    if (!c.cand_status) return false
-    if (needle) {
-      const haystack = `${c.cand_full_name ?? ''} ${c.cand_email ?? ''}`.toLowerCase()
-      if (!haystack.includes(needle)) return false
-    }
-    if (filter && c.cand_status !== filter) return false
-    return true
-  })
-  const sorted     = sorter ? [...visible].sort(sorter) : visible
-  const totalPages = Math.max(1, Math.ceil(sorted.length / PAGE_SIZE))
-  const safePage   = Math.min(page, totalPages - 1)
-  const paged      = sorted.slice(safePage * PAGE_SIZE, (safePage + 1) * PAGE_SIZE)
+  // Map the application rows into the shape the panel renders
+  // (cand_full_name / cand_email / cand_status / cand_created_at). Keep
+  // `_cand_id` and `_job_id` around so a click can navigate straight to the
+  // candidate-detail page.
+  const candidates = Array.isArray(apps)
+    ? apps.map((a) => ({
+        // Application id is unique even when the same candidate has
+        // multiple applications - use it as the React key.
+        cand_id:         a.application_id,
+        cand_full_name:  a.candidate_name,
+        cand_email:      a.email,
+        cand_status:     a.status,
+        cand_created_at: a.interview_datetime,
+        _cand_id:        a.cand_id,
+        _job_id:         a.job_id,
+        // Real profile-creation date, for the admin summary delta.
+        _cand_created_at: a.cand_created_at,
+      }))
+    : []
 
-  return { search, setSearch, sortKey, setSortKey, filter, setFilter, setPage, sorted, totalPages, safePage, paged }
+  return { me, summary, jobs, candidates, completedByJob, allInterviews }
 }
 
 // ── Sub-components ───────────────────────────────────────────────────────────
@@ -125,10 +124,6 @@ function SearchBar({ placeholder, value, onChange }) {
     </div>
   )
 }
-
-// SortBtn / FilterBtn used to be defined here as non-functional placeholders;
-// they've moved to components/TableControls.jsx and are now wired up to local
-// state below. Search bar stays local because it's a different shape.
 
 // Company-wide stat card for the admin summary: tinted icon square on the
 // left; uppercase label, big count, and a small "this month" delta stacked
@@ -159,27 +154,43 @@ export default function DashboardPage() {
   // toLocaleDateString return dd/mm/yyy, replace keeps the slashes as is but ensures it's always in the same format regardless of user locale.
   const today = new Date().toLocaleDateString('en-AU').replace(/\//g, '/')
 
-  const [me,         setMe]         = useState(null)
-  const [summary,    setSummary]    = useState(null)
-  const [jobs,       setJobs]       = useState([])
-  const [candidates, setCandidates] = useState([])
-  const [loading,    setLoading]    = useState(true)
-  const [error,      setError]      = useState(null)
-  // Per-job count of DISTINCT candidates with a completed interview -
-  // drives the same display override JobsPage uses, so the pill here
-  // never disagrees with the one on the Jobs page.
-  const [completedByJob, setCompletedByJob] = useState(() => ({}))
-  // Full company interviews list - feeds the admin summary cards
-  // (completed / upcoming counts) without another fetch.
-  const [allInterviews, setAllInterviews] = useState([])
+  const { data, loading, error } = useAsync(loadDashboardData, [])
+  const me              = data?.me ?? null
+  const summary         = data?.summary ?? null
+  const jobs             = data?.jobs ?? []
+  const candidates       = data?.candidates ?? []
+  const completedByJob   = data?.completedByJob ?? {}
+  const allInterviews    = data?.allInterviews ?? []
 
-  const jobPanel  = useJobPanel(jobs, completedByJob)
-  const candPanel = useCandidatePanel(candidates)
+  const jobsWithStatus = jobs.map((j) => {
+    const filled = j.candidates_filled ?? 0
+    const done   = completedByJob[j.id ?? j._id] ?? 0
+    const display_status =
+      j.status === 'Completed' ? 'Completed'
+      : filled > 0 && done >= filled ? 'Completed'
+      : done > 0 ? 'In Progress'
+      : j.status
+    return { ...j, display_status }
+  })
+  const jobPanel = useTableControls(jobsWithStatus, {
+    matchesSearch: (j, needle) => (j.title ?? '').toLowerCase().includes(needle),
+    matchesFilter: (j, filters) => filters.length === 0 || filters.includes(j.display_status),
+    sortFields: { nameField: 'title', dateField: 'job_created_at' },
+    pageSize: PAGE_SIZE,
+  })
 
-  // Pagination: clamp the current page against the (possibly) shrunken
-  // result set, then slice for display. We clamp at render-time instead
-  // of an effect so the controls always reflect the data we're actually
-  // showing - no flicker, no stale "Page 3 / 1" intermediate state.
+  // Dashboard is a glance-view of the active pipeline. A candidate with no
+  // application (cand_status is null) is just a stored profile - not in the
+  // pipeline yet - and showing them here would burn dashboard slots on rows
+  // the recruiter can't act on.
+  const eligibleCandidates = candidates.filter((c) => c.cand_status)
+  const candPanel = useTableControls(eligibleCandidates, {
+    matchesSearch: (c, needle) => `${c.cand_full_name ?? ''} ${c.cand_email ?? ''}`.toLowerCase().includes(needle),
+    matchesFilter: (c, filters) => filters.length === 0 || filters.includes(c.cand_status),
+    sortFields: { nameField: 'cand_full_name', dateField: 'cand_created_at' },
+    pageSize: PAGE_SIZE,
+  })
+
   // Company-wide totals for the admin's summary cards - all derived from
   // data the dashboard already fetches, so no extra requests. Deltas count
   // what landed inside the current calendar month.
@@ -251,84 +262,6 @@ export default function DashboardPage() {
       deltaClass: upcomingThisMonth > 0 ? 'text-coral-500' : 'text-neutral-400',
     },
   ]
-
-
-  useEffect(() => {
-    async function load() {
-      try {
-        // Step 1: who am I? Need userid before /api/applications can scope
-        // to "my candidates" - matches the /candidates page filter.
-        const meData = await api.me()
-
-        // Step 2: parallel fetch the rest. Candidates panel now reads from
-        // /api/applications?user_id=<me> instead of /api/candidates so it
-        // shows the SAME rows as the /candidates page (one per application
-        // where the current user is the interviewer, scoped to the
-        // company server-side).
-        const [sumRes, jobsRes, appsRes, intvRes] = await Promise.all([
-          authedFetch('/api/dashboard/summary'),
-          authedFetch('/api/jobs'),
-          authedFetch(`/api/applications?user_id=${encodeURIComponent(meData.userid)}`),
-          authedFetch('/api/interviews'),
-        ])
-        setMe(meData)
-
-        // Guard both HTTP status and payload shape before storing into
-        // state: on an expired token these come back as {detail: ...},
-        // and storing that into array state white-screens the page at
-        // `.filter is not a function`.
-        setSummary(sumRes.ok ? await sumRes.json().catch(() => null) : null)
-        const jobsData = jobsRes.ok ? await jobsRes.json().catch(() => []) : []
-        setJobs(Array.isArray(jobsData) ? jobsData : [])
-
-        // Best-effort: if the interviews fetch fails, rows simply show
-        // their stored status without the completed-override. Distinct
-        // candidates per job, so repeat interviews don't overcount.
-        const intvData = intvRes.ok ? await intvRes.json().catch(() => []) : []
-        if (Array.isArray(intvData)) {
-          setAllInterviews(intvData)
-          const candsByJob = {}
-          for (const i of intvData) {
-            if (i.intv_status !== 'completed' || !i.job_id) continue
-            ;(candsByJob[i.job_id] ??= new Set()).add(i.cand_id)
-          }
-          setCompletedByJob(
-            Object.fromEntries(
-              Object.entries(candsByJob).map(([jobId, cands]) => [jobId, cands.size])
-            )
-          )
-        }
-
-        // Map the application rows into the shape the panel renders
-        // (cand_full_name / cand_email / cand_status / cand_created_at).
-        // Keep `_cand_id` and `_job_id` around so a click can navigate
-        // straight to the candidate-detail page.
-        const apps = await appsRes.json()
-        const rows = Array.isArray(apps)
-          ? apps.map((a) => ({
-              // Application id is unique even when the same candidate has
-              // multiple applications - use it as the React key.
-              cand_id:         a.application_id,
-              cand_full_name:  a.candidate_name,
-              cand_email:      a.email,
-              cand_status:     a.status,
-              cand_created_at: a.interview_datetime,
-              _cand_id:        a.cand_id,
-              _job_id:         a.job_id,
-              // Real profile-creation date, for the admin summary delta.
-              _cand_created_at: a.cand_created_at,
-            }))
-          : []
-        setCandidates(rows)
-      } catch (err) {
-        console.error('Dashboard fetch failed:', err)
-        setError('Failed to load dashboard data.')
-      } finally {
-        setLoading(false)
-      }
-    }
-    load()
-  }, [])
 
   if (loading) return (
     <div className={page.loading}>
@@ -408,8 +341,8 @@ export default function DashboardPage() {
                 />
                 <SortMenu value={jobPanel.sortKey} onChange={jobPanel.setSortKey} />
                 <FilterMenu
-                  values={[jobPanel.filter]}
-                  onChange={(newValues) => jobPanel.setFilter(newValues[0] ?? '')}
+                  values={jobPanel.filters}
+                  onChange={jobPanel.setFilters}
                   options={JOB_STATUS_OPTIONS}
                   singleSelect
                 />
@@ -475,8 +408,8 @@ export default function DashboardPage() {
                 {/* Candidate filter is single-select so it stays consistent
                     with the JobDetailPage one (which has 2 options today). */}
                 <FilterMenu
-                  values={[candPanel.filter]}
-                  onChange={(newValues) => candPanel.setFilter(newValues[0] ?? '')}
+                  values={candPanel.filters}
+                  onChange={candPanel.setFilters}
                   options={CANDIDATE_FILTER_OPTIONS}
                   singleSelect
                 />
