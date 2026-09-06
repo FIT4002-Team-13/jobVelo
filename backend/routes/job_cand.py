@@ -29,6 +29,7 @@ from models.job_candidate import (
 )
 from services.openai_service import generate_interview_plan
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/job-candidates", tags=["job_candidates"])
 
 
@@ -81,7 +82,7 @@ async def _auto_generate_plan(jobcand_id: str, job_id: str, cand_id: str) -> Non
                 },
             )
     except Exception:
-        logging.warning(
+        logger.warning(
             "Interview plan generation failed for jobcand %s", jobcand_id, exc_info=True
         )
 
