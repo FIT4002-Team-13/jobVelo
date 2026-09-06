@@ -4,29 +4,17 @@ import { Briefcase, Users, CalendarCheck2, CalendarClock, CalendarDays } from 'l
 import Sidebar from '../components/common/Sidebar'
 import { api, authedFetch } from '../lib/api.js'
 import { JOB_STATUS_STYLES, CANDIDATE_STATUS_STYLES, FALLBACK_STATUS_CLASS } from '../utils/status.js'
+import { JOB_STATUS_OPTIONS as BASE_JOB_STATUS_OPTIONS, CANDIDATE_FILTER_OPTIONS as BASE_CANDIDATE_FILTER_OPTIONS, withAllOption } from '../utils/constants.js'
 import { SortMenu, FilterMenu, makeSorter } from '../components/job-candidate/TableControls'
 import EmptyState from '../components/common/EmptyState'
 import Pagination from '../components/common/Pagination'
 import { page } from '../styles/layout'
 
-// Filter options for the dashboard's two panels.
-//   - Jobs filter by their own status enum (Pending / In Progress / Completed).
-//   - Candidates filter by their rolled-up status from /api/candidates' new
-//     `cand_status` field (SCHEDULED / EVALUATED). Kept in sync with the
-//     filter on JobDetailPage so the UX is identical across pages.
-const JOB_STATUS_OPTIONS = [
-  { value: '',            label: 'All'         },
-  { value: 'Pending',     label: 'Pending'     },
-  { value: 'In Progress', label: 'In Progress' },
-  { value: 'Completed',   label: 'Completed'   },
-]
-const CANDIDATE_FILTER_OPTIONS = [
-  { value: '',              label: 'All'           },
-  { value: 'NOT SCHEDULED', label: 'Not Scheduled' },
-  { value: 'SCHEDULED',     label: 'Scheduled'     },
-  { value: 'IN PROGRESS',   label: 'In Progress'   },
-  { value: 'COMPLETED',     label: 'Completed'     },
-]
+// Filter options for the dashboard's two panels, with an "All" entry
+// prepended. Kept in sync with the filter on JobDetailPage so the UX is
+// identical across pages.
+const JOB_STATUS_OPTIONS = withAllOption(BASE_JOB_STATUS_OPTIONS)
+const CANDIDATE_FILTER_OPTIONS = withAllOption(BASE_CANDIDATE_FILTER_OPTIONS)
 
 
 

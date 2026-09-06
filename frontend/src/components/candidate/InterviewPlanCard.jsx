@@ -1,13 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { authedFetch } from '../../lib/api.js'
 import { card, flex } from '../../styles/layout'
-
-const SECTION_COLORS = [
-  { bg: 'bg-primary-50',  border: 'border-primary-200',  dot: 'bg-primary-400',  time: 'text-primary-500' },
-  { bg: 'bg-sky-50',      border: 'border-sky-200',      dot: 'bg-sky-400',      time: 'text-sky-500'     },
-  { bg: 'bg-mint-50',     border: 'border-mint-200',     dot: 'bg-mint-400',     time: 'text-mint-600'    },
-  { bg: 'bg-coral-50',    border: 'border-coral-200',    dot: 'bg-coral-400',    time: 'text-coral-500'   },
-]
+import { SECTION_COLORS } from '../../utils/constants.js'
 
 export default function InterviewPlanCard({ jobId, candId, jobCand }) {
   const [state, setState] = useState('idle')

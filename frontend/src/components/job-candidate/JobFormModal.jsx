@@ -3,13 +3,14 @@ import { flex, form as f, button, modal } from '../../styles/layout'
 import { useAuth } from '../../lib/AuthContext.jsx'
 import { authedFetch } from '../../lib/api.js'
 import { toPositiveInt, parseSalary } from '../../lib/validators.js'
+import { JOB_STATUSES } from '../../utils/constants.js'
 
 // Field length caps - mirror the backend Pydantic limits.
 const TITLE_MAX = 120
 const DESC_MAX  = 2000
 
 const EMPLOYMENT_TYPES = ['Full-time', 'Part-time', 'Casual', 'Internship']
-const STATUS_OPTIONS   = ['Pending', 'In Progress', 'Completed']
+const STATUS_OPTIONS   = JOB_STATUSES
 
 // Recruitment dates are stored on the backend as ISO yyyy-mm-dd strings,
 // which is exactly the format <input type="date"> emits and consumes - so

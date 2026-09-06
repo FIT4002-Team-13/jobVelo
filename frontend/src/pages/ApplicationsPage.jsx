@@ -12,6 +12,7 @@ import { api, authedFetch } from '../lib/api.js'
 import { formatScore, formatShortDate, getAverageScore } from '../utils/format.js'
 import { initials as getInitials, avatarColor } from '../utils/avatar.js'
 import { CANDIDATE_STATUS_STYLES, FALLBACK_STATUS_CLASS } from '../utils/status.js'
+import { CANDIDATE_FILTER_OPTIONS, withAllOption } from '../utils/constants.js'
 
 
 const SORT_OPTIONS = [
@@ -22,17 +23,8 @@ const SORT_OPTIONS = [
 ]
 
 // Kept in sync with the dashboard candidates panel + JobDetailPage candidate
-// filter so the same statuses are filterable wherever the user looks. The
-// values mirror what the rows can actually hold (the interview status,
-// upper-cased) - listing a status the data can never produce just gives the
-// user a filter that silently matches nothing.
-const FILTER_OPTIONS = [
-  { value: '',              label: 'All'           },
-  { value: 'NOT SCHEDULED', label: 'Not Scheduled' },
-  { value: 'SCHEDULED',     label: 'Scheduled'     },
-  { value: 'IN PROGRESS',     label: 'In Progress' },
-  { value: 'COMPLETED',     label: 'Completed'     },
-]
+// filter so the same statuses are filterable wherever the user looks.
+const FILTER_OPTIONS = withAllOption(CANDIDATE_FILTER_OPTIONS)
 
 // Previously had a bespoke OptionsPopup component here - replaced by the
 // shared SortMenu / FilterMenu from TableControls so this page reads

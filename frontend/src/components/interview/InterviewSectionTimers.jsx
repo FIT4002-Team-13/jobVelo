@@ -1,12 +1,6 @@
 import { flex } from "../../styles/layout";
 import { formatTimer } from "../../utils/time.js";
-
-export const SECTION_COLORS = [
-  { border: "border-primary-200", activeBorder: "border-primary-300", ring: "ring-primary-100", badge: "bg-primary-100 text-primary-700", pauseBg: "bg-primary-100 hover:bg-primary-200 text-primary-600", timer: "text-primary-600" },
-  { border: "border-sky-200", activeBorder: "border-sky-300", ring: "ring-sky-100", badge: "bg-sky-100 text-sky-700", pauseBg: "bg-sky-100 hover:bg-sky-200 text-sky-600", timer: "text-sky-600" },
-  { border: "border-mint-200", activeBorder: "border-mint-300", ring: "ring-mint-100", badge: "bg-mint-100 text-mint-700", pauseBg: "bg-mint-100 hover:bg-mint-200 text-mint-600", timer: "text-mint-600" },
-  { border: "border-coral-200", activeBorder: "border-coral-300", ring: "ring-coral-100", badge: "bg-coral-100 text-coral-700", pauseBg: "bg-coral-100 hover:bg-coral-200 text-coral-600", timer: "text-coral-600" },
-];
+import { SECTION_COLORS } from "../../utils/constants.js";
 
 export function SectionCard({ section, st, color, onStart, onPause, onResume, onDone, locked }) {
   const budget = section.suggested_minutes * 60;

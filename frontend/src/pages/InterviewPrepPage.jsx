@@ -1,34 +1,5 @@
 import { card, button, flex } from "../styles/layout";
-
-const PREP_FIT_METRICS = [
-  { key: "relevant_experience", label: "Relevant Experience" },
-  { key: "technical_fit", label: "Technical Fit" },
-  { key: "soft_skills", label: "Soft Skills" },
-];
-
-function PrepVerdictChip({ positionFit }) {
-  const values = PREP_FIT_METRICS.map((m) => positionFit?.[m.key]).filter(
-    (v) => typeof v === "number"
-  );
-  if (values.length === 0) return null;
-  const avg = values.reduce((a, b) => a + b, 0) / values.length;
-  const [label, chipClass] =
-    avg >= 7.5
-      ? ["Strong fit", "bg-mint-50 text-mint-700"]
-      : avg >= 4.5
-      ? ["Moderate fit", "bg-sky-50 text-sky-700"]
-      : ["Weak fit", "bg-coral-50 text-coral-700"];
-
-  return (
-    <span
-      className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-pill px-3 py-1 text-xs font-bold ${chipClass}`}
-    >
-      <span className="h-1.5 w-1.5 rounded-pill bg-current" aria-hidden />
-      {label}
-      <span className="font-semibold opacity-70 tabular-nums">{avg.toFixed(1)}/10</span>
-    </span>
-  );
-}
+import FitVerdict from "../components/candidate/FitVerdict.jsx";
 
 function PrepInsightList({ title, items, dot }) {
   if (!items?.length) return null;
@@ -70,7 +41,7 @@ export default function InterviewPrepPage({ analysis, scheduledLabel, onBegin, o
         <div className={`${card.base} ${flex.col} gap-5`}>
           <div className={flex.rowBetween}>
             <h3 className="text-sm font-bold uppercase tracking-wide text-neutral-500">Briefing</h3>
-            {analysis && <PrepVerdictChip positionFit={analysis.position_fit} />}
+            {analysis && <FitVerdict positionFit={analysis.position_fit} />}
           </div>
 
           {analysis ? (

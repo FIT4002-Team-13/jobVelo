@@ -7,12 +7,7 @@ import { SortMenu, FilterMenu, makeSorter } from '../components/job-candidate/Ta
 import { authedFetch } from '../lib/api.js'
 import { useToast } from '../components/common/ToastContext.jsx'
 import { button, page } from '../styles/layout'
-
-const JOB_STATUS_OPTIONS = [
-  { value: 'Pending',     label: 'Pending'     },
-  { value: 'In Progress', label: 'In Progress' },
-  { value: 'Completed',   label: 'Completed'   },
-]
+import { JOB_STATUS_OPTIONS } from '../utils/constants.js'
 
 // ── Page ──────────────────────────────────────────────────────────────────────
 

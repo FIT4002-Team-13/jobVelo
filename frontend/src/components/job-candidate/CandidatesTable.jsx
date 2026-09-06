@@ -4,13 +4,7 @@ import { flex, card, badge } from '../../styles/layout'
 import { CANDIDATE_STATUS_STYLES, FALLBACK_STATUS_CLASS } from '../../utils/status.js'
 import { formatScore, formatDateTime } from '../../utils/format.js'
 import { initials, avatarColor } from '../../utils/avatar.js'
-
-const CANDIDATE_FILTER_OPTIONS = [
-  { value: 'NOT SCHEDULED', label: 'Not Scheduled' },
-  { value: 'SCHEDULED',     label: 'Scheduled'     },
-  { value: 'IN PROGRESS',   label: 'In Progress'   },
-  { value: 'COMPLETED',     label: 'Completed'     },
-]
+import { CANDIDATE_FILTER_OPTIONS } from '../../utils/constants.js'
 
 export default function CandidatesTable({
   candidates,
