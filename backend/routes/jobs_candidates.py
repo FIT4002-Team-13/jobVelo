@@ -27,6 +27,7 @@ def _validate_oid(value: str, what: str = "job") -> ObjectId:
 async def list_candidates_for_job(
     job_id: str,
     comp_id: ObjectId = Depends(get_current_comp_id),
+    db=Depends(get_db),
 ):
     """Joined view: every candidate linked to this job, flattened with
     interview-style fields (name / status / score / scheduled_at /
@@ -34,7 +35,6 @@ async def list_candidates_for_job(
 
     Tenant guard: 404s if the job belongs to a different company.
     """
-    db = get_db()
     oid = _validate_oid(job_id)
     if not await db.jobs.find_one({"_id": oid, "comp_id": comp_id}, {"_id": 1}):
         raise HTTPException(status_code=404, detail="Job not found")
@@ -158,6 +158,7 @@ async def remove_candidate_from_job(
     job_id: str,
     jobcand_id: str,
     comp_id: ObjectId = Depends(get_current_comp_id),
+    db=Depends(get_db),
 ):
     """Remove a single candidate-job link.
 
@@ -166,7 +167,6 @@ async def remove_candidate_from_job(
     interviews + interview_users for this (cand_id, job_id) pair — otherwise
     an orphan interview would leave a phantom avatar on the job card.
     """
-    db = get_db()
     if not ObjectId.is_valid(jobcand_id):
         raise HTTPException(status_code=400, detail="Invalid jobcand_id")
 
