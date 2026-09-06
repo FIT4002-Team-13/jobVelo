@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import uuid
 from datetime import datetime, timezone
 
@@ -78,7 +79,9 @@ async def _auto_generate_plan(jobcand_id: str, job_id: str, cand_id: str) -> Non
                 },
             )
     except Exception:
-        pass
+        logging.warning(
+            "Interview plan generation failed for jobcand %s", jobcand_id, exc_info=True
+        )
 
 
 def _comp_oid(comp_id: str) -> ObjectId:

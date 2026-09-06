@@ -13,6 +13,7 @@ Cross-tenant safety:
 from __future__ import annotations
 
 import json
+import logging
 from datetime import datetime, timezone
 
 from bson import ObjectId
@@ -80,7 +81,9 @@ async def _auto_generate_plan(jobcand_id: str, job_id: str, cand_id: str) -> Non
                 },
             )
     except Exception:
-        pass
+        logging.warning(
+            "Interview plan generation failed for jobcand %s", jobcand_id, exc_info=True
+        )
 
 
 def job_candidate_helper(job_candidate: dict) -> JobCandidateOut:
