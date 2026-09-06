@@ -11,7 +11,7 @@ import { flex, card, badge, button, page } from "../styles/layout";
 import { useAuth } from "../lib/AuthContext.jsx";
 import { useToast } from "../components/common/ToastContext.jsx";
 import { authedFetch, downloadFileWithAuth } from "../lib/api.js";
-import { formatDate } from "../utils/format.js";
+import { formatDate, formatMediumDate } from "../utils/format.js";
 import { JOB_STATUS_STYLES, FALLBACK_STATUS_CLASS } from "../utils/status.js";
 import InterviewStatusPanel from "../components/job-candidate/InterviewStatusPanel";
 import CandidatesTable from "../components/job-candidate/CandidatesTable";
@@ -333,10 +333,7 @@ export default function JobDetailPage() {
                       lied about how fresh the posting was. */}
                   Last Update{" "}
                   {job.job_last_update_datetime
-                    ? new Date(job.job_last_update_datetime).toLocaleDateString(
-                        "en-AU",
-                        { month: "short", day: "numeric", year: "numeric" }
-                      )
+                    ? formatMediumDate(job.job_last_update_datetime)
                     : "--"}
                 </p>
               </div>

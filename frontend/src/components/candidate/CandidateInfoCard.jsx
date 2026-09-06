@@ -1,7 +1,7 @@
 import { card, flex } from '../../styles/layout'
 import { useAuth } from '../../lib/AuthContext.jsx'
 import { CANDIDATE_STATUS_STYLES, FALLBACK_STATUS_CLASS } from '../../utils/status.js'
-import { formatDateTime } from '../../utils/format.js'
+import { formatDateTime, formatMediumDate } from '../../utils/format.js'
 import { initials as getInitials } from '../../utils/avatar.js'
 
 function CvViewButton({ cvAnalysis, cvUrl, onViewAnalysis, onAnalyse, analysing }) {
@@ -135,13 +135,7 @@ export default function CandidateInfoCard({
               <circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>
             </svg>
             Last Update{' '}
-            {candidate?.cand_updated_at
-              ? new Date(candidate.cand_updated_at).toLocaleDateString('en-AU', {
-                  month: 'short',
-                  day: 'numeric',
-                  year: 'numeric',
-                })
-              : '--'}
+            {candidate?.cand_updated_at ? formatMediumDate(candidate.cand_updated_at) : '--'}
           </p>
         </div>
 
