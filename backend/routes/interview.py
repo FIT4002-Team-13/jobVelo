@@ -391,7 +391,8 @@ def _zero_ratings() -> CandidateRatings:
             skill="Problem Solving",
             score=0,
             explanation=(
-                "No candidate transcript evidence was available to evaluate problem-solving ability."
+                "No candidate transcript evidence was available"
+                " to evaluate problem-solving ability."
             ),
             evidence=[],
         ),
@@ -618,7 +619,10 @@ async def _persist_completion(
 @router.post(
     "/{intv_id}/complete",
     response_model=InterviewCompleteOut,
-    summary="Finish an interview: persist the transcript, generate both LLM reports, and rate the candidate.",
+    summary=(
+        "Finish an interview: persist the transcript, generate both LLM"
+        " reports, and rate the candidate."
+    ),
 )
 async def complete_interview(
     intv_id: str,

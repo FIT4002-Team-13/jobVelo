@@ -280,7 +280,10 @@ async def _run_analysis(
 @router.post(
     "",
     response_model=CvAnalysisOut,
-    summary="Start a CV analysis for a job-candidate link. Returns immediately with status=processing.",
+    summary=(
+        "Start a CV analysis for a job-candidate link."
+        " Returns immediately with status=processing."
+    ),
 )
 async def analyse(
     background_tasks: BackgroundTasks,
@@ -338,7 +341,10 @@ async def analyse(
             if not reuse_cv_path:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="No CV on file for this candidate. Upload a CV PDF to generate an analysis.",
+                    detail=(
+                        "No CV on file for this candidate."
+                        " Upload a CV PDF to generate an analysis."
+                    ),
                 )
             keep_paths = {
                 p
@@ -399,7 +405,10 @@ async def analyse(
         if not cv_bytes:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="The candidate's stored CV could not be read. Upload a CV PDF to generate an analysis.",
+                detail=(
+                    "The candidate's stored CV could not be read."
+                    " Upload a CV PDF to generate an analysis."
+                ),
             )
         cv_path = await save_bytes(
             cv_bytes,
