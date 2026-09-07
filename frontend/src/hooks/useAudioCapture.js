@@ -12,12 +12,13 @@ export function useAudioCapture({
   isCompleted,
   timerRef,
   startTimeRef,
+  intvStatus,
 }) {
   const [isMicActive, setIsMicActive] = useState(false);
   const [isScreenSharing, setIsScreenSharing] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
   const [timer, setTimer] = useState(0);
-  const [, setStatus] = useState("Ready to start recording");
+  const [status, setStatus] = useState("Ready to start recording");
 
   const wsRef = useRef(null);
   const wsDisplayRef = useRef(null);
@@ -51,6 +52,10 @@ export function useAudioCapture({
   useEffect(() => {
     if (!serverData || autoStartedRef.current) return;
     if (serverData.intv_status === "completed") return;
+    // Mic access (and the elapsed timer) should only start once the
+    // interviewer clicks "Begin Interview" - not the moment this page's
+    // data loads, which happens while still showing the prep screen.
+    if (intvStatus === "scheduled" || intvStatus === "not_scheduled") return;
     autoStartedRef.current = true;
 
     const priorSeconds = serverData.intv_duration_seconds ?? 0;
@@ -59,7 +64,7 @@ export function useAudioCapture({
     setTimer(priorSeconds);
 
     startMicOnly().catch(() => {});
-  }, [serverData]);
+  }, [serverData, intvStatus]);
 
   useEffect(() => {
     return () => {
@@ -326,6 +331,7 @@ export function useAudioCapture({
     isScreenSharing,
     isPaused,
     timer,
+    status,
     videoRef,
     stopScreenShare,
     toggleScreenShare,

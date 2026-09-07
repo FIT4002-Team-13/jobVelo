@@ -10,6 +10,7 @@ export default function InterviewPostInterviewPage({
   onBack,
   candId,
   jobId,
+  interviewerLabel,
 }) {
   const navigate = useNavigate();
 
@@ -56,7 +57,7 @@ export default function InterviewPostInterviewPage({
               >
                 <div className={`${flex.row} gap-3 py-2`}>
                   <div className={`w-8 h-8 rounded-pill ${flex.rowCenter} text-white text-xs font-bold shrink-0 ${
-                    entry.speaker === "Interviewer" ? "bg-primary-500" : "bg-sky-500"
+                    entry.speaker === interviewerLabel ? "bg-primary-500" : "bg-sky-500"
                   }`}>
                     {entry.speaker?.slice(0, 2).toUpperCase() || "??"}
                   </div>

@@ -50,7 +50,7 @@ export default function InterviewPage() {
   const { biasWarnings, biasIncidentsRef, addBiasWarning, dismissBiasWarning } = useBias(timerRef);
 
   const { sections, sectionStates, sectionsScrollRef, sectionCardRefs, startSection, pauseSection, resumeSection, doneSection } =
-    useInterviewSections(id, { serverData, timerRef });
+    useInterviewSections(id, { serverData, timerRef, intvStatus });
 
   const {
     transcript,
@@ -94,7 +94,7 @@ export default function InterviewPage() {
     generateFollowUpRef.current = generateFollowUpQuestions;
   }, [generateFollowUpQuestions]);
 
-  const { isMicActive, isScreenSharing, isPaused, timer, videoRef, stopScreenShare, toggleScreenShare, togglePause } =
+  const { isMicActive, isScreenSharing, isPaused, timer, status: audioStatus, videoRef, stopScreenShare, toggleScreenShare, togglePause } =
     useAudioCapture({
       candidateName,
       user,
@@ -106,7 +106,14 @@ export default function InterviewPage() {
       isCompleted,
       timerRef,
       startTimeRef,
+      intvStatus,
     });
+
+  // Real identities behind the "Interviewer"/"Candidate" speaker labels the
+  // transcript hooks stamp onto each entry - used so the transcript panel
+  // can guarantee the two are never rendered in the same avatar color.
+  const interviewerLabel = user?.full_name || "Interviewer";
+  const candidateLabel = candidateName || "Candidate";
 
   function jumpToSection(sectionIndex) {
     const section = sections[sectionIndex];
@@ -215,6 +222,17 @@ export default function InterviewPage() {
             )}
           </div>
         </div>
+        {phase !== "prep" && audioStatus && (
+          <p
+            className={`mt-2 text-right text-xs font-medium ${
+              /denied|error|unable|no (microphone|computer audio|screen)|cancelled/i.test(audioStatus)
+                ? "text-coral-500"
+                : "text-neutral-400"
+            }`}
+          >
+            {audioStatus}
+          </p>
+        )}
       </header>
 
       {phase === "prep" ? (
@@ -244,6 +262,7 @@ export default function InterviewPage() {
           onNoteChange={handleNoteChange}
           onViewReport={() => setReportState({ phase: "ready", data: reportState.data ?? null })}
           onBack={() => navigate(candId && jobId ? `/candidates/${candId}/${jobId}` : `/jobs/${jobId}`, { replace: true })}
+          interviewerLabel={interviewerLabel}
           candId={candId}
           jobId={jobId}
         />
@@ -265,6 +284,8 @@ export default function InterviewPage() {
             jumpToTranscriptEntry={jumpToTranscriptEntry}
             isScreenSharing={isScreenSharing}
             videoRef={videoRef}
+            interviewerLabel={interviewerLabel}
+            candidateLabel={candidateLabel}
           />
 
           <div className={`flex-1 ${flex.col} gap-4 overflow-hidden`}>

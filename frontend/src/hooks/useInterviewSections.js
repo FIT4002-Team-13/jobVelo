@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { authedFetch } from "../lib/api.js";
 
-export function useInterviewSections(id, { serverData, timerRef }) {
+export function useInterviewSections(id, { serverData, timerRef, intvStatus }) {
   const [sections, setSections] = useState([]);
   const [sectionStates, setSectionStates] = useState([]);
 
@@ -104,6 +104,10 @@ export function useInterviewSections(id, { serverData, timerRef }) {
 
   useEffect(() => {
     if (!serverData || hasInitializedRef.current) return;
+    // Don't stand up (or auto-start) the section plan while the interview is
+    // still on the prep screen - sections, and their timers, should only
+    // begin once the interviewer actually clicks "Begin Interview".
+    if (intvStatus === "scheduled" || intvStatus === "not_scheduled") return;
     const { job_id, cand_id, intv_sections, intv_status } = serverData;
     if (!job_id || !cand_id) return;
     hasInitializedRef.current = true;
@@ -136,7 +140,7 @@ export function useInterviewSections(id, { serverData, timerRef }) {
         })
         .catch(() => {});
     }
-  }, [serverData]);
+  }, [serverData, intvStatus]);
 
   return {
     sections,

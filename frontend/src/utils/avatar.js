@@ -25,3 +25,15 @@ export function avatarColor(name = "") {
   for (const c of name) hash = (hash * 31 + c.charCodeAt(0)) & 0xffffffff;
   return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
 }
+
+// Like avatarColor, but guarantees `name` and `otherName` never come out the
+// same color - two arbitrary real names hashing into the same bucket is a
+// real (1-in-8) possibility, and when both are shown side by side (e.g.
+// interviewer vs candidate in a transcript) a collision makes them
+// impossible to tell apart. Falls back to the next palette color on a clash.
+export function speakerColor(name, otherName) {
+  const color = avatarColor(name);
+  if (!otherName || name === otherName || color !== avatarColor(otherName)) return color;
+  const idx = AVATAR_COLORS.indexOf(color);
+  return AVATAR_COLORS[(idx + 1) % AVATAR_COLORS.length];
+}

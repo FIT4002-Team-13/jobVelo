@@ -1,10 +1,10 @@
 import { useState } from "react";
 import { flex } from "../../styles/layout";
-import { initials, avatarColor } from "../../utils/avatar.js";
+import { initials, avatarColor, speakerColor } from "../../utils/avatar.js";
 
 export { initials, avatarColor };
 
-export function TranscriptEntry({ entry, onNoteChange, highlighted }) {
+export function TranscriptEntry({ entry, onNoteChange, highlighted, otherSpeaker }) {
   const [editing, setEditing] = useState(false);
   const hasNote = !!entry.comment;
 
@@ -19,7 +19,7 @@ export function TranscriptEntry({ entry, onNoteChange, highlighted }) {
         <div
           className={`w-8 h-8 rounded-pill ${
             flex.rowCenter
-          } text-white text-xs font-bold shrink-0 ${avatarColor(entry.speaker)}`}
+          } text-white text-xs font-bold shrink-0 ${speakerColor(entry.speaker, otherSpeaker)}`}
         >
           {initials(entry.speaker)}
         </div>
@@ -43,7 +43,7 @@ export function TranscriptEntry({ entry, onNoteChange, highlighted }) {
           </svg>
         </button>
       </div>
-      {editing && (
+      {editing ? (
         <div className="ml-11 mt-1.5 relative">
           <textarea
             autoFocus
@@ -71,6 +71,15 @@ export function TranscriptEntry({ entry, onNoteChange, highlighted }) {
             </svg>
           </button>
         </div>
+      ) : hasNote && (
+        <button
+          type="button"
+          onClick={() => setEditing(true)}
+          title="Edit note"
+          className="ml-11 mt-1.5 text-left rounded-md bg-neutral-50 border border-neutral-200 px-3 py-2 text-xs text-neutral-600 hover:border-primary-200 transition-colors"
+        >
+          {entry.comment}
+        </button>
       )}
     </div>
   );
@@ -172,6 +181,8 @@ export function TranscriptPanel({
   jumpToTranscriptEntry,
   isScreenSharing,
   videoRef,
+  interviewerLabel,
+  candidateLabel,
 }) {
   return (
     <div className="card-base relative isolate flex flex-col w-[48%] overflow-hidden p-0 pt-3">
@@ -235,6 +246,7 @@ export function TranscriptPanel({
                   entry={entry}
                   highlighted={entry.id === highlightedEntryId}
                   onNoteChange={onNoteChange}
+                  otherSpeaker={entry.speaker === interviewerLabel ? candidateLabel : interviewerLabel}
                 />
               </div>
             ))
