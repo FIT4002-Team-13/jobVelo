@@ -47,10 +47,19 @@ export default function InterviewPage() {
     intvDateTime,
   } = useInterviewData(id);
 
-  const { biasWarnings, biasIncidentsRef, addBiasWarning, dismissBiasWarning } = useBias(timerRef);
+  const { biasWarnings, biasIncidentsRef, addBiasWarning, dismissBiasWarning } =
+    useBias(timerRef);
 
-  const { sections, sectionStates, sectionsScrollRef, sectionCardRefs, startSection, pauseSection, resumeSection, doneSection } =
-    useInterviewSections(id, { serverData, timerRef, intvStatus });
+  const {
+    sections,
+    sectionStates,
+    sectionsScrollRef,
+    sectionCardRefs,
+    startSection,
+    pauseSection,
+    resumeSection,
+    doneSection,
+  } = useInterviewSections(id, { serverData, timerRef, intvStatus });
 
   const {
     transcript,
@@ -94,20 +103,29 @@ export default function InterviewPage() {
     generateFollowUpRef.current = generateFollowUpQuestions;
   }, [generateFollowUpQuestions]);
 
-  const { isMicActive, isScreenSharing, isPaused, timer, status: audioStatus, videoRef, stopScreenShare, toggleScreenShare, togglePause } =
-    useAudioCapture({
-      candidateName,
-      user,
-      appendTranscript,
-      addBiasWarning,
-      partialEntryRef,
-      displayPartialEntryRef,
-      serverData,
-      isCompleted,
-      timerRef,
-      startTimeRef,
-      intvStatus,
-    });
+  const {
+    isMicActive,
+    isScreenSharing,
+    isPaused,
+    timer,
+    status: audioStatus,
+    videoRef,
+    stopScreenShare,
+    toggleScreenShare,
+    togglePause,
+  } = useAudioCapture({
+    candidateName,
+    user,
+    appendTranscript,
+    addBiasWarning,
+    partialEntryRef,
+    displayPartialEntryRef,
+    serverData,
+    isCompleted,
+    timerRef,
+    startTimeRef,
+    intvStatus,
+  });
 
   // Real identities behind the "Interviewer"/"Candidate" speaker labels the
   // transcript hooks stamp onto each entry - used so the transcript panel
@@ -120,9 +138,13 @@ export default function InterviewPage() {
     const startSeconds =
       section?.start_at != null
         ? section.start_at
-        : sections.slice(0, sectionIndex).reduce((sum, s) => sum + (s.suggested_minutes || 0) * 60, 0);
+        : sections
+            .slice(0, sectionIndex)
+            .reduce((sum, s) => sum + (s.suggested_minutes || 0) * 60, 0);
 
-    let targetIdx = transcript.findIndex((e) => parseTimestamp(e.timestamp) >= startSeconds);
+    let targetIdx = transcript.findIndex(
+      (e) => parseTimestamp(e.timestamp) >= startSeconds
+    );
     if (targetIdx === -1) targetIdx = transcript.length - 1;
     if (targetIdx < 0) return;
 
@@ -144,7 +166,11 @@ export default function InterviewPage() {
       });
       if (!res.ok) {
         const data = await res.json().catch(() => null);
-        throw new Error(typeof data?.detail === "string" ? data.detail : "Failed to start the interview.");
+        throw new Error(
+          typeof data?.detail === "string"
+            ? data.detail
+            : "Failed to start the interview."
+        );
       }
       setIntvStatus("in_progress");
     } catch (err) {
@@ -158,7 +184,9 @@ export default function InterviewPage() {
     if (reportState.phase === "generating") return;
     setReportState({ phase: "generating" });
     try {
-      const finalEntries = transcript.filter((e) => !String(e.id).startsWith("partial-"));
+      const finalEntries = transcript.filter(
+        (e) => !String(e.id).startsWith("partial-")
+      );
       const res = await authedFetch(`/api/interviews/${id}/complete`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -171,18 +199,27 @@ export default function InterviewPage() {
       const data = await res.json().catch(() => null);
       if (!res.ok) {
         const detail = data?.detail;
-        throw new Error(typeof detail === "string" ? detail : "Report generation failed.");
+        throw new Error(
+          typeof detail === "string" ? detail : "Report generation failed."
+        );
       }
       if (isScreenSharing) void stopScreenShare();
       setIsCompleted(true);
       localStorage.removeItem(`transcript-${id}`);
       setReportState({ phase: "ready", data });
     } catch (err) {
-      setReportState({ phase: "error", error: err.message || "Something went wrong." });
+      setReportState({
+        phase: "error",
+        error: err.message || "Something went wrong.",
+      });
     }
   }
 
-  const phase = isCompleted ? "debrief" : intvStatus === "scheduled" || intvStatus === "not_scheduled" ? "prep" : "live";
+  const phase = isCompleted
+    ? "debrief"
+    : intvStatus === "scheduled" || intvStatus === "not_scheduled"
+    ? "prep"
+    : "live";
 
   return (
     <div className="h-screen flex flex-col bg-neutral-50 font-sans overflow-hidden">
@@ -190,24 +227,44 @@ export default function InterviewPage() {
         <div className={flex.rowBetween}>
           <div className={`${flex.row} gap-16`}>
             <div className={flex.col}>
-              <span className="text-xs font-bold text-neutral-400 uppercase tracking-widest mb-0.5">Candidate</span>
-              <span className="text-2xl font-bold text-neutral-800">{candidateName || "—"}</span>
-              <span className="text-sm text-neutral-400">{candidateRole || "—"}</span>
+              <span className="text-xs font-bold text-neutral-400 uppercase tracking-widest mb-0.5">
+                Candidate
+              </span>
+              <span className="text-2xl font-bold text-neutral-800">
+                {candidateName || "—"}
+              </span>
+              <span className="text-sm text-neutral-400">
+                {candidateRole || "—"}
+              </span>
             </div>
             <div className={flex.col}>
-              <span className="text-xs font-bold text-neutral-400 uppercase tracking-widest mb-0.5">Interviewer</span>
-              <span className="text-2xl font-bold text-neutral-800">{user?.full_name || "—"}</span>
-              <span className="text-sm text-neutral-400">{user?.role || "—"}</span>
+              <span className="text-xs font-bold text-neutral-400 uppercase tracking-widest mb-0.5">
+                Interviewer
+              </span>
+              <span className="text-2xl font-bold text-neutral-800">
+                {user?.full_name || "—"}
+              </span>
+              <span className="text-sm text-neutral-400">
+                {user?.role || "—"}
+              </span>
             </div>
           </div>
 
           <div className={`${flex.row} gap-4 items-center`}>
-            <button className={button.primary} onClick={() => cvUrl && window.open(cvUrl, "_blank")} disabled={!cvUrl}>
+            <button
+              className={button.primary}
+              onClick={() => cvUrl && window.open(cvUrl, "_blank")}
+              disabled={!cvUrl}
+            >
               View Resume
             </button>
             {phase !== "prep" && (
               <button
-                className={`${button.outline} ${isScreenSharing ? "bg-sky-100 text-sky-800 hover:bg-sky-200" : ""} ${isCompleted ? "opacity-60 cursor-not-allowed" : ""}`}
+                className={`${button.outline} ${
+                  isScreenSharing
+                    ? "bg-sky-100 text-sky-800 hover:bg-sky-200"
+                    : ""
+                } ${isCompleted ? "opacity-60 cursor-not-allowed" : ""}`}
                 onClick={() => !isCompleted && void toggleScreenShare()}
                 disabled={isCompleted}
               >
@@ -215,9 +272,17 @@ export default function InterviewPage() {
               </button>
             )}
             {phase !== "prep" && (
-              <div className={`${flex.row} gap-2 items-center text-neutral-700 font-semibold text-xl`}>
+              <div
+                className={`${flex.row} gap-2 items-center text-neutral-700 font-semibold text-xl`}
+              >
                 <span>{formatTimer(timer)}</span>
-                <span className={`w-3 h-3 rounded-pill ${isScreenSharing && !isPaused && !isCompleted ? "bg-coral-500 animate-pulse" : "bg-neutral-300"}`} />
+                <span
+                  className={`w-3 h-3 rounded-pill ${
+                    !isPaused && !isCompleted
+                      ? "bg-coral-500 animate-pulse"
+                      : "bg-neutral-300"
+                  }`}
+                />
               </div>
             )}
           </div>
@@ -225,7 +290,9 @@ export default function InterviewPage() {
         {phase !== "prep" && audioStatus && (
           <p
             className={`mt-2 text-right text-xs font-medium ${
-              /denied|error|unable|no (microphone|computer audio|screen)|cancelled/i.test(audioStatus)
+              /denied|error|unable|no (microphone|computer audio|screen)|cancelled/i.test(
+                audioStatus
+              )
                 ? "text-coral-500"
                 : "text-neutral-400"
             }`}
@@ -251,7 +318,16 @@ export default function InterviewPage() {
               : null
           }
           onBegin={beginInterview}
-          onViewFullAnalysis={cvAnalysis?.jobcand_id ? () => navigate(`/cv-analysis/${cvAnalysis.jobcand_id}`) : null}
+          onViewFullAnalysis={
+            cvAnalysis?.jobcand_id
+              ? () => navigate(`/cv-analysis/${cvAnalysis.jobcand_id}`)
+              : null
+          }
+          isMicActive={isMicActive}
+          isScreenSharing={isScreenSharing}
+          audioStatus={audioStatus}
+          onSetupRecording={() => void toggleScreenShare()}
+          onStopRecording={() => void stopScreenShare()}
         />
       ) : phase === "debrief" ? (
         <InterviewPostInterviewPage
@@ -260,14 +336,27 @@ export default function InterviewPage() {
           highlightedEntryIdx={highlightedEntryIdx}
           highlightedEntryId={highlightedEntryId}
           onNoteChange={handleNoteChange}
-          onViewReport={() => (reportState.data ? setReportState({ phase: "ready", data: reportState.data }) : completeInterview())}
-          onBack={() => navigate(candId && jobId ? `/candidates/${candId}/${jobId}` : `/jobs/${jobId}`, { replace: true })}
+          onViewReport={() =>
+            reportState.data
+              ? setReportState({ phase: "ready", data: reportState.data })
+              : completeInterview()
+          }
+          onBack={() =>
+            navigate(
+              candId && jobId
+                ? `/candidates/${candId}/${jobId}`
+                : `/jobs/${jobId}`,
+              { replace: true }
+            )
+          }
           interviewerLabel={interviewerLabel}
           candId={candId}
           jobId={jobId}
         />
       ) : (
-        <div className={`flex-1 ${flex.row} gap-6 p-6 overflow-hidden items-stretch`}>
+        <div
+          className={`flex-1 ${flex.row} gap-6 p-6 overflow-hidden items-stretch`}
+        >
           <TranscriptPanel
             transcript={transcript}
             transcriptVisible={transcriptVisible}
@@ -340,7 +429,11 @@ export default function InterviewPage() {
                     : "text-white bg-sky-300 hover:bg-sky-400"
                 }`}
               >
-                {reportState.phase === "generating" ? "Generating…" : isCompleted ? "View Report" : "Complete"}
+                {reportState.phase === "generating"
+                  ? "Generating…"
+                  : isCompleted
+                  ? "View Report"
+                  : "Complete"}
               </button>
             </div>
           </div>
@@ -354,7 +447,14 @@ export default function InterviewPage() {
           candidateRole={candidateRole}
           interviewerName={user?.full_name}
           onClose={() => setReportState({ phase: "idle" })}
-          onDone={() => navigate(candId && jobId ? `/candidates/${candId}/${jobId}` : `/jobs/${jobId}`, { replace: true })}
+          onDone={() =>
+            navigate(
+              candId && jobId
+                ? `/candidates/${candId}/${jobId}`
+                : `/jobs/${jobId}`,
+              { replace: true }
+            )
+          }
           onRetry={() => completeInterview()}
         />
       )}

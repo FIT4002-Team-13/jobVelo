@@ -32,6 +32,7 @@ export function useAudioCapture({
   const isPausedRef = useRef(false);
   const pausedTimeRef = useRef(0);
   const autoStartedRef = useRef(false);
+  const transcriptionActiveRef = useRef(false);
 
   useEffect(() => {
     isPausedRef.current = isPaused;
@@ -39,7 +40,7 @@ export function useAudioCapture({
 
   useEffect(() => {
     const interval = setInterval(() => {
-      if (isScreenSharing && !isPaused && !isCompleted) {
+      if ((isMicActive || isScreenSharing) && !isPaused && !isCompleted) {
         const elapsedSeconds = Math.floor((Date.now() - startTimeRef.current) / 1000);
         setTimer(elapsedSeconds);
         timerRef.current = elapsedSeconds;
@@ -47,7 +48,7 @@ export function useAudioCapture({
       }
     }, 1000);
     return () => clearInterval(interval);
-  }, [isScreenSharing, isPaused, isCompleted]);
+  }, [isMicActive, isScreenSharing, isPaused, isCompleted]);
 
   useEffect(() => {
     if (!serverData || autoStartedRef.current) return;
@@ -62,8 +63,18 @@ export function useAudioCapture({
     accumulatedRef.current = priorSeconds;
     timerRef.current = priorSeconds;
     setTimer(priorSeconds);
+    // Anchor the timer to when the interview officially begins, regardless
+    // of whether mic/screen were pre-started from the prep screen.
+    startTimeRef.current = Date.now() - priorSeconds * 1000;
 
-    startMicOnly().catch(() => {});
+    // Allow audio to flow to the transcription WebSocket now that the
+    // interview has officially begun (not during prep-screen setup).
+    transcriptionActiveRef.current = true;
+
+    // Skip mic start if the user already granted it from the prep screen.
+    if (!micStreamRef.current) {
+      startMicOnly().catch(() => {});
+    }
   }, [serverData, intvStatus]);
 
   useEffect(() => {
@@ -122,7 +133,7 @@ export function useAudioCapture({
       processorRef.current = micProcessor;
 
       micProcessor.onaudioprocess = (event) => {
-        if (isPausedRef.current) return;
+        if (isPausedRef.current || !transcriptionActiveRef.current) return;
         const inputBuffer = event.inputBuffer.getChannelData(0);
         if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
         wsRef.current.send(downsampleBuffer(inputBuffer, audioContext.sampleRate, 16000));
@@ -131,6 +142,7 @@ export function useAudioCapture({
       micSource.connect(micProcessor);
       micProcessor.connect(audioContext.destination);
 
+      startTimeRef.current = Date.now() - accumulatedRef.current * 1000;
       setIsMicActive(true);
       setStatus("Listening (interviewer mic)…");
     } catch (error) {
@@ -170,7 +182,7 @@ export function useAudioCapture({
       processorRef.current = micProcessor;
 
       micProcessor.onaudioprocess = (event) => {
-        if (isPausedRef.current) return;
+        if (isPausedRef.current || !transcriptionActiveRef.current) return;
         const inputBuffer = event.inputBuffer.getChannelData(0);
         if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
         wsRef.current.send(downsampleBuffer(inputBuffer, audioContext.sampleRate, 16000));
@@ -187,7 +199,7 @@ export function useAudioCapture({
         displayProcessorRef.current = displayProcessor;
 
         displayProcessor.onaudioprocess = (event) => {
-          if (isPausedRef.current) return;
+          if (isPausedRef.current || !transcriptionActiveRef.current) return;
           const inputBuffer = event.inputBuffer.getChannelData(0);
           if (!wsDisplayRef.current || wsDisplayRef.current.readyState !== WebSocket.OPEN) return;
           wsDisplayRef.current.send(downsampleBuffer(inputBuffer, audioContext.sampleRate, 16000));
@@ -241,6 +253,7 @@ export function useAudioCapture({
     if (videoRef.current) videoRef.current.srcObject = null;
     if (wsRef.current) { if (wsRef.current.readyState === WebSocket.OPEN) wsRef.current.close(); wsRef.current = null; }
     if (wsDisplayRef.current) { if (wsDisplayRef.current.readyState === WebSocket.OPEN) wsDisplayRef.current.close(); wsDisplayRef.current = null; }
+    transcriptionActiveRef.current = false;
     setIsMicActive(false);
     setIsScreenSharing(false);
     setStatus("Ready to start recording");
@@ -263,7 +276,7 @@ export function useAudioCapture({
         displayProcessorRef.current = displayProcessor;
 
         displayProcessor.onaudioprocess = (event) => {
-          if (isPausedRef.current) return;
+          if (isPausedRef.current || !transcriptionActiveRef.current) return;
           const inputBuffer = event.inputBuffer.getChannelData(0);
           if (!wsDisplayRef.current || wsDisplayRef.current.readyState !== WebSocket.OPEN) return;
           wsDisplayRef.current.send(downsampleBuffer(inputBuffer, audioContextRef.current.sampleRate, 16000));
@@ -333,6 +346,7 @@ export function useAudioCapture({
     timer,
     status,
     videoRef,
+    startMicOnly,
     stopScreenShare,
     toggleScreenShare,
     togglePause,
