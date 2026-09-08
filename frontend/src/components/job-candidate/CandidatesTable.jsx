@@ -1,10 +1,19 @@
-import { SortMenu, FilterMenu, makeSorter } from './TableControls'
+import { SortMenu, FilterMenu, makeSorter, SORT_OPTIONS } from './TableControls'
 import { flex, card, badge } from '../../styles/layout'
 import { CANDIDATE_STATUS_STYLES, FALLBACK_STATUS_CLASS } from '../../utils/status.js'
 import { formatScore, formatDateTime } from '../../utils/format.js'
 import { initials, avatarColor } from '../../utils/avatar.js'
 import { CANDIDATE_FILTER_OPTIONS } from '../../utils/constants.js'
 import { useTableControls } from '../../hooks/useTableControls.js'
+
+// Candidate rows carry an interviewer, so offer sorting by it on top of the
+// shared name/date options. (These only make sense on the SCHEDULES tab, where
+// the Interviewer column is shown; RANKINGS always sorts by score.)
+const CANDIDATE_SORT_OPTIONS = [
+  ...SORT_OPTIONS,
+  { value: 'interviewer_asc',  label: 'Interviewer A - Z' },
+  { value: 'interviewer_desc', label: 'Interviewer Z - A' },
+]
 
 export default function CandidatesTable({
   candidates,
@@ -24,12 +33,20 @@ export default function CandidatesTable({
   // menu itself is disabled on that tab (see the "Rankings are sorted by
   // score" placeholder below).
   const table = useTableControls(candidates, {
-    matchesSearch: (c, needle) => (c.name ?? '').toLowerCase().includes(needle),
+    matchesSearch: (c, needle) =>
+      (c.name ?? '').toLowerCase().includes(needle) ||
+      (c.interviewer ?? '').toLowerCase().includes(needle),
     matchesFilter: (c, filters) => filters.length === 0 || filters.includes(c.status),
-    compare: (a, b, sortKey) =>
-      tab === 'RANKINGS'
-        ? (b.score ?? -Infinity) - (a.score ?? -Infinity)
-        : (makeSorter(sortKey, { nameField: 'name', dateField: 'scheduled_at' }) ?? (() => 0))(a, b),
+    compare: (a, b, sortKey) => {
+      if (tab === 'RANKINGS') return (b.score ?? -Infinity) - (a.score ?? -Infinity)
+      // Interviewer sort isn't part of the shared makeSorter (which supports a
+      // single name field), so handle it here before falling back.
+      if (sortKey === 'interviewer_asc')
+        return (a.interviewer ?? '').localeCompare(b.interviewer ?? '')
+      if (sortKey === 'interviewer_desc')
+        return (b.interviewer ?? '').localeCompare(a.interviewer ?? '')
+      return (makeSorter(sortKey, { nameField: 'name', dateField: 'scheduled_at' }) ?? (() => 0))(a, b)
+    },
   })
   const { search, setSearch, sortKey, setSortKey, filters: statusFilters, setFilters: setStatusFilters, sorted } = table
 
@@ -55,15 +72,15 @@ export default function CandidatesTable({
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Candidate Name"
-              className="outline-none border-none bg-transparent text-sm text-neutral-600 placeholder:text-neutral-400 w-32"
+              placeholder="Candidate or interviewer"
+              className="outline-none border-none bg-transparent text-sm text-neutral-600 placeholder:text-neutral-400 w-44"
             />
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-neutral-400">
               <circle cx="11" cy="11" r="8" /><path d="m21 21-4.35-4.35" />
             </svg>
           </div>
           {tab === 'SCHEDULES' ? (
-            <SortMenu value={sortKey} onChange={setSortKey} />
+            <SortMenu value={sortKey} onChange={setSortKey} options={CANDIDATE_SORT_OPTIONS} />
           ) : (
             <span className={`${flex.row} gap-1 text-xs font-medium text-neutral-300 cursor-not-allowed`} title="Rankings are sorted by score">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">

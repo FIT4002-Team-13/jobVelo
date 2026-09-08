@@ -26,6 +26,9 @@ export default function AddCandidateForm({ jobs = [], fixedJobId = null, onClose
   const [coverLetterFile, setCoverLetterFile] = useState(null)
   const [interviewers, setInterviewers] = useState([])
   const [interviewerOpen, setInterviewerOpen] = useState(false)
+  // The existing candidate (if any) whose email the recruiter just typed, so
+  // the form can show "already on file" and reuse their stored CV.
+  const [existingMatch, setExistingMatch] = useState(null)
 
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
@@ -48,6 +51,43 @@ export default function AddCandidateForm({ jobs = [], fixedJobId = null, onClose
   function setField(key, value) {
     setFormState((prev) => ({ ...prev, [key]: value }))
   }
+
+  // Detect an existing candidate as the recruiter types a (valid) email, so we
+  // can tell them the profile/CV is already on file. Debounced to avoid a
+  // request per keystroke.
+  useEffect(() => {
+    const email = formState.email.trim().toLowerCase()
+    if (!isEmail(email)) {
+      setExistingMatch(null)
+      return undefined
+    }
+    let cancelled = false
+    const timer = setTimeout(async () => {
+      try {
+        const res = await authedFetch(`/api/candidates?email=${encodeURIComponent(email)}`)
+        if (!res.ok) throw new Error()
+        const list = await res.json()
+        if (cancelled) return
+        const match = Array.isArray(list) && list.length ? list[0] : null
+        setExistingMatch(match)
+        // Prefill name / phone from the existing profile, but only when the
+        // recruiter hasn't already typed something there - never overwrite.
+        if (match) {
+          setFormState((prev) => ({
+            ...prev,
+            name: prev.name.trim() ? prev.name : match.cand_full_name || prev.name,
+            phone: prev.phone.trim() ? prev.phone : match.cand_phone || prev.phone,
+          }))
+        }
+      } catch {
+        if (!cancelled) setExistingMatch(null)
+      }
+    }, 400)
+    return () => {
+      cancelled = true
+      clearTimeout(timer)
+    }
+  }, [formState.email])
 
   async function handleSubmit(e) {
     e.preventDefault()
@@ -118,12 +158,22 @@ export default function AddCandidateForm({ jobs = [], fixedJobId = null, onClose
       // re-uploaded from the Edit form.
       const jobcandId = saved.job_candidate?.jobcand_id
       const candId = saved.candidate?.cand_id
+      // An EXISTING candidate added to another job may already have a CV on
+      // file (from a previous job). If no new CV was picked, reuse that stored
+      // CV for this job's analysis instead of forcing a re-upload - the backend
+      // reads the candidate's cand_cv_url when analyseCv is called file-less.
+      const existingCvUrl = saved.candidate?.cand_cv_url
       try {
         if (cvFile && jobcandId) {
           const fd = new FormData()
           fd.append('jobcand_id', jobcandId)
           fd.append('cv', cvFile)
           if (coverLetterFile) fd.append('cover_letter', coverLetterFile)
+          await api.analyseCv(fd)
+        } else if (jobcandId && existingCvUrl) {
+          // Reuse the candidate's stored CV against this job (file-less).
+          const fd = new FormData()
+          fd.append('jobcand_id', jobcandId)
           await api.analyseCv(fd)
         } else if (coverLetterFile && candId) {
           const fd = new FormData()
@@ -175,6 +225,38 @@ export default function AddCandidateForm({ jobs = [], fixedJobId = null, onClose
               placeholder="eg. johndoe123@gmail.com"
               className={form.input}
             />
+            {existingMatch && (
+              <div className="mt-2 rounded-lg border border-primary-200 bg-primary-50 px-3 py-2.5 text-sm">
+                <div className={`${flex.row} items-start gap-2`}>
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="mt-0.5 shrink-0 text-primary-500">
+                    <circle cx="12" cy="12" r="10" /><path d="M12 16v-4M12 8h.01" />
+                  </svg>
+                  <div className="text-primary-700">
+                    <p>
+                      <b>{existingMatch.cand_full_name || 'This candidate'}</b> is already in your company.
+                    </p>
+                    {existingMatch.cand_cv_url ? (
+                      <p className="mt-0.5 text-primary-600">
+                        Their CV is on file and will be reused for this job —{' '}
+                        <a
+                          href={existingMatch.cand_cv_url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="font-semibold underline hover:text-primary-700"
+                        >
+                          view CV
+                        </a>
+                        . Only upload below to replace it.
+                      </p>
+                    ) : (
+                      <p className="mt-0.5 text-primary-600">
+                        No CV on file yet — upload one below.
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
           {fixedJobId ? (

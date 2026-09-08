@@ -38,6 +38,10 @@ export default function EditCandidateForm({
 
   const [cvFile, setCvFile] = useState(null)
   const [coverLetterFile, setCoverLetterFile] = useState(null)
+  // True once the user clears the already-stored CV (with no replacement),
+  // so `handleSubmit` can actually delete it server-side on save. Removing it
+  // in the dropzone alone only cleared local state, so the CV always came back.
+  const [cvRemoved, setCvRemoved] = useState(false)
   const [existingCvName, setExistingCvName] = useState(getFileName(initialData?.cv_url))
   const [existingCoverLetterName, setExistingCoverLetterName] = useState(
     getFileName(initialData?.cover_letter_url)
@@ -168,10 +172,31 @@ export default function EditCandidateForm({
           fd.append('cv', cvFile)
           if (coverLetterFile) fd.append('cover_letter', coverLetterFile)
           await api.analyseCv(fd)
-        } else if (coverLetterFile && formState.cand_id) {
-          const fd = new FormData()
-          fd.append('cover_letter', coverLetterFile)
-          await api.uploadCandidateCoverLetter(formState.cand_id, fd)
+        } else {
+          // No new CV. If the user cleared the stored CV, delete it for real -
+          // the same teardown the CV-analysis report page's delete does (file +
+          // analysis + the candidate's cand_cv_url pointer), so it can't
+          // reappear after reopening the form.
+          if (cvRemoved && formState.application_id) {
+            const existing = await api
+              .getCvAnalysisByJobcand(formState.application_id)
+              .catch(() => null)
+            if (existing?.analysis_id) {
+              await api.deleteCvAnalysis(existing.analysis_id)
+            } else {
+              // CV on file but never analysed → just clear the profile link.
+              await authedFetch(`/api/candidates/${formState.cand_id}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ cand_cv_url: null }),
+              })
+            }
+          }
+          if (coverLetterFile && formState.cand_id) {
+            const fd = new FormData()
+            fd.append('cover_letter', coverLetterFile)
+            await api.uploadCandidateCoverLetter(formState.cand_id, fd)
+          }
         }
       } catch (err) {
         console.warn('Document upload failed:', err)
@@ -256,10 +281,14 @@ export default function EditCandidateForm({
               onFileChange={(file) => {
                 setCvFile(file)
                 setExistingCvName('')
+                setCvRemoved(false) // a new upload replaces the old CV
               }}
               onRemove={() => {
                 setCvFile(null)
                 setExistingCvName('')
+                // Only a stored CV needs deleting on save; a not-yet-saved
+                // pick just clears locally.
+                if (initialData?.cv_url) setCvRemoved(true)
               }}
             />
 

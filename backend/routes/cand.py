@@ -433,9 +433,16 @@ async def create_candidate_for_job(
 
 @router.get("", response_model=list[CandidateOut])
 async def list_candidates(
+    email: str | None = None,
     comp_id: ObjectId = Depends(get_current_comp_id),
 ) -> list[CandidateOut]:
     """List candidates in the caller's company.
+
+    Fast path: when `email` is supplied, return just that candidate (0 or 1
+    item), skipping the status rollup. The Add Candidate form uses this to
+    detect an existing candidate as the recruiter types, so it can surface
+    their stored CV instead of asking for a re-upload. Emails are stored
+    lower-cased, so we match on the normalised value.
 
     Each row also carries `cand_status`, a rollup over the candidate's
     interviews:
@@ -448,6 +455,15 @@ async def list_candidates(
     Tenant isolation: comp_id is sourced from the JWT.
     """
     db = get_db()
+
+    if email is not None:
+        normalised = email.strip().lower()
+        if not normalised:
+            return []
+        match = await db.candidates.find_one(
+            {"comp_id": comp_id, "cand_email": normalised}
+        )
+        return [candidate_helper(match)] if match else []
 
     candidates = await db.candidates.find({"comp_id": comp_id}).to_list(length=100)
     if not candidates:
