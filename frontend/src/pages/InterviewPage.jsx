@@ -260,7 +260,7 @@ export default function InterviewPage() {
           highlightedEntryIdx={highlightedEntryIdx}
           highlightedEntryId={highlightedEntryId}
           onNoteChange={handleNoteChange}
-          onViewReport={() => setReportState({ phase: "ready", data: reportState.data ?? null })}
+          onViewReport={() => (reportState.data ? setReportState({ phase: "ready", data: reportState.data }) : completeInterview())}
           onBack={() => navigate(candId && jobId ? `/candidates/${candId}/${jobId}` : `/jobs/${jobId}`, { replace: true })}
           interviewerLabel={interviewerLabel}
           candId={candId}
