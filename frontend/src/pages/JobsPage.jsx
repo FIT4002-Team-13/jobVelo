@@ -1,311 +1,56 @@
-import { useState, useEffect, useRef } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useState } from 'react'
 import Sidebar from '../components/common/Sidebar'
 import JobFormModal from '../components/job-candidate/JobFormModal'
-import { SortMenu, FilterMenu, makeSorter } from '../components/job-candidate/TableControls'
-import { authedFetch } from '../lib/api.js'
+import JobCard from '../components/job-candidate/JobCard'
+import DeleteJobModal from '../components/job-candidate/DeleteJobModal'
+import { SortMenu, FilterMenu } from '../components/job-candidate/TableControls'
+import { api } from '../lib/api.js'
 import { useToast } from '../components/common/ToastContext.jsx'
-import { button, modal, page } from '../styles/layout'
+import { button, page } from '../styles/layout'
+import { JOB_STATUS_OPTIONS } from '../utils/constants.js'
+import { useAsync } from '../hooks/useAsync.js'
+import { useTableControls } from '../hooks/useTableControls.js'
 
-const JOB_STATUS_OPTIONS = [
-  { value: 'Pending',     label: 'Pending'     },
-  { value: 'In Progress', label: 'In Progress' },
-  { value: 'Completed',   label: 'Completed'   },
-]
-
-// ── Constants ─────────────────────────────────────────────────────────────────
-
-// Solid-fill status pills - white bold text on a brand-colour background.
-// Pending = warning (coral), In Progress = active (primary), Completed = done (mint).
-const STATUS_STYLES = {
-  Pending:       'bg-coral-500 text-white',
-  'In Progress': 'bg-primary-500 text-white',
-  Completed:     'bg-mint-500 text-white',
-}
-
-const AVATAR_COLORS = [
-  'bg-primary-500', 'bg-sky-500', 'bg-mint-500', 'bg-coral-500',
-  'bg-primary-700', 'bg-sky-700', 'bg-mint-700',
-]
-
-// ── Sub-components ────────────────────────────────────────────────────────────
-
-function Avatar({ name, index }) {
-  const initials = name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()
-  return (
-    <div title={name}
-      className={`w-7 h-7 rounded-pill flex items-center justify-center text-white text-xs font-bold border-2 border-neutral-0 -ml-2 first:ml-0 ${AVATAR_COLORS[index % AVATAR_COLORS.length]}`}>
-      {initials}
-    </div>
-  )
-}
-
-function CardMenu({ onEdit, onDelete }) {
-  const [open, setOpen] = useState(false)
-  const ref = useRef(null)
-
-  useEffect(() => {
-    function handler(e) { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
-    document.addEventListener('mousedown', handler)
-    return () => document.removeEventListener('mousedown', handler)
-  }, [])
-
-  return (
-    <div ref={ref} className="relative">
-      <button onClick={e => { e.stopPropagation(); setOpen(o => !o) }}
-        className="w-7 h-7 flex items-center justify-center rounded-lg text-neutral-400 hover:bg-neutral-100 hover:text-neutral-600 transition-colors">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-          <circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/>
-        </svg>
-      </button>
-      {open && (
-        <div className="absolute right-0 top-8 z-20 bg-neutral-0 border border-neutral-200 rounded-xl shadow-lg py-1 w-32">
-          <button onClick={e => { e.stopPropagation(); setOpen(false); onEdit() }}
-            className="w-full text-left px-4 py-2 text-sm text-neutral-700 hover:bg-neutral-50 flex items-center gap-2">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
-            </svg>
-            Edit
-          </button>
-          <button onClick={e => { e.stopPropagation(); setOpen(false); onDelete() }}
-            className="w-full text-left px-4 py-2 text-sm text-coral-500 hover:bg-coral-50 flex items-center gap-2">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/>
-              <path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/>
-            </svg>
-            Delete
-          </button>
-        </div>
-      )}
-    </div>
-  )
-}
-
-// Empty-state placeholder used by JobCard when a field hasn't been filled.
-// Italic + light-grey reads as "missing" without breaking the card's
-// vertical rhythm - every card stays the same height regardless of how
-// complete its data is.
-const EMPTY_TEXT = 'text-neutral-400 italic'
-
-// Dashed circle that mimics an Avatar's footprint. Used when a role has
-// no interviewers assigned yet, so the avatar row never collapses.
-function EmptyAvatar() {
-  return (
-    <div
-      title="No interviewer assigned"
-      aria-label="No interviewer assigned"
-      className="w-7 h-7 rounded-pill border-2 border-dashed border-neutral-300 -ml-2 first:ml-0"
-    />
-  )
-}
-
-function JobCard({ job, onEdit, onDelete }) {
-  const navigate = useNavigate()
-
-  // Show up to 3 avatars; anything beyond collapses into a grey "+N" chip.
-  const visibleAvatars = job.interviewers?.slice(0, 3) ?? []
-  const overflow = (job.interviewers?.length ?? 0) - visibleAvatars.length
-
-  // Field-level fallbacks so empty cards stay structurally identical to
-  // fully-populated ones. Each "missing" value renders as a muted italic
-  // placeholder (status pill = neutral chip, numbers = 0) instead of an
-  // empty string that would collapse the line and ruin the grid rhythm.
-  // The parent stamps each job with `display_status` (Pending / In Progress /
-  // Completed) derived from candidate interview completion, so the pill and
-  // the filter menu can never disagree. Fall back to the raw status defensively.
-  const status = job.display_status ?? job.status ?? null
-  const description    = job.description?.trim()
-  const interviewers   = job.interviewers?.length ?? 0
-  const filled         = job.candidates_filled ?? 0
-  const total          = job.candidates_total  ?? 0
-
-  // Typography hierarchy on this card:
-  //   1. Title       - text-base, bold, ink-dark   (the "what")
-  //   2. Description - text-xs,   regular, mid-grey (the "context")
-  //   3. Meta rows   - text-xs,   regular, light-grey, with key numbers
-  //                    bumped to medium weight + darker for scannability
-  return (
-    <div onClick={() => navigate(`/jobs/${job.id}`)}
-      className="bg-neutral-0 border border-neutral-300 rounded-2xl p-5 flex flex-col gap-2 hover:shadow-md transition-all cursor-pointer">
-      {/* Title + status + menu */}
-      <div className="flex items-start justify-between gap-2">
-        <h3 className={`text-base font-bold leading-snug flex-1 ${job.title ? 'text-neutral-800' : EMPTY_TEXT}`}>
-          {job.title || 'Untitled role'}
-        </h3>
-        <div className="flex items-center gap-1.5 shrink-0">
-          {/* Status pill - when status is missing fall back to the same
-              neutral chip used elsewhere for unset statuses, with a dash
-              so the pill keeps its footprint. */}
-          <span className={`text-xs font-bold px-3 py-1 rounded-pill whitespace-nowrap ${
-            status ? (STATUS_STYLES[status] ?? 'bg-neutral-100 text-neutral-500') : 'bg-neutral-100 text-neutral-400'
-          }`}>
-            {status || '—'}
-          </span>
-          <CardMenu onEdit={() => onEdit(job)} onDelete={() => onDelete(job)} />
-        </div>
-      </div>
-
-      {/* Description - always reserve 2 lines so card heights line up. */}
-      <p className={`text-xs leading-relaxed line-clamp-2 min-h-[2.5rem] ${description ? 'text-neutral-500' : EMPTY_TEXT}`}>
-        {description || 'No description provided.'}
-      </p>
-
-      {/* Interviewers count */}
-      <div className="flex items-center gap-1.5 text-xs text-neutral-500">
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-          <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
-        </svg>
-        <span className={interviewers > 0 ? 'font-semibold text-neutral-700' : 'font-semibold text-neutral-400'}>
-          {interviewers}
-        </span>
-        interviewers
-      </div>
-
-      {/* Avatars - render dashed placeholders when nobody is assigned so the
-          row keeps its height. Three dashed circles read as "three open
-          slots", which is the right mental model for an empty interview team. */}
-      <div className="flex items-center">
-        {visibleAvatars.length > 0 ? (
-          <>
-            {visibleAvatars.map((name, i) => <Avatar key={i} name={name} index={i} />)}
-            {overflow > 0 && (
-              <div className="w-7 h-7 rounded-pill bg-neutral-200 flex items-center justify-center text-xs font-bold text-neutral-500 border-2 border-neutral-0 -ml-2">
-                +{overflow}
-              </div>
-            )}
-          </>
-        ) : (
-          <>
-            <EmptyAvatar />
-            <EmptyAvatar />
-            <EmptyAvatar />
-          </>
-        )}
-      </div>
-
-      {/* Candidates count - 0/0 falls back to muted styling so empty roles
-          read as "not started yet" rather than "filled to capacity". */}
-      <div className="flex items-center gap-1.5 text-xs text-neutral-500">
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-          <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>
-          <path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
-        </svg>
-        <span className={total > 0 ? 'font-semibold text-neutral-700' : 'font-semibold text-neutral-400'}>
-          {filled}
-        </span>
-        / {total} candidates
-      </div>
-    </div>
-  )
-}
-
-function DeleteConfirmModal({ job, onClose, onDeleted }) {
-  const [deleting, setDeleting] = useState(false)
-  const [error, setError] = useState(null)
-
-  async function handleDelete() {
-    setDeleting(true)
-    try {
-      const res = await authedFetch(`/api/jobs/${job.id}`, { method: 'DELETE' })
-      if (!res.ok) throw new Error('Failed to delete.')
-      onDeleted(job.id)
-    } catch (err) {
-      setError(err.message)
-      setDeleting(false)
-    }
+// One company-wide interviews fetch instead of one per card (the old
+// per-card version was 50 requests for 50 jobs). Best-effort: if it fails,
+// cards simply show their stored status without the completed override.
+async function loadJobsData() {
+  const [jobsData, interviews] = await Promise.all([
+    api.listJobs(),
+    api.listInterviews().catch(() => []),
+  ])
+  // Distinct candidates per job, so repeat interviews for the same
+  // candidate don't overcount toward "everyone is done".
+  const candsByJob = {}
+  for (const i of interviews) {
+    if (i.intv_status !== 'completed' || !i.job_id) continue
+    ;(candsByJob[i.job_id] ??= new Set()).add(i.cand_id)
   }
-
-  return (
-    <div className={modal.overlay}>
-      <div className="bg-neutral-0 rounded-2xl w-full max-w-sm shadow-xl p-6">
-        <div className="flex items-center justify-center w-12 h-12 rounded-pill bg-coral-100 mx-auto mb-4">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-coral-500">
-            <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/>
-            <path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/>
-          </svg>
-        </div>
-        <h2 className="text-base font-bold text-neutral-800 text-center mb-1">Delete Job Posting</h2>
-        <p className="text-sm text-neutral-500 text-center mb-6">
-          Are you sure you want to delete <span className="font-semibold text-neutral-700">&quot;{job.title}&quot;</span>? This cannot be undone.
-        </p>
-        {error && <p className="text-xs text-coral-500 text-center mb-3">{error}</p>}
-        <div className="flex gap-3">
-          <button type="button" onClick={onClose}
-            className={`flex-1 py-2 ${button.cancel}`}>
-            Cancel
-          </button>
-          <button type="button" onClick={handleDelete} disabled={deleting}
-            className={`flex-1 py-2 ${button.danger}`}>
-            {deleting ? 'Deleting…' : 'Delete'}
-          </button>
-        </div>
-      </div>
-    </div>
+  const completedByJob = Object.fromEntries(
+    Object.entries(candsByJob).map(([jobId, cands]) => [jobId, cands.size])
   )
+  return { jobs: Array.isArray(jobsData) ? jobsData : [], completedByJob }
 }
 
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function JobsPage() {
   const toast = useToast()
-  const [jobs, setJobs]             = useState([])
-  const [loading, setLoading]       = useState(true)
-  const [error, setError]           = useState(null)
-  const [search, setSearch]         = useState('')
-  const [sortKey, setSortKey]       = useState('latest')        // default: newest first
-  const [statusFilters, setStatusFilters] = useState([])        // empty = all
+  const { data, setData, loading, error } = useAsync(loadJobsData, [])
+  const jobs = data?.jobs ?? []
+  const completedByJob = data?.completedByJob ?? {}
+
   const [formModal, setFormModal]   = useState(null)
   const [deleteTarget, setDeleteTarget] = useState(null)
-  // Per-job count of DISTINCT candidates with a completed interview -
-  // drives the display override on cards AND the status filter, so a
-  // card's label always matches what the filter menu selects.
-  const [completedByJob, setCompletedByJob] = useState(() => ({}))
-
-  useEffect(() => {
-    // Guard both the HTTP status and the payload shape: on an expired token
-    // the API returns {detail: ...}, and storing that into array state used
-    // to white-screen the page at `.filter is not a function`.
-    authedFetch('/api/jobs')
-      .then(async r => {
-        if (!r.ok) throw new Error('Failed to load jobs.')
-        const data = await r.json()
-        if (!Array.isArray(data)) throw new Error('Failed to load jobs.')
-        setJobs(data)
-      })
-      .catch(() => setError('Failed to load jobs.'))
-      .finally(() => setLoading(false))
-
-    // One company-wide interviews fetch instead of one per card (the old
-    // per-card version was 50 requests for 50 jobs). Best-effort: if it
-    // fails, cards simply show their stored status without the override.
-    authedFetch('/api/interviews')
-      .then(async r => {
-        if (!r.ok) return
-        const interviews = await r.json()
-        if (!Array.isArray(interviews)) return
-        // Distinct candidates per job, so repeat interviews for the same
-        // candidate don't overcount toward "everyone is done".
-        const candsByJob = {}
-        for (const i of interviews) {
-          if (i.intv_status !== 'completed' || !i.job_id) continue
-          ;(candsByJob[i.job_id] ??= new Set()).add(i.cand_id)
-        }
-        setCompletedByJob(
-          Object.fromEntries(
-            Object.entries(candsByJob).map(([jobId, cands]) => [jobId, cands.size])
-          )
-        )
-      })
-      .catch(() => {})
-  }, [])
 
   function handleSaved(saved) {
     // Read create-vs-edit off the modal mode BEFORE closing it.
     const isNew = formModal === 'create'
-    setJobs(prev => {
-      const idx = prev.findIndex(j => j.id === saved.id)
-      return idx === -1 ? [saved, ...prev] : prev.map(j => j.id === saved.id ? saved : j)
+    setData(prev => {
+      const prevJobs = prev?.jobs ?? []
+      const idx = prevJobs.findIndex(j => j.id === saved.id)
+      const nextJobs = idx === -1 ? [saved, ...prevJobs] : prevJobs.map(j => j.id === saved.id ? saved : j)
+      return { ...prev, jobs: nextJobs }
     })
     setFormModal(null)
     toast.success(
@@ -317,7 +62,7 @@ export default function JobsPage() {
 
   function handleDeleted(id) {
     const deleted = jobs.find(j => j.id === id)
-    setJobs(prev => prev.filter(j => j.id !== id))
+    setData(prev => ({ ...prev, jobs: (prev?.jobs ?? []).filter(j => j.id !== id) }))
     setDeleteTarget(null)
     toast.success(`Job "${deleted?.title || 'Untitled role'}" deleted.`)
   }
@@ -342,13 +87,11 @@ export default function JobsPage() {
     return { ...j, display_status }
   })
 
-  // search → filter by status → sort. Each stage is independent so order
-  // doesn't actually matter, but read top-down it matches user mental model.
-  const filtered = jobsWithStatus
-    .filter(j => (j.title ?? '').toLowerCase().includes(search.toLowerCase()))
-    .filter(j => statusFilters.length === 0 || statusFilters.includes(j.display_status))
-  const sorter = makeSorter(sortKey, { nameField: 'title', dateField: 'job_created_at' })
-  const display = sorter ? [...filtered].sort(sorter) : filtered
+  const table = useTableControls(jobsWithStatus, {
+    matchesSearch: (j, needle) => (j.title ?? '').toLowerCase().includes(needle),
+    matchesFilter: (j, filters) => filters.length === 0 || filters.includes(j.display_status),
+    sortFields: { nameField: 'title', dateField: 'job_created_at' },
+  })
 
   return (
     <div className={page.shell}>
@@ -373,25 +116,25 @@ export default function JobsPage() {
 
         <div className="flex justify-end items-center gap-3 mb-5">
           <div className="flex items-center gap-2 border border-neutral-200 rounded-xl px-3 py-1.5 bg-neutral-0">
-            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Position Name"
+            <input value={table.search} onChange={e => table.setSearch(e.target.value)} placeholder="Position Name"
               className="outline-none border-none bg-transparent text-sm text-neutral-600 placeholder:text-neutral-400 w-32" />
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-neutral-400">
               <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
             </svg>
           </div>
-          <SortMenu value={sortKey} onChange={setSortKey} />
-          <FilterMenu values={statusFilters} onChange={setStatusFilters} options={JOB_STATUS_OPTIONS} />
+          <SortMenu value={table.sortKey} onChange={table.setSortKey} />
+          <FilterMenu values={table.filters} onChange={table.setFilters} options={JOB_STATUS_OPTIONS} />
         </div>
 
         {loading && <p className="text-sm text-neutral-400">Loading…</p>}
         {error   && <p className="text-sm text-coral-500">{error}</p>}
 
         {!loading && !error && (
-          display.length === 0
+          table.paged.length === 0
             ? <p className="text-sm text-neutral-400">No jobs found.</p>
             : (
               <div className="grid grid-cols-3 gap-4">
-                {display.map(job => (
+                {table.paged.map(job => (
                   <JobCard key={job.id} job={job}
                     onEdit={j => setFormModal(j)}
                     onDelete={j => setDeleteTarget(j)} />
@@ -410,7 +153,7 @@ export default function JobsPage() {
       )}
 
       {deleteTarget && (
-        <DeleteConfirmModal
+        <DeleteJobModal
           job={deleteTarget}
           onClose={() => setDeleteTarget(null)}
           onDeleted={handleDeleted} />

@@ -1,7 +1,7 @@
 """
-Test candidate with completed interview and feedback.
+Seeds a test candidate with a completed interview and feedback.
 
-run python dummy_feedback.py
+Run from the backend/ directory: python -m scripts.dummy_feedback
 """
 
 import asyncio
@@ -111,4 +111,5 @@ async def main():
     await close_mongo_connection()
 
 
-asyncio.run(main())
+if __name__ == "__main__":
+    asyncio.run(main())

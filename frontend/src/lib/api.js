@@ -128,6 +128,11 @@ export const api = {
     return request(`/jobs${qs ? `?${qs}` : ''}`, { auth: true })
   },
 
+  // Create/update/delete a job posting.
+  createJob: (payload)         => request('/jobs',      { method: 'POST', body: payload, auth: true }),
+  updateJob: (jobId, payload)  => request(`/jobs/${jobId}`, { method: 'PUT', body: payload, auth: true }),
+  deleteJob: (jobId)           => request(`/jobs/${jobId}`, { method: 'DELETE', auth: true }),
+
   // ---------- job-candidate links ---------------------------------------
   // Flat enumeration with job_title + cand_full_name pre-joined, used by
   // the CV Analyser picker. Each row also carries `has_analysis`.
@@ -171,6 +176,28 @@ export const api = {
     ).toString()
     return request(`/users${qs ? `?${qs}` : ''}`, { auth: true })
   },
+
+  // ---------- interviews ---------------------------------------------------
+  // Company-wide interviews list, optionally filtered (e.g. by cand_id/job_id).
+  listInterviews: (params = {}) => {
+    const qs = new URLSearchParams(
+      Object.entries(params).filter(([, v]) => v !== undefined && v !== null && v !== '')
+    ).toString()
+    return request(`/interviews${qs ? `?${qs}` : ''}`, { auth: true })
+  },
+
+  // ---------- applications ------------------------------------------------
+  // Flat application rows (candidate + job + status pre-joined), scoped
+  // server-side to the given user_id.
+  listApplications: (params = {}) => {
+    const qs = new URLSearchParams(
+      Object.entries(params).filter(([, v]) => v !== undefined && v !== null && v !== '')
+    ).toString()
+    return request(`/applications${qs ? `?${qs}` : ''}`, { auth: true })
+  },
+
+  // ---------- dashboard ----------------------------------------------------
+  getDashboardSummary: () => request('/dashboard/summary', { auth: true }),
 
   // ---------- companies --------------------------------------------------
   getCompany:    (comp_id)          => request(`/companies/${comp_id}`,  { auth: true }),
