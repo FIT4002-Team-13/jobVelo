@@ -1,46 +1,15 @@
-import { useNavigate } from "react-router-dom";
- import { flex } from "../styles/layout";
+import { flex } from "../styles/layout";
 
 export default function InterviewPostInterviewPage({
   transcript,
   transcriptEntryRefs,
   highlightedEntryIdx,
   highlightedEntryId,
-  onViewReport,
-  onBack,
-  candId,
-  jobId,
   interviewerLabel,
 }) {
-  const navigate = useNavigate();
-
   return (
     <div className="flex-1 overflow-hidden">
-      <div className="mx-6 mt-4 flex items-center justify-between gap-4 rounded-2xl border border-mint-100 bg-mint-50 px-5 py-3">
-        <p className="text-sm text-mint-700">
-          <span className="font-bold">Interview completed.</span>{" "}
-          The transcript below is read-only - open the report for scores,
-          strengths and the summary.
-        </p>
-        <div className={`${flex.row} shrink-0 gap-2`}>
-          <button
-            type="button"
-            onClick={onViewReport}
-            className="rounded-xl bg-mint-500 px-4 py-1.5 text-sm font-semibold text-white transition-colors hover:bg-mint-600"
-          >
-            View Report
-          </button>
-          <button
-            type="button"
-            onClick={onBack ?? (() => navigate(candId && jobId ? `/candidates/${candId}/${jobId}` : `/jobs/${jobId}`, { replace: true }))}
-            className="rounded-xl border border-mint-200 bg-white px-4 py-1.5 text-sm font-semibold text-mint-700 transition-colors hover:bg-mint-100"
-          >
-            Back to candidate
-          </button>
-        </div>
-      </div>
-
-      <div className="px-6 py-6 h-[calc(100%-72px)] overflow-y-auto">
+      <div className="px-6 py-6 h-full overflow-y-auto">
         <div className="mx-auto max-w-4xl space-y-3">
           {transcript.length === 0 ? (
             <p className="text-sm text-neutral-400 text-center mt-8">

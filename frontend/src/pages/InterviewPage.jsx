@@ -258,18 +258,30 @@ export default function InterviewPage() {
             >
               View Resume
             </button>
-            {phase !== "prep" && (
+            {phase === "debrief" ? (
               <button
-                className={`${button.outline} ${
-                  isScreenSharing
-                    ? "bg-sky-100 text-sky-800 hover:bg-sky-200"
-                    : ""
-                } ${isCompleted ? "opacity-60 cursor-not-allowed" : ""}`}
-                onClick={() => !isCompleted && void toggleScreenShare()}
-                disabled={isCompleted}
+                className={button.outline}
+                onClick={() =>
+                  reportState.data
+                    ? setReportState({ phase: "ready", data: reportState.data })
+                    : completeInterview()
+                }
               >
-                {isScreenSharing ? "Stop screen share" : "Share screen"}
+                View Report
               </button>
+            ) : (
+              phase !== "prep" && (
+                <button
+                  className={`${button.outline} ${
+                    isScreenSharing
+                      ? "bg-sky-100 text-sky-800 hover:bg-sky-200"
+                      : ""
+                  }`}
+                  onClick={() => void toggleScreenShare()}
+                >
+                  {isScreenSharing ? "Stop screen share" : "Share screen"}
+                </button>
+              )
             )}
             {phase !== "prep" && (
               <div
@@ -285,20 +297,45 @@ export default function InterviewPage() {
                 />
               </div>
             )}
+            {phase === "debrief" && (
+              <button
+                type="button"
+                onClick={() =>
+                  navigate(
+                    candId && jobId
+                      ? `/candidates/${candId}/${jobId}`
+                      : `/jobs/${jobId}`,
+                    { replace: true }
+                  )
+                }
+                className="rounded-xl border border-mint-200 bg-white px-4 py-1.5 text-sm font-semibold text-mint-700 transition-colors hover:bg-mint-100"
+              >
+                Back to candidate
+              </button>
+            )}
           </div>
         </div>
-        {phase !== "prep" && audioStatus && (
-          <p
-            className={`mt-2 text-right text-xs font-medium ${
-              /denied|error|unable|no (microphone|computer audio|screen)|cancelled/i.test(
-                audioStatus
-              )
-                ? "text-coral-500"
-                : "text-neutral-400"
-            }`}
-          >
-            {audioStatus}
+        {phase === "debrief" ? (
+          <p className="mt-2 text-right text-xs font-medium text-mint-700">
+            <span className="font-bold">Interview completed.</span>{" "}
+            The transcript below is read-only - open the report for scores,
+            strengths and the summary.
           </p>
+        ) : (
+          phase !== "prep" &&
+          audioStatus && (
+            <p
+              className={`mt-2 text-right text-xs font-medium ${
+                /denied|error|unable|no (microphone|computer audio|screen)|cancelled/i.test(
+                  audioStatus
+                )
+                  ? "text-coral-500"
+                  : "text-neutral-400"
+              }`}
+            >
+              {audioStatus}
+            </p>
+          )
         )}
       </header>
 
@@ -335,23 +372,7 @@ export default function InterviewPage() {
           transcriptEntryRefs={transcriptEntryRefs}
           highlightedEntryIdx={highlightedEntryIdx}
           highlightedEntryId={highlightedEntryId}
-          onNoteChange={handleNoteChange}
-          onViewReport={() =>
-            reportState.data
-              ? setReportState({ phase: "ready", data: reportState.data })
-              : completeInterview()
-          }
-          onBack={() =>
-            navigate(
-              candId && jobId
-                ? `/candidates/${candId}/${jobId}`
-                : `/jobs/${jobId}`,
-              { replace: true }
-            )
-          }
           interviewerLabel={interviewerLabel}
-          candId={candId}
-          jobId={jobId}
         />
       ) : (
         <div

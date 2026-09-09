@@ -52,7 +52,17 @@ export function useAudioCapture({
 
   useEffect(() => {
     if (!serverData || autoStartedRef.current) return;
-    if (serverData.intv_status === "completed") return;
+    if (serverData.intv_status === "completed") {
+      // Interview already finished (e.g. reloading a completed interview's
+      // page) - just show its final recorded duration, no need to touch
+      // the mic or start a live-elapsed timer.
+      autoStartedRef.current = true;
+      const finalSeconds = serverData.intv_duration_seconds ?? 0;
+      accumulatedRef.current = finalSeconds;
+      timerRef.current = finalSeconds;
+      setTimer(finalSeconds);
+      return;
+    }
     // Mic access (and the elapsed timer) should only start once the
     // interviewer clicks "Begin Interview" - not the moment this page's
     // data loads, which happens while still showing the prep screen.
