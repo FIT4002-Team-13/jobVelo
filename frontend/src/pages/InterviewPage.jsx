@@ -31,6 +31,7 @@ export default function InterviewPage() {
   const generateFollowUpRef = useRef(null);
   const beginningRef = useRef(false);
   const [reportState, setReportState] = useState({ phase: "idle" });
+  const [prefetchedReport, setPrefetchedReport] = useState(null);
 
   const {
     serverData,
@@ -215,6 +216,25 @@ export default function InterviewPage() {
     }
   }
 
+  // Silently prefetch report data for the debrief panel without opening the modal
+  useEffect(() => {
+    if (!isCompleted) return;
+    authedFetch(`/api/interviews/${id}/complete`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        transcript: transcriptRef.current.filter((e) => !String(e.id).startsWith("partial-")),
+        duration_seconds: timerRef.current,
+        bias_incidents: biasIncidentsRef.current,
+      }),
+    }).then(async (res) => {
+      if (res.ok) {
+        const data = await res.json().catch(() => null);
+        if (data) setPrefetchedReport(data);
+      }
+    });
+  }, [isCompleted]);
+
   const phase = isCompleted
     ? "debrief"
     : intvStatus === "scheduled" || intvStatus === "not_scheduled"
@@ -373,6 +393,18 @@ export default function InterviewPage() {
           highlightedEntryIdx={highlightedEntryIdx}
           highlightedEntryId={highlightedEntryId}
           interviewerLabel={interviewerLabel}
+          sections={sections}
+          jumpToSection={jumpToSection}
+          report={
+            prefetchedReport ??
+            (serverData?.intv_candidate_report
+              ? {
+                  candidate_report: serverData.intv_candidate_report,
+                  interviewer_report: serverData.intv_interviewer_report,
+                  scores: null,
+                }
+              : null)
+          }
         />
       ) : (
         <div

@@ -5,6 +5,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
 
+from models.job_candidate import CandidateRatings
+
 # Interview cycle for scheduling + running + post-interview state.
 InterviewStatus = Literal[
     "not_scheduled", "scheduled", "in_progress", "completed", "cancelled"
@@ -142,6 +144,7 @@ class InterviewCompleteOut(BaseModel):
     intv_id: str
     intv_status: InterviewStatus
     scores: InterviewScores | None = None
+    ratings: CandidateRatings | None = None
     candidate_report: InterviewFeedback
     interviewer_report: InterviewFeedback
 
