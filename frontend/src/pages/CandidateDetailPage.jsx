@@ -5,9 +5,8 @@ import Sidebar from '../components/common/Sidebar'
 import StartInterviewModal from '../components/job-candidate/StartInterviewModal'
 import EditCandidateForm from '../components/candidate/EditCandidateForm'
 import { flex, page } from '../styles/layout'
-import { useAuth } from '../lib/AuthContext.jsx'
 import { useToast } from '../components/common/ToastContext.jsx'
-import { api, authedFetch, downloadFileWithAuth } from '../lib/api.js'
+import { api, downloadFileWithAuth } from '../lib/api.js'
 
 import ScoreEvidencePopup from '../components/candidate/ScoreEvidencePopup'
 import InterviewPlanCard from '../components/candidate/InterviewPlanCard.jsx'
@@ -17,7 +16,6 @@ import CandidateInfoCard from '../components/candidate/CandidateInfoCard.jsx'
 
 export default function CandidateDetailPage() {
   const { candId, jobId } = useParams()
-  const { user } = useAuth()
   const navigate = useNavigate()
   const toast = useToast()
 
@@ -99,80 +97,21 @@ export default function CandidateDetailPage() {
         setInterviewerName('--')
         setInterviewerUserId('')
 
-        const [candRes, jobCandRes, intvRes, jobRes, allJobsRes] = await Promise.all([
-          authedFetch(`/api/candidates/${candId}`),
-          authedFetch(`/api/job-candidates/by-candidate/${candId}`),
-          authedFetch(`/api/interviews?cand_id=${candId}&job_id=${jobId}`),
-          authedFetch(`/api/jobs/${jobId}`),
-          authedFetch('/api/jobs'),
-        ])
+        // One aggregate call replaces the old Promise.all of candidate +
+        // job-candidates + interviews + job, plus the follow-up
+        // interview-users -> users pair for the interviewer name.
+        const detail = await api.getCandidateDetail(candId, jobId)
 
-        if (!candRes.ok) throw new Error('Candidate not found.')
-        if (!jobCandRes.ok) throw new Error('Failed to load candidate-job link.')
-        if (!intvRes.ok) throw new Error('Failed to load interview.')
-        if (!jobRes.ok) throw new Error('Job not found.')
-
-        const candData = await candRes.json()
-        const allJobCandidates = await jobCandRes.json()
-        const allInterviews = await intvRes.json()
-        const jobData = await jobRes.json()
-        const allJobsData = allJobsRes.ok ? await allJobsRes.json() : []
-
-        if (!Array.isArray(allJobCandidates)) {
-          throw new Error('Candidate-job response is invalid.')
-        }
-
-        if (!Array.isArray(allInterviews)) {
-          throw new Error('Interview response is invalid.')
-        }
-
-        const selectedJobCand = allJobCandidates.find(
-          (item) => item.job_id === jobId
-        )
-
-        if (!selectedJobCand) {
+        if (!detail.job_candidate) {
           throw new Error('Candidate-job link not found for this job.')
         }
 
-        const selectedInterview = allInterviews[0] ?? null
-
-        setCandidate(candData)
-        setJobCand(selectedJobCand)
-        setInterview(selectedInterview)
-        setJob(jobData)
-        setJobs(Array.isArray(allJobsData) ? allJobsData : [])
-
-        if (selectedInterview?.intv_id && user?.comp_id) {
-          const intvUserRes = await authedFetch(
-            `/api/interview-users/by-interview/${selectedInterview.intv_id}`
-          )
-
-          if (intvUserRes.ok) {
-            const interviewUsers = await intvUserRes.json()
-            const resolvedInterviewerUserId = Array.isArray(interviewUsers)
-              ? interviewUsers[0]?.user_id
-              : null
-
-            if (resolvedInterviewerUserId) {
-              setInterviewerUserId(resolvedInterviewerUserId)
-              const usersRes = await authedFetch(`/api/users`)
-
-              if (usersRes.ok) {
-                const usersData = await usersRes.json()
-                const matchedUser = Array.isArray(usersData)
-                  ? usersData.find((u) => u.userid === resolvedInterviewerUserId)
-                  : null
-
-                setInterviewerName(
-                  matchedUser?.full_name ||
-                  matchedUser?.username ||
-                  matchedUser?.email ||
-                  '--'
-                )
-              }
-            }
-          }
-        }
+        setCandidate(detail.candidate)
+        setJobCand(detail.job_candidate)
+        setInterview(detail.interview ?? null)
+        setJob(detail.job)
+        setInterviewerUserId(detail.interviewer?.user_id || '')
+        setInterviewerName(detail.interviewer?.full_name || '--')
       } catch (err) {
         setError(err.message || 'Something went wrong.')
       } finally {
@@ -181,38 +120,38 @@ export default function CandidateDetailPage() {
     }
 
     load()
-  }, [candId, jobId, user?.comp_id, refreshKey])
+  }, [candId, jobId, refreshKey])
+
+  // The company-wide job list only feeds the Edit modal's "Assign to Job"
+  // <select> - fetch it lazily the first time that modal opens rather than
+  // on every page load.
+  useEffect(() => {
+    if (!showEditModal || jobs.length) return
+    api
+      .listJobs()
+      .then((data) => setJobs(Array.isArray(data) ? data : []))
+      .catch(() => setJobs([]))
+  }, [showEditModal, jobs.length])
 
   async function onConfirmStart() {
     try {
-      const existingRes = await authedFetch(
-        `/api/interviews?cand_id=${candId}&job_id=${jobId}`
+      const existing = await api
+        .listInterviews({ cand_id: candId, job_id: jobId })
+        .catch(() => [])
+      const resumable = (Array.isArray(existing) ? existing : []).find(
+        (i) => i.intv_status === 'in_progress' || i.intv_status === 'scheduled'
       )
-      if (existingRes.ok) {
-        const existing = await existingRes.json()
-        const resumable = existing.find(
-          (i) => i.intv_status === 'in_progress' || i.intv_status === 'scheduled'
-        )
-        if (resumable) {
-          navigate(`/interview/${resumable.intv_id}`)
-          return
-        }
+      if (resumable) {
+        navigate(`/interview/${resumable.intv_id}`)
+        return
       }
 
-      const res = await authedFetch('/api/interviews', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          cand_id: candId,
-          job_id: jobId,
-          intv_date_time: new Date().toISOString(),
-          intv_status: 'in_progress',
-        }),
+      const interviewRecord = await api.createInterview({
+        cand_id: candId,
+        job_id: jobId,
+        intv_date_time: new Date().toISOString(),
+        intv_status: 'in_progress',
       })
-      const interviewRecord = await res.json()
-      if (!res.ok) {
-        throw new Error(interviewRecord?.detail || 'Failed to start interview.')
-      }
       navigate(`/interview/${interviewRecord.intv_id}`)
     } catch (err) {
       console.error('Failed to start interview', err)

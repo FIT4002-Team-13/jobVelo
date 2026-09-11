@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { authedFetch } from "../lib/api.js";
+import { api } from "../lib/api.js";
 import { normaliseQuestion } from "../components/interview/InterviewQuestionDeck.jsx";
 
 export function useInterviewQuestions(jobId, { isCompleted, intvStatus, transcriptRef }) {
@@ -28,15 +28,8 @@ export function useInterviewQuestions(jobId, { isCompleted, intvStatus, transcri
     setQuestionsLoading(true);
     setQuestionsError("");
 
-    authedFetch(`/api/interview-questions/${jobId}`, {
-      method: "POST",
-      headers: { Accept: "application/json" },
-    })
-      .then(async (response) => {
-        const data = await response.json();
-        if (!response.ok) throw new Error(data.detail || "Question generation failed");
-        return data;
-      })
+    api
+      .generateQuestions(jobId)
       .then((data) => {
         const behavioural = data.questions.filter((q) => q.category === "behavioural");
         const technical = data.questions.filter((q) => q.category === "technical");
@@ -68,17 +61,10 @@ export function useInterviewQuestions(jobId, { isCompleted, intvStatus, transcri
         .map((e) => `${e.speaker}: ${e.text}`)
         .join("\n");
 
-      const response = await authedFetch(`/api/interview-questions/${jobId}/follow-up`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Accept: "application/json" },
-        body: JSON.stringify({
-          candidate_response: candidateResponse.trim(),
-          interview_context: recentContext,
-        }),
+      const data = await api.generateFollowUpQuestions(jobId, {
+        candidate_response: candidateResponse.trim(),
+        interview_context: recentContext,
       });
-
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(data.detail || "Follow-up question generation failed");
 
       const newFollowUps = (data.questions || []).slice(0, 2).map((q, i) => normaliseQuestion(q, i, true, true));
       setFollowUpQuestions((prev) => [...newFollowUps, ...prev].slice(0, 2));
@@ -97,14 +83,10 @@ export function useInterviewQuestions(jobId, { isCompleted, intvStatus, transcri
     setQuestionsError("");
 
     try {
-      const response = await authedFetch(`/api/interview-questions/${jobId}/similar`, {
-        method: "POST",
-        headers: { Accept: "application/json", "Content-Type": "application/json" },
-        body: JSON.stringify({ original_question: question.text, category: question.categoryValue }),
+      const data = await api.generateSimilarQuestions(jobId, {
+        original_question: question.text,
+        category: question.categoryValue,
       });
-
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.detail || "Similar question generation failed");
 
       const similarQuestion = normaliseQuestion(data, 0, false, true);
       setQuestions((current) => [similarQuestion, ...current].slice(0, 6));
@@ -140,14 +122,10 @@ export function useInterviewQuestions(jobId, { isCompleted, intvStatus, transcri
     pendingCategoriesRef.current = [...pendingCategoriesRef.current, neededCategory];
 
     try {
-      const response = await authedFetch(`/api/interview-questions/${jobId}/similar`, {
-        method: "POST",
-        headers: { Accept: "application/json", "Content-Type": "application/json" },
-        body: JSON.stringify({ original_question: question.text, category: neededCategory }),
+      const data = await api.generateSimilarQuestions(jobId, {
+        original_question: question.text,
+        category: neededCategory,
       });
-
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.detail || "Replacement question generation failed");
 
       const replacement = normaliseQuestion(data, 0, false, true);
       setQuestions((current) => {

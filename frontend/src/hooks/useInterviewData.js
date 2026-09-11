@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { authedFetch, api } from "../lib/api.js";
+import { api } from "../lib/api.js";
 
 export function useInterviewData(id) {
   const [serverData, setServerData] = useState(null);
@@ -14,50 +14,27 @@ export function useInterviewData(id) {
   const [intvDateTime, setIntvDateTime] = useState(null);
 
   useEffect(() => {
-    authedFetch(`/api/interviews/${id}`)
-      .then((r) => r.json())
-      .then((data) => {
-        const completed = data.intv_status === "completed";
-        setIsCompleted(completed);
-        setIntvStatus(data.intv_status ?? null);
-        setIntvDateTime(data.intv_date_time ?? null);
-        setServerData(data);
+    // One aggregate call replaces the old fan-out of
+    // interview -> job -> candidate -> job-candidates -> cv-analysis.
+    api.getInterviewContext(id).then((ctx) => {
+      const data = ctx.interview;
+      const completed = data.intv_status === "completed";
+      setIsCompleted(completed);
+      setIntvStatus(data.intv_status ?? null);
+      setIntvDateTime(data.intv_date_time ?? null);
+      setServerData(data);
 
-        if (data.job_id) {
-          setJobId(data.job_id);
-          authedFetch(`/api/jobs/${data.job_id}`)
-            .then((r) => r.json())
-            .then((job) => { if (job.title) setCandidateRole(job.title); })
-            .catch(() => {});
-        }
+      if (data.job_id) setJobId(data.job_id);
+      if (data.cand_id) setCandId(data.cand_id);
+      if (ctx.job?.title) setCandidateRole(ctx.job.title);
+      if (ctx.candidate?.cand_full_name) setCandidateName(ctx.candidate.cand_full_name);
+      if (ctx.candidate?.cand_cv_url) setCvUrl(ctx.candidate.cand_cv_url);
 
-        if (data.cand_id) {
-          setCandId(data.cand_id);
-          authedFetch(`/api/candidates/${data.cand_id}`)
-            .then((r) => r.json())
-            .then((cand) => {
-              if (cand.cand_full_name) setCandidateName(cand.cand_full_name);
-              if (cand.cand_cv_url) setCvUrl(cand.cand_cv_url);
-            })
-            .catch(() => {});
-        }
-
-        if (data.cand_id && data.job_id && !completed) {
-          authedFetch(`/api/job-candidates/by-candidate/${data.cand_id}`)
-            .then((r) => (r.ok ? r.json() : []))
-            .then((links) => {
-              const link = Array.isArray(links) ? links.find((l) => l.job_id === data.job_id) : null;
-              if (!link?.jobcand_id) return;
-              api
-                .getCvAnalysisByJobcand(link.jobcand_id)
-                .then((a) => {
-                  if (a && (a.status === "completed" || a.key_strengths)) setCvAnalysis(a);
-                })
-                .catch(() => {});
-            })
-            .catch(() => {});
-        }
-      });
+      // Only surface the CV analysis on a still-running interview, matching
+      // the previous behaviour (the prep/live screens use it; the debrief
+      // screen doesn't).
+      if (!completed && ctx.cv_analysis) setCvAnalysis(ctx.cv_analysis);
+    });
   }, [id]);
 
   return {

@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
-import { authedFetch } from '../../lib/api.js'
+import { api } from '../../lib/api.js'
 import { card, flex } from '../../styles/layout'
 import { SECTION_COLORS } from '../../utils/constants.js'
 
@@ -27,11 +27,7 @@ export default function InterviewPlanCard({ jobId, candId, jobCand }) {
 
   function persist(updated) {
     if (!jobCand?.jobcand_id) return
-    authedFetch(`/api/job-candidates/${jobCand.jobcand_id}/plan`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ plan_sections: updated }),
-    }).catch(() => {})
+    api.updateJobCandidatePlan(jobCand.jobcand_id, updated).catch(() => {})
   }
 
   async function generate() {
@@ -40,16 +36,11 @@ export default function InterviewPlanCard({ jobId, candId, jobCand }) {
     setEditingIndex(null)
     setAddingNew(false)
     try {
-      const res = await authedFetch('/api/interviews/generate-plan', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ job_id: jobId, cand_id: candId, total_minutes: totalMinutes }),
+      const data = await api.generatePlan({
+        job_id: jobId,
+        cand_id: candId,
+        total_minutes: totalMinutes,
       })
-      if (!res.ok) {
-        const data = await res.json().catch(() => null)
-        throw new Error(data?.detail || `Request failed (${res.status})`)
-      }
-      const data = await res.json()
       const plan = Array.isArray(data) ? data : []
       if (plan.length === 0) throw new Error('No sections were returned. Please try again.')
       setSections(plan)
