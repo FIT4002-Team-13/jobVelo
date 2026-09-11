@@ -289,15 +289,12 @@ export function TranscriptPanel({
       )}
 
       {isScreenSharing && (
-        <div className="relative z-0 shrink-0 border-t border-neutral-100 pt-4 px-6 pb-4">
-          <p className="text-xs text-neutral-500 mb-2 font-medium">Screen Share</p>
-          <video
-            ref={videoRef}
-            autoPlay
-            muted
-            className="relative z-0 w-full h-40 bg-neutral-900 rounded-lg object-cover"
-          />
-        </div>
+        <video
+          ref={videoRef}
+          autoPlay
+          muted
+          className="hidden"
+        />
       )}
     </div>
   );
