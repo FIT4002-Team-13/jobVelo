@@ -17,7 +17,7 @@ from fastapi import (
 )
 
 from database import get_db
-from dependencies import get_current_comp_id
+from dependencies import get_current_comp_id, require_role
 from models.candidate import (
     CandidateCreate,
     CandidateCreateForJob,
@@ -204,6 +204,7 @@ async def create_candidate(
 async def create_candidate_for_job(
     payload: CandidateCreateForJob,
     background_tasks: BackgroundTasks,
+    _user: dict = Depends(require_role("recruiter")),
     comp_id: ObjectId = Depends(get_current_comp_id),
 ) -> dict:
     """Combined popup flow.
