@@ -1,5 +1,6 @@
 import { card, button, flex } from "../../../styles/layout";
 import FitVerdict from "../FitVerdict.jsx";
+import InterviewPlanCard from "../InterviewPlanCard.jsx";
 
 function PrepInsightList({ title, items, dot }) {
   if (!items?.length) return null;
@@ -25,12 +26,12 @@ function PrepInsightList({ title, items, dot }) {
   );
 }
 
-export default function InterviewPrepTab({ analysis, scheduledLabel, onBegin, onViewFullAnalysis }) {
+export default function InterviewPrepTab({ analysis, scheduledLabel, onBegin, onViewFullAnalysis, jobId, candId, jobCand }) {
   const analysisQuestions = analysis?.interview_questions ?? [];
 
   return (
     <div className="scrollbar-primary flex-1 overflow-y-auto px-6 py-10">
-      <div className={`mx-auto max-w-2xl ${flex.col} gap-6`}>
+      <div className={`mx-auto max-w-6xl ${flex.col} gap-6`}>
         <div className="text-center">
           <h2 className="text-xl font-bold text-neutral-800">Interview Prep</h2>
           <p className="mt-1 text-sm text-neutral-400">
@@ -73,6 +74,8 @@ export default function InterviewPrepTab({ analysis, scheduledLabel, onBegin, on
             </p>
           )}
         </div>
+
+        <InterviewPlanCard jobId={jobId} candId={candId} jobCand={jobCand} />
 
         {analysisQuestions.length > 0 && (
           <div className={`${card.base} ${flex.col} gap-4`}>

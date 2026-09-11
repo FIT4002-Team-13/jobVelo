@@ -76,7 +76,7 @@ function TranscriptRow({ entry, query, highlighted, isInterviewer, onClick, entr
       ref={entryRef}
       onClick={onClick}
       className={`rounded-lg transition-colors duration-700 group ${
-        onClick ? "cursor-pointer hover:bg-neutral-50" : ""
+        onClick ? "cursor-pointer hover:bg-primary-50 hover:ring-1 hover:ring-primary-200" : ""
       } ${highlighted ? "bg-yellow-50 ring-1 ring-yellow-300" : ""}`}
     >
       <div className={`${flex.row} gap-3 py-2`}>
@@ -350,9 +350,7 @@ export default function TranscriptAnalysisTab({
                   key={entry.id}
                   entry={entry}
                   query={query}
-                  highlighted={
-                    highlightedEntryIdx === i || entry.id === highlightedEntryId || entry.id === localHighlightId
-                  }
+                  highlighted={highlightedEntryIdx === i || entry.id === highlightedEntryId || entry.id === localHighlightId}
                   isInterviewer={entry.speaker === interviewerLabel}
                   onClick={query ? () => handleFilteredEntryClick(entry) : undefined}
                   entryRef={(el) => (transcriptEntryRefs.current[i] = el)}

@@ -209,23 +209,23 @@ export default function CandidateInfoCard({
         </div>
       </div>
 
-      {showDocumentLinks && (
-        <>
-          <div className="mt-6 h-px w-[48%] bg-neutral-200" />
+      <div className="mt-6 h-px w-[48%] bg-neutral-200" />
 
-          <div className="mt-6 grid grid-cols-3 gap-x-10">
-            <div>
-              <p className="mb-2 text-sm font-bold uppercase tracking-wide text-neutral-800">INTERVIEWER</p>
-              <div className="flex items-center gap-2">
-                <div className="flex h-7 w-7 items-center justify-center rounded-pill bg-primary-500 text-xs font-bold text-white">
-                  {getInitials(interviewer)}
-                </div>
-                <span className="text-sm font-medium text-neutral-800">
-                  {interviewer || '--'}
-                </span>
-              </div>
+      <div className={`mt-6 grid gap-x-10 ${showDocumentLinks ? 'grid-cols-3' : 'grid-cols-1'}`}>
+        <div>
+          <p className="mb-2 text-sm font-bold uppercase tracking-wide text-neutral-800">INTERVIEWER</p>
+          <div className="flex items-center gap-2">
+            <div className="flex h-7 w-7 items-center justify-center rounded-pill bg-primary-500 text-xs font-bold text-white">
+              {getInitials(interviewer)}
             </div>
+            <span className="text-sm font-medium text-neutral-800">
+              {interviewer || '--'}
+            </span>
+          </div>
+        </div>
 
+        {showDocumentLinks && (
+          <>
             <div>
               <p className="mb-2 text-xs font-bold uppercase tracking-wide text-neutral-800">CV / RESUME</p>
               <CvViewButton
@@ -255,9 +255,9 @@ export default function CandidateInfoCard({
                 View
               </a>
             </div>
-          </div>
-        </>
-      )}
+          </>
+        )}
+      </div>
     </section>
   )
 }

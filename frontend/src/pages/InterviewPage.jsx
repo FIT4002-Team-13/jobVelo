@@ -67,17 +67,6 @@ export default function InterviewPage() {
     useBias(timerRef);
 
   const {
-    sections,
-    sectionStates,
-    sectionsScrollRef,
-    sectionCardRefs,
-    startSection,
-    pauseSection,
-    resumeSection,
-    doneSection,
-  } = useInterviewSections(id, { serverData, timerRef, intvStatus });
-
-  const {
     transcript,
     transcriptRef,
     transcriptVisible,
@@ -143,6 +132,17 @@ export default function InterviewPage() {
     startTimeRef,
     intvStatus,
   });
+
+  const {
+    sections,
+    sectionStates,
+    sectionsScrollRef,
+    sectionCardRefs,
+    startSection,
+    pauseSection,
+    resumeSection,
+    doneSection,
+  } = useInterviewSections(id, { serverData, timerRef, intvStatus, isMicActive });
 
   // Real identities behind the "Interviewer"/"Candidate" speaker labels the
   // transcript hooks stamp onto each entry - used so the transcript panel

@@ -11,7 +11,7 @@ import { useTranscript } from "../hooks/useTranscript.js";
 import { parseTimestamp } from "../utils/time.js";
 import StartInterviewModal from "../components/job-candidate/StartInterviewModal.jsx";
 
-import ProfileTab from "../components/candidate/tabs/ProfileTab.jsx";
+import CandidateInfoCard from "../components/candidate/CandidateInfoCard.jsx";
 import CvTab from "../components/candidate/tabs/CvTab.jsx";
 import CoverLetterTab from "../components/candidate/tabs/CoverLetterTab.jsx";
 import InterviewPrepTab from "../components/candidate/tabs/InterviewPrepTab.jsx";
@@ -37,7 +37,12 @@ export default function CandidatePage() {
   const startTimeRef = useRef(Date.now());
   const timerRef = useRef(0);
   const generateFollowUpRef = useRef(null);
-  const [centerView, setCenterView] = useState(requestedViewRef.current || "profile");
+  const [centerView, setCenterView] = useState(
+    requestedViewRef.current && requestedViewRef.current !== "profile"
+      ? requestedViewRef.current
+      : "transcript"
+  );
+  const [showProfile, setShowProfile] = useState(requestedViewRef.current === "profile");
   const [cvUploading, setCvUploading] = useState(false);
   const [clUploading, setClUploading] = useState(false);
   const [prefetchedReport, setPrefetchedReport] = useState(null);
@@ -53,8 +58,11 @@ export default function CandidatePage() {
     setCvUrl,
     coverLetterUrl,
     setCoverLetterUrl,
+    jobId,
     candId,
     cvAnalysis,
+    setCvAnalysis,
+    refreshCvAnalysis,
     jobCand,
     isCompleted,
     intvStatus,
@@ -83,10 +91,14 @@ export default function CandidatePage() {
   useEffect(() => {
     if (!phase) return;
     if (requestedViewRef.current) {
-      setCenterView(requestedViewRef.current);
+      if (requestedViewRef.current === "profile") {
+        setShowProfile(true);
+      } else {
+        setCenterView(requestedViewRef.current);
+      }
       requestedViewRef.current = null;
     } else {
-      setCenterView("profile");
+      setCenterView("transcript");
     }
   }, [phase]);
 
@@ -211,10 +223,36 @@ export default function CandidatePage() {
       formData.append("cv", file);
       const result = await api.analyseCv(formData);
       if (result?.cv_path) setCvUrl(`/api/files/${result.cv_path}`);
+      if (result) {
+        setCvAnalysis(result);
+        refreshCvAnalysis();
+      }
     } catch {
       // silent — user can retry
     } finally {
       setCvUploading(false);
+    }
+  }
+
+  async function handleCvDelete() {
+    try {
+      if (cvAnalysis?.analysis_id) {
+        await api.deleteCvAnalysis(cvAnalysis.analysis_id);
+      }
+      setCvUrl(null);
+      setCvAnalysis(null);
+    } catch {
+      // silent — user can retry
+    }
+  }
+
+  async function handleCoverLetterDelete() {
+    if (!candId) return;
+    try {
+      await api.deleteCandidateCoverLetter(candId);
+      setCoverLetterUrl(null);
+    } catch {
+      // silent — user can retry
     }
   }
 
@@ -245,40 +283,38 @@ export default function CandidatePage() {
     : null;
 
   return (
+    <>
     <div className="flex h-screen bg-neutral-50 font-sans">
       <Sidebar />
       <div className="flex-1 flex flex-col overflow-hidden">
         <header className="bg-neutral-0 border-b border-neutral-200 px-10 py-4 shrink-0">
-          <div className={flex.rowBetween}>
-            <div className={`${flex.row} gap-16`}>
-              <div className={flex.col}>
-                <span className="text-xs font-bold text-neutral-400 uppercase tracking-widest mb-0.5">
-                  Candidate
-                </span>
-                <span className="text-2xl font-bold text-neutral-800">
-                  {candidateName || "—"}
-                </span>
-                <span className="text-sm text-neutral-400">
-                  {candidateRole || "—"}
-                </span>
-              </div>
-              <div className={flex.col}>
-                <span className="text-xs font-bold text-neutral-400 uppercase tracking-widest mb-0.5">
-                  Interviewer
-                </span>
-                <span className="text-2xl font-bold text-neutral-800">
-                  {user?.full_name || "—"}
-                </span>
-                <span className="text-sm text-neutral-400">
-                  {user?.role || "—"}
-                </span>
-              </div>
+          <div className={`${flex.row} gap-16`}>
+            <div className={flex.col}>
+              <span className="text-xs font-bold text-neutral-400 uppercase tracking-widest mb-0.5">
+                Candidate
+              </span>
+              <span className="text-2xl font-bold text-neutral-800">
+                {candidateName || "—"}
+              </span>
+              <span className="text-sm text-neutral-400">
+                {candidateRole || "—"}
+              </span>
+            </div>
+            <div className={flex.col}>
+              <span className="text-xs font-bold text-neutral-400 uppercase tracking-widest mb-0.5">
+                Interviewer
+              </span>
+              <span className="text-2xl font-bold text-neutral-800">
+                {user?.full_name || "—"}
+              </span>
+              <span className="text-sm text-neutral-400">
+                {user?.role || "—"}
+              </span>
             </div>
           </div>
 
           <div className="mt-3 pt-3 border-t border-neutral-100 flex items-center gap-2">
             {[
-              { id: "profile", label: "Profile" },
               { id: "transcript", label: phase === "debrief" ? "Transcript" : "Prep" },
               { id: "cv", label: "CV" },
               { id: "cover-letter", label: "Cover Letter" },
@@ -295,22 +331,16 @@ export default function CandidatePage() {
                 {v.label}
               </button>
             ))}
+            <button
+              onClick={() => setShowProfile(true)}
+              className="ml-auto rounded-xl bg-primary-700 px-4 py-1 text-sm font-semibold text-white transition-colors hover:bg-primary-800"
+            >
+              Profile
+            </button>
           </div>
         </header>
 
         <div className="flex-1 overflow-hidden flex">
-          {centerView === "profile" && (
-            <ProfileTab
-              candidate={candidate}
-              job={job}
-              interview={mergedInterview}
-              jobCand={jobCand}
-              interviewerName={interviewerLabel}
-              cvAnalysis={cvAnalysis}
-              onStartInterview={phase === "prep" ? () => setShowStartWarning(true) : null}
-            />
-          )}
-
           {centerView === "transcript" && phase === "prep" && (
             <InterviewPrepTab
               analysis={cvAnalysis}
@@ -321,6 +351,9 @@ export default function CandidatePage() {
                   ? () => navigate(`/cv-analysis/${jobCand.jobcand_id}`)
                   : null
               }
+              jobId={jobId}
+              candId={candId}
+              jobCand={jobCand}
             />
           )}
 
@@ -345,6 +378,7 @@ export default function CandidatePage() {
               cvUrl={cvUrl}
               uploading={cvUploading}
               onUpload={handleCvUpload}
+              onDelete={cvUrl || cvAnalysis ? handleCvDelete : null}
               cvAnalysis={cvAnalysis}
             />
           )}
@@ -354,8 +388,10 @@ export default function CandidatePage() {
               coverLetterUrl={coverLetterUrl}
               uploading={clUploading}
               onUpload={handleCoverLetterUpload}
+              onDelete={coverLetterUrl ? handleCoverLetterDelete : null}
             />
           )}
+
         </div>
       </div>
 
@@ -371,5 +407,30 @@ export default function CandidatePage() {
         />
       )}
     </div>
+
+    {showProfile && (
+      <div
+        className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-6"
+        onClick={(e) => { if (e.target === e.currentTarget) setShowProfile(false); }}
+      >
+        <div className="relative w-full max-w-xl">
+          <CandidateInfoCard
+            candidate={candidate}
+            job={job}
+            interview={mergedInterview}
+            jobCand={jobCand}
+            interviewer={interviewerLabel}
+            onStartInterview={phase === "prep" ? () => { setShowProfile(false); beginInterview(); } : null}
+            onEdit={null}
+            cvAnalysis={cvAnalysis}
+            onViewCvAnalysis={null}
+            onAnalyseCv={null}
+            analysingCv={false}
+            showDocumentLinks={false}
+          />
+        </div>
+      </div>
+    )}
+    </>
   );
 }

@@ -3,14 +3,21 @@ import DocumentSlot from "../DocumentSlot.jsx";
 import FitVerdict from "../FitVerdict.jsx";
 import InsightTabs from "../InsightTabs.jsx";
 
-export default function CvTab({ cvUrl, uploading, onUpload, cvAnalysis }) {
+export default function CvTab({ cvUrl, uploading, onUpload, onDelete, cvAnalysis }) {
   return (
     <>
       <div className="flex-[2] flex flex-col overflow-hidden">
-        <DocumentSlot url={cvUrl} label="CV" uploading={uploading} onUpload={onUpload} />
+        <DocumentSlot url={cvUrl} label="CV" uploading={uploading} onUpload={onUpload} onDelete={onDelete} />
       </div>
       <div className="w-80 shrink-0 border-l border-neutral-200 bg-white overflow-y-auto p-5 flex flex-col gap-5">
-        {cvAnalysis ? (
+        {cvAnalysis?.status === "processing" ? (
+          <div className="flex flex-col items-center justify-center gap-3 mt-8">
+            <svg className="h-6 w-6 animate-spin text-primary-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round">
+              <path d="M21 12a9 9 0 1 1-6.2-8.56" />
+            </svg>
+            <p className="text-sm text-neutral-400 italic text-center">Analysing CV…</p>
+          </div>
+        ) : cvAnalysis?.status === "completed" || cvAnalysis?.key_strengths ? (
           <>
             <div className="flex items-center justify-between">
               <p className="text-xs font-bold uppercase tracking-wide text-neutral-400">CV Analysis</p>

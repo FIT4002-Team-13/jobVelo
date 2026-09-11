@@ -12,6 +12,7 @@ export function useInterviewData(id) {
   const [jobId, setJobId] = useState(null);
   const [candId, setCandId] = useState(null);
   const [cvAnalysis, setCvAnalysis] = useState(null);
+  const [cvAnalysisKey, setCvAnalysisKey] = useState(0);
   const [jobCand, setJobCand] = useState(null);
   const [isCompleted, setIsCompleted] = useState(false);
   const [intvStatus, setIntvStatus] = useState(null);
@@ -58,17 +59,38 @@ export function useInterviewData(id) {
               const link = Array.isArray(links) ? links.find((l) => l.job_id === data.job_id) : null;
               if (!link?.jobcand_id) return;
               setJobCand(link);
-              api
-                .getCvAnalysisByJobcand(link.jobcand_id)
-                .then((a) => {
-                  if (a && (a.status === "completed" || a.key_strengths)) setCvAnalysis(a);
-                })
-                .catch(() => {});
             })
             .catch(() => {});
         }
       });
   }, [id]);
+
+  // Poll CV analysis while the backend job is still running so the UI
+  // automatically flips from the loading state to the results without a reload.
+  useEffect(() => {
+    const jobcandId = jobCand?.jobcand_id;
+    if (!jobcandId) return;
+
+    let cancelled = false;
+    let timer = null;
+
+    async function poll() {
+      try {
+        const a = await api.getCvAnalysisByJobcand(jobcandId);
+        if (cancelled) return;
+        setCvAnalysis(a ?? null);
+        if (a?.status === "processing") timer = setTimeout(poll, 4000);
+      } catch {
+        if (!cancelled) setCvAnalysis(null);
+      }
+    }
+
+    poll();
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, [jobCand?.jobcand_id, cvAnalysisKey]);
 
   return {
     serverData,
@@ -84,6 +106,8 @@ export function useInterviewData(id) {
     jobId,
     candId,
     cvAnalysis,
+    setCvAnalysis,
+    refreshCvAnalysis: () => setCvAnalysisKey((k) => k + 1),
     jobCand,
     isCompleted,
     setIsCompleted,
