@@ -2,7 +2,6 @@ import { useState } from "react";
 import { flex } from "../../../styles/layout";
 import { SECTION_COLORS } from "../../../utils/constants.js";
 import { formatTimer, parseTimestamp } from "../../../utils/time.js";
-import { formatDateTime } from "../../../utils/format.js";
 import ReportSections from "../../interview/ReportSections.jsx";
 
 const SCORE_COLORS = {
@@ -67,6 +66,91 @@ function HighlightedText({ text, query }) {
   );
 }
 
+function TranscriptRow({ entry, query, highlighted, isInterviewer, onClick, entryRef, onNoteChange }) {
+  const [editing, setEditing] = useState(false);
+  const hasNote = !!entry.comment;
+
+  return (
+    <div
+      id={`post-entry-${entry.id}`}
+      ref={entryRef}
+      onClick={onClick}
+      className={`rounded-lg transition-colors duration-700 group ${
+        onClick ? "cursor-pointer hover:bg-neutral-50" : ""
+      } ${highlighted ? "bg-yellow-50 ring-1 ring-yellow-300" : ""}`}
+    >
+      <div className={`${flex.row} gap-3 py-2`}>
+        <div
+          className={`w-8 h-8 rounded-pill ${flex.rowCenter} text-white text-xs font-bold shrink-0 ${
+            isInterviewer ? "bg-primary-500" : "bg-sky-500"
+          }`}
+        >
+          {entry.speaker?.slice(0, 2).toUpperCase() || "??"}
+        </div>
+        <div className={`${flex.col} gap-0.5 flex-1 min-w-0`}>
+          <span className="text-xs text-neutral-400">{entry.timestamp}</span>
+          <span className="text-sm text-neutral-700 leading-snug">
+            <HighlightedText text={entry.text} query={query} />
+          </span>
+        </div>
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); setEditing((o) => !o); }}
+          title={hasNote ? "Edit note" : "Add note"}
+          className={`shrink-0 self-start mt-1 p-1 rounded transition-all opacity-0 group-hover:opacity-100 focus:opacity-100 hover:text-primary-500 ${
+            editing || hasNote ? "text-primary-500" : "text-neutral-400"
+          }`}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+          </svg>
+        </button>
+      </div>
+      {editing ? (
+        <div className="ml-11 mb-1.5 relative" onClick={(e) => e.stopPropagation()}>
+          <textarea
+            autoFocus
+            value={entry.comment ?? ""}
+            onChange={(e) => onNoteChange(entry.id, e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                setEditing(false);
+              }
+            }}
+            placeholder="Add a note…"
+            rows={2}
+            className="w-full text-xs text-neutral-700 bg-white border border-neutral-200 rounded-lg px-3 py-2 pr-9 resize-none focus:outline-none focus:border-primary-300 placeholder-neutral-400 shadow-sm"
+          />
+          <button
+            type="button"
+            onClick={() => setEditing(false)}
+            title="Save note"
+            aria-label="Save note"
+            className="absolute right-2 bottom-2 p-1 text-primary-500 hover:text-primary-600 transition-colors"
+          >
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="m5 12 4 4L19 6" />
+            </svg>
+          </button>
+        </div>
+      ) : (
+        hasNote && (
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); setEditing(true); }}
+            title="Edit note"
+            className="ml-11 mb-1.5 text-left rounded-md bg-neutral-100 px-2 py-1 text-xs text-neutral-600 border border-transparent hover:border-primary-200 transition-colors"
+          >
+            Note: <HighlightedText text={entry.comment} query={query} />
+          </button>
+        )
+      )}
+    </div>
+  );
+}
+
 export default function TranscriptAnalysisTab({
   transcript,
   transcriptEntryRefs,
@@ -77,6 +161,8 @@ export default function TranscriptAnalysisTab({
   jumpToSection,
   report,
   interview,
+  onNoteChange,
+  onDownloadReport,
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [search, setSearch] = useState("");
@@ -246,6 +332,9 @@ export default function TranscriptAnalysisTab({
                 {filteredTranscript.length} result{filteredTranscript.length !== 1 ? "s" : ""}
               </span>
             )}
+            <span className="text-xs font-medium text-neutral-400 shrink-0">
+              Meeting Length: {formatTimer(interview?.intv_duration_seconds ?? 0)}
+            </span>
           </div>
         </div>
 
@@ -257,40 +346,18 @@ export default function TranscriptAnalysisTab({
               <p className="text-sm text-neutral-400 text-center mt-8">No results for the current filter.</p>
             ) : (
               filteredTranscript.map((entry, i) => (
-                <div
-                  id={`post-entry-${entry.id}`}
+                <TranscriptRow
                   key={entry.id}
-                  ref={(el) => (transcriptEntryRefs.current[i] = el)}
-                  onClick={query ? () => handleFilteredEntryClick(entry) : undefined}
-                  className={`rounded-lg transition-colors duration-700 ${
-                    query ? "cursor-pointer hover:bg-neutral-50" : ""
-                  } ${
+                  entry={entry}
+                  query={query}
+                  highlighted={
                     highlightedEntryIdx === i || entry.id === highlightedEntryId || entry.id === localHighlightId
-                      ? "bg-yellow-50 ring-1 ring-yellow-300"
-                      : ""
-                  }`}
-                >
-                  <div className={`${flex.row} gap-3 py-2`}>
-                    <div
-                      className={`w-8 h-8 rounded-pill ${flex.rowCenter} text-white text-xs font-bold shrink-0 ${
-                        entry.speaker === interviewerLabel ? "bg-primary-500" : "bg-sky-500"
-                      }`}
-                    >
-                      {entry.speaker?.slice(0, 2).toUpperCase() || "??"}
-                    </div>
-                    <div className={`${flex.col} gap-0.5 flex-1 min-w-0`}>
-                      <span className="text-xs text-neutral-400">{entry.timestamp}</span>
-                      <span className="text-sm text-neutral-700 leading-snug">
-                        <HighlightedText text={entry.text} query={query} />
-                      </span>
-                      {entry.comment && (
-                        <span className="mt-1 rounded-md bg-neutral-100 px-2 py-1 text-xs text-neutral-600">
-                          Note: <HighlightedText text={entry.comment} query={query} />
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                </div>
+                  }
+                  isInterviewer={entry.speaker === interviewerLabel}
+                  onClick={query ? () => handleFilteredEntryClick(entry) : undefined}
+                  entryRef={(el) => (transcriptEntryRefs.current[i] = el)}
+                  onNoteChange={onNoteChange}
+                />
               ))
             )}
           </div>
@@ -321,9 +388,16 @@ export default function TranscriptAnalysisTab({
                 </button>
               ))}
             </div>
-            <span className="shrink-0 text-xs font-medium text-neutral-400">
-              Meeting Time: {formatDateTime(interview?.intv_date_time)}
-            </span>
+            {(activeTab === "candidate" || activeTab === "interviewer") && onDownloadReport && (
+              <button
+                type="button"
+                onClick={() => onDownloadReport(activeTab)}
+                title={`Download the ${activeTab} report`}
+                className="shrink-0 rounded-xl px-4 py-0.5 text-sm font-semibold text-white bg-primary-500 hover:bg-primary-600 transition-colors"
+              >
+                Download
+              </button>
+            )}
           </div>
 
           <div className="flex-1 overflow-y-auto px-6 py-6">

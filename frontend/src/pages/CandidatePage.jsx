@@ -3,7 +3,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import { flex } from "../styles/layout";
 import Sidebar from "../components/common/Sidebar";
 import { useAuth } from "../lib/AuthContext.jsx";
-import { authedFetch, api } from "../lib/api.js";
+import { authedFetch, api, downloadFileWithAuth } from "../lib/api.js";
 import { useToast } from "../components/common/ToastContext.jsx";
 
 import { useInterviewData } from "../hooks/useInterviewData.js";
@@ -77,6 +77,7 @@ export default function CandidatePage() {
     highlightedEntryIdx,
     highlightedEntryId,
     transcriptEntryRefs,
+    handleNoteChange,
   } = useTranscript(id, {
     serverData,
     candidateName,
@@ -173,6 +174,14 @@ export default function CandidatePage() {
     } finally {
       beginningRef.current = false;
     }
+  }
+
+  function handleDownloadReport(kind) {
+    if (!id) return;
+    const path = kind === "interviewer" ? "interviewer-report" : "candidate-report";
+    downloadFileWithAuth(`/api/interviews/${id}/${path}`).catch((err) =>
+      toast.error(err.message || "Failed to download the report.")
+    );
   }
 
   async function handleCvUpload(file) {
@@ -308,6 +317,8 @@ export default function CandidatePage() {
               jumpToSection={jumpToSection}
               report={report}
               interview={mergedInterview}
+              onNoteChange={handleNoteChange}
+              onDownloadReport={handleDownloadReport}
             />
           )}
 
