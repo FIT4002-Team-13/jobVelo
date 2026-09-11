@@ -78,19 +78,6 @@ def authed(client):
     yield comp_id, client
     app.dependency_overrides.clear()
 
-@pytest.fixture()
-def authed_recruiter(client):
-    comp_id = ObjectId()
-    user = {
-        "_id": ObjectId(),
-        "comp_id": comp_id,
-        "role": "recruiter",
-        "full_name": "Test Recruiter",
-    }
-    app.dependency_overrides[get_current_user] = lambda: user
-    yield comp_id, client
-    app.dependency_overrides.clear()
-
 # ── 1. Anonymous requests are rejected everywhere ────────────────────────────
 
 _OID = str(ObjectId())
