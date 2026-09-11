@@ -3,12 +3,12 @@ from __future__ import annotations
 import asyncio
 import logging
 from typing import Any
+from uuid import uuid4
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from services.deepgram_service import DeepgramSession
 from services.openai_service import check_bias
-from uuid import uuid4
 
 logger = logging.getLogger(__name__)
 router = APIRouter()

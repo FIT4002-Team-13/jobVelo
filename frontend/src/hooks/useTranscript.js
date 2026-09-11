@@ -310,9 +310,7 @@ export function useTranscript(id, { serverData, candidateName, userId, isComplet
     handleNoteChange,
     showLatestTranscript,
     jumpToTranscriptEntry,
-    transcript,
     speakerAssignments,
     assignSpeaker,
-    setTranscript,
   };
 }
