@@ -10,6 +10,7 @@ The dashboard's candidate list itself is fetched from the real
 /api/candidates endpoint (cand.py) - this file only owns the summary.
 """
 
+import asyncio
 from datetime import datetime, timedelta, timezone
 
 from bson import ObjectId
@@ -55,17 +56,13 @@ async def get_summary(
     db = get_db()
     user_id_str = str(user["_id"])
 
-    # 1. Interviews this user is assigned to (via interview_users links).
-    assigned_intv_ids: list[ObjectId] = []
-    async for link in db.interview_users.find({"user_id": user_id_str}, {"intv_id": 1}):
-        intv_id = link.get("intv_id")
-        if intv_id and ObjectId.is_valid(intv_id):
-            assigned_intv_ids.append(ObjectId(intv_id))
-
-    # 2. Company's job ids (interviews don't carry comp_id directly).
-    company_job_ids = [
-        str(j["_id"]) async for j in db.jobs.find({"comp_id": comp_id}, {"_id": 1})
-    ]
+    # 1 + 2 run concurrently - neither depends on the other's result, and
+    # each is its own round trip to Mongo. Sequentially awaiting them (the
+    # old code did) just adds their latencies together for no reason.
+    assigned_intv_ids, company_job_ids = await asyncio.gather(
+        _assigned_interview_ids(db, user_id_str),
+        _company_job_ids(db, comp_id),
+    )
 
     # Short-circuit when either set is empty - nothing the user can see.
     if not assigned_intv_ids or not company_job_ids:
@@ -115,12 +112,29 @@ async def get_summary(
     }
 
 
+async def _assigned_interview_ids(db, user_id_str: str) -> list[ObjectId]:
+    """Interviews this user is assigned to, via interview_users links."""
+    ids: list[ObjectId] = []
+    async for link in db.interview_users.find({"user_id": user_id_str}, {"intv_id": 1}):
+        intv_id = link.get("intv_id")
+        if intv_id and ObjectId.is_valid(intv_id):
+            ids.append(ObjectId(intv_id))
+    return ids
+
+
+async def _company_job_ids(db, comp_id: ObjectId) -> list[str]:
+    """The caller's company's job ids (interviews don't carry comp_id directly)."""
+    return [str(j["_id"]) async for j in db.jobs.find({"comp_id": comp_id}, {"_id": 1})]
+
+
 async def _gather(
     db, *, today_query, completed_query, upcoming_query
 ) -> tuple[int, int, int]:
-    """Run the three count queries. Pulled out so the route body stays
-    readable - all three hit `interviews`, all three are independent."""
-    today_count = await db.interviews.count_documents(today_query)
-    completed_count = await db.interviews.count_documents(completed_query)
-    upcoming_count = await db.interviews.count_documents(upcoming_query)
-    return today_count, completed_count, upcoming_count
+    """Run the three count queries concurrently - pulled out so the route
+    body stays readable. All three hit `interviews` and are independent, so
+    there's no reason to pay for their round trips one after another."""
+    return await asyncio.gather(
+        db.interviews.count_documents(today_query),
+        db.interviews.count_documents(completed_query),
+        db.interviews.count_documents(upcoming_query),
+    )
