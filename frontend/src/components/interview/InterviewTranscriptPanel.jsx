@@ -24,7 +24,14 @@ export function TranscriptEntry({ entry, onNoteChange, highlighted, otherSpeaker
           {initials(entry.speaker)}
         </div>
         <div className={`${flex.col} gap-0.5 flex-1 min-w-0`}>
-          <span className="text-xs text-neutral-400">{entry.timestamp}</span>
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-semibold text-neutral-600">
+              {entry.speaker}
+            </span>
+            <span className="text-xs text-neutral-400">
+              {entry.timestamp}
+            </span>
+          </div>
           <span className="text-sm text-neutral-700 leading-snug">
             {entry.text}
           </span>
