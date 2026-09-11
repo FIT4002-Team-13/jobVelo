@@ -18,32 +18,27 @@ export function normaliseQuestion(question, index = 0, isFollowUp = false, isNew
 
 export function QuestionCard({ q, onMoreLike, onIgnore, isGeneratingSimilar }) {
   const [whyOpen, setWhyOpen] = useState(false);
-  // A calm, static "New" marker (no pulsing animation) that quietly clears
-  // itself, instead of the old looping glow border.
-  const [showNew, setShowNew] = useState(Boolean(q.isNew));
+  // A light, brief glow marking a newly generated question - clears itself just
+  // after the 2-cycle animation so it's a quick nudge, not a constant pulse.
+  const [glow, setGlow] = useState(Boolean(q.isNew));
 
   useEffect(() => {
     if (!q.isNew) return undefined;
-    const t = setTimeout(() => setShowNew(false), 3500);
+    const t = setTimeout(() => setGlow(false), 2500);
     return () => clearTimeout(t);
   }, [q.isNew]);
 
   return (
     <div
-      className={`flex w-[290px] shrink-0 flex-col rounded-2xl border bg-neutral-0 p-4 ${
-        showNew ? "border-primary-300" : "border-neutral-200"
+      className={`flex w-[290px] short:w-[268px] shrink-0 flex-col rounded-2xl border bg-neutral-0 p-4 short:p-3.5 ${
+        glow ? "new-question-glow" : "border-neutral-200"
       }`}
     >
-      <div className="mb-3 flex items-center justify-between gap-2 shrink-0">
+      <div className="mb-3 short:mb-2 flex items-center justify-between gap-2 shrink-0">
         <div className="flex min-w-0 items-center gap-1.5">
           <span className={`${badge.sm} ${q.categoryColor}`}>{q.category}</span>
-          {showNew && (
-            <span className="inline-flex items-center rounded-pill bg-primary-500 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">
-              New
-            </span>
-          )}
           {q.isFollowUp && (
-            <span className="inline-flex items-center gap-1 rounded-pill bg-primary-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-primary-600">
+            <span className="inline-flex items-center gap-1 whitespace-nowrap rounded-pill bg-primary-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-primary-600">
               <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                 <polyline points="9 14 4 9 9 4" />
                 <path d="M4 9h10a6 6 0 0 1 6 6v2" />
@@ -69,7 +64,7 @@ export function QuestionCard({ q, onMoreLike, onIgnore, isGeneratingSimilar }) {
       </div>
 
       <div className="scrollbar-hide flex-1 overflow-y-auto">
-        <p className="text-base leading-relaxed text-neutral-800">{q.text}</p>
+        <p className="text-sm leading-relaxed text-neutral-800">{q.text}</p>
         {whyOpen && (
           <p className="mt-3 rounded-xl bg-neutral-50 p-3 text-xs leading-relaxed text-neutral-500">
             {q.why}
@@ -77,7 +72,7 @@ export function QuestionCard({ q, onMoreLike, onIgnore, isGeneratingSimilar }) {
         )}
       </div>
 
-      <div className="mt-3 flex flex-col gap-1.5 shrink-0">
+      <div className="mt-3 short:mt-2 flex flex-col gap-1.5 shrink-0">
         <button
           onClick={() => onIgnore?.(q)}
           className={`${button.danger} w-full py-1.5 text-xs font-semibold rounded-lg`}
@@ -118,7 +113,7 @@ export function SuggestedQuestionDeck({
 }) {
   return (
     <div className="card-flat flex flex-col flex-1 min-h-0 overflow-hidden">
-      <div className="flex items-center justify-between border-b border-neutral-100 px-6 pt-3.5 pb-2.5 shrink-0">
+      <div className="flex items-center justify-between border-b border-neutral-100 px-6 pt-2.5 short:pt-2 pb-2 short:pb-1.5 shrink-0">
         <h2 className="text-base font-semibold text-neutral-800">Suggested Questions</h2>
         {questions.length > 0 && (
           <span className="text-xs font-semibold text-neutral-300">{questions.length}</span>
@@ -126,19 +121,19 @@ export function SuggestedQuestionDeck({
       </div>
 
       {questionsLoading ? (
-        <div className="flex-row-center flex-1">
+        <div className="flex flex-1 items-center justify-center">
           <p className="text-sm text-neutral-400">Generating questions…</p>
         </div>
       ) : questionsError && questions.length === 0 ? (
-        <div className="flex-row-center flex-1 px-6">
+        <div className="flex flex-1 items-center justify-center px-6">
           <p className="text-sm text-coral-500 text-center">{questionsError}</p>
         </div>
       ) : displayedQuestions.length === 0 ? (
-        <div className="flex-row-center flex-1">
+        <div className="flex flex-1 items-center justify-center">
           <p className="text-sm text-neutral-400">No suggested questions available.</p>
         </div>
       ) : (
-        <div className="flex-1 overflow-x-auto overflow-y-hidden px-6 py-4">
+        <div className="flex-1 overflow-x-auto overflow-y-hidden px-6 py-3 short:py-2">
           <div className="flex h-full items-stretch gap-4">
             {displayedQuestions.map((q) => (
               <QuestionCard

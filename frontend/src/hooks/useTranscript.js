@@ -19,9 +19,37 @@ export function useTranscript(id, { serverData, candidateName, userId, isComplet
   const followUpTimerRef = useRef(null);
   const hasLocalRef = useRef(false);
   const hasInitializedFromServerRef = useRef(false);
+  // Whether the interviewer is currently reading at the bottom of the log. Used
+  // to auto-follow new lines only when they haven't scrolled up to read history.
+  const atBottomRef = useRef(true);
 
   useEffect(() => {
     transcriptRef.current = transcript;
+  }, [transcript]);
+
+  // Track how close to the bottom the interviewer is scrolled. Re-attaches when
+  // the panel is shown/hidden (the container unmounts while hidden). 160px of
+  // slack counts as "at the bottom" so a just-arrived line doesn't flip it.
+  useEffect(() => {
+    const el = transcriptContainerRef.current;
+    if (!el) return undefined;
+    const onScroll = () => {
+      atBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 160;
+    };
+    onScroll();
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => el.removeEventListener("scroll", onScroll);
+  }, [transcriptVisible]);
+
+  // Auto-follow the latest line. When a new transcript entry (or live partial)
+  // arrives and the interviewer is already at the bottom, keep it in view so
+  // they never have to scroll manually. If they've scrolled up, leave them be -
+  // the "New Updates" pill lets them jump down when ready.
+  useEffect(() => {
+    const el = transcriptContainerRef.current;
+    if (!el || !atBottomRef.current) return;
+    el.scrollTop = el.scrollHeight;
+    setHasNewTranscriptUpdates(false);
   }, [transcript]);
 
   useEffect(() => {

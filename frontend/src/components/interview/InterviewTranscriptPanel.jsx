@@ -185,7 +185,7 @@ export function TranscriptPanel({
   candidateLabel,
 }) {
   return (
-    <div className="card-base relative isolate flex flex-col w-[48%] overflow-hidden p-0 pt-3">
+    <div className="card-base relative isolate flex flex-col w-[48%] overflow-hidden p-0">
       <div className={`${flex.rowBetween} px-6 pt-1 pb-1 border-b border-neutral-100 shrink-0`}>
         <span className="text-base font-semibold text-neutral-800">Live Transcription</span>
         <div className={`${flex.row} gap-3 items-center`}>
@@ -226,7 +226,7 @@ export function TranscriptPanel({
 
       {transcriptVisible && (
         <div
-          className="flex-1 min-h-[200px] overflow-y-auto px-6 py-3 scrollbar-primary scroll-auto"
+          className="flex-1 min-h-[200px] short:min-h-[120px] overflow-y-auto px-6 py-3 scrollbar-primary scroll-auto"
           ref={transcriptContainerRef}
         >
           {transcript.length === 0 ? (
@@ -255,13 +255,13 @@ export function TranscriptPanel({
       )}
 
       {isScreenSharing && (
-        <div className="relative z-0 shrink-0 border-t border-neutral-100 pt-4 px-6 pb-4">
-          <p className="text-xs text-neutral-500 mb-2 font-medium">Screen Share</p>
+        <div className="relative z-0 shrink-0 border-t border-neutral-100 pt-4 short:pt-2 px-6 pb-4 short:pb-2">
+          <p className="text-xs text-neutral-500 mb-2 short:mb-1 font-medium">Screen Share</p>
           <video
             ref={videoRef}
             autoPlay
             muted
-            className="relative z-0 w-full h-40 bg-neutral-900 rounded-lg object-cover"
+            className="relative z-0 w-full h-40 short:h-28 bg-neutral-900 rounded-lg object-cover"
           />
         </div>
       )}

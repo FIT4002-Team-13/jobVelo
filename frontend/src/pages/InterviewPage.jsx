@@ -31,6 +31,23 @@ export default function InterviewPage() {
   const generateFollowUpRef = useRef(null);
   const beginningRef = useRef(false);
   const [reportState, setReportState] = useState({ phase: "idle" });
+  // The interviewer's company name, shown under their name in the header
+  // (the account role there was just a redundant "interviewer" label).
+  const [companyName, setCompanyName] = useState("");
+
+  useEffect(() => {
+    if (!user?.comp_id) return undefined;
+    let cancelled = false;
+    authedFetch(`/api/companies/${user.comp_id}`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (!cancelled && data?.comp_name) setCompanyName(data.comp_name);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.comp_id]);
 
   const {
     serverData,
@@ -223,14 +240,14 @@ export default function InterviewPage() {
 
   return (
     <div className="h-screen flex flex-col bg-neutral-50 font-sans overflow-hidden">
-      <header className="bg-neutral-0 border-b border-neutral-200 px-10 py-4 shrink-0">
+      <header className="bg-neutral-0 border-b border-neutral-200 px-10 short:px-6 py-2.5 short:py-2 shrink-0">
         <div className={flex.rowBetween}>
-          <div className={`${flex.row} gap-16`}>
+          <div className={`${flex.row} gap-10 short:gap-8`}>
             <div className={flex.col}>
               <span className="text-xs font-bold text-neutral-400 uppercase tracking-widest mb-0.5">
                 Candidate
               </span>
-              <span className="text-2xl font-bold text-neutral-800">
+              <span className="text-lg short:text-base font-bold text-neutral-800">
                 {candidateName || "—"}
               </span>
               <span className="text-sm text-neutral-400">
@@ -241,11 +258,11 @@ export default function InterviewPage() {
               <span className="text-xs font-bold text-neutral-400 uppercase tracking-widest mb-0.5">
                 Interviewer
               </span>
-              <span className="text-2xl font-bold text-neutral-800">
+              <span className="text-lg short:text-base font-bold text-neutral-800">
                 {user?.full_name || "—"}
               </span>
               <span className="text-sm text-neutral-400">
-                {user?.role || "—"}
+                {companyName || "—"}
               </span>
             </div>
           </div>
@@ -273,7 +290,7 @@ export default function InterviewPage() {
             )}
             {phase !== "prep" && (
               <div
-                className={`${flex.row} gap-2 items-center text-neutral-700 font-semibold text-xl`}
+                className={`${flex.row} gap-2 items-center text-neutral-700 font-semibold text-lg`}
               >
                 <span>{formatTimer(timer)}</span>
                 <span
@@ -287,19 +304,15 @@ export default function InterviewPage() {
             )}
           </div>
         </div>
-        {phase !== "prep" && audioStatus && (
-          <p
-            className={`mt-2 text-right text-xs font-medium ${
-              /denied|error|unable|no (microphone|computer audio|screen)|cancelled/i.test(
-                audioStatus
-              )
-                ? "text-coral-500"
-                : "text-neutral-400"
-            }`}
-          >
-            {audioStatus}
-          </p>
-        )}
+        {phase !== "prep" &&
+          audioStatus &&
+          /denied|error|unable|no (microphone|computer audio|screen)|cancelled/i.test(
+            audioStatus
+          ) && (
+            <p className="mt-2 text-right text-xs font-medium text-coral-500">
+              {audioStatus}
+            </p>
+          )}
       </header>
 
       {phase === "prep" ? (
@@ -355,7 +368,7 @@ export default function InterviewPage() {
         />
       ) : (
         <div
-          className={`flex-1 ${flex.row} gap-6 p-6 overflow-hidden items-stretch`}
+          className="flex-1 flex items-stretch gap-4 short:gap-3 px-5 short:px-4 pt-3 short:pt-2 pb-4 short:pb-3 overflow-hidden"
         >
           <TranscriptPanel
             transcript={transcript}
@@ -377,7 +390,7 @@ export default function InterviewPage() {
             candidateLabel={candidateLabel}
           />
 
-          <div className={`flex-1 ${flex.col} gap-4 overflow-hidden min-h-0`}>
+          <div className={`flex-1 ${flex.col} gap-2 overflow-hidden min-h-0`}>
             {sections.length > 0 && (
               <InterviewSectionTimeline
                 sections={sections}
@@ -408,7 +421,7 @@ export default function InterviewPage() {
               <button
                 onClick={() => !isCompleted && togglePause()}
                 disabled={isCompleted}
-                className={`flex-1 py-2 text-sm font-semibold rounded-xl transition-colors ${
+                className={`flex-1 py-2 short:py-1.5 text-sm font-semibold rounded-xl transition-colors ${
                   isCompleted
                     ? "bg-neutral-300 text-neutral-500 cursor-not-allowed"
                     : isPaused
@@ -421,7 +434,7 @@ export default function InterviewPage() {
               <button
                 onClick={() => completeInterview()}
                 disabled={reportState.phase === "generating"}
-                className={`flex-1 py-2 text-sm font-semibold rounded-xl transition-colors ${
+                className={`flex-1 py-2 short:py-1.5 text-sm font-semibold rounded-xl transition-colors ${
                   reportState.phase === "generating"
                     ? "bg-neutral-300 text-neutral-500 cursor-wait"
                     : isCompleted
