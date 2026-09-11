@@ -32,18 +32,28 @@ export default function AddCandidateForm({ jobs = [], fixedJobId = null, onClose
 
   useEffect(() => {
     async function loadInterviewers() {
-      if (!user?.comp_id) return
+      if (!user?.comp_id || user?.role !== "recruiter") return;
       try {
-        const res = await authedFetch(`/api/users?role=interviewer`)
-        if (!res.ok) throw new Error()
-        const data = await res.json()
-        setInterviewers(Array.isArray(data) ? data : [])
+        const [interviewerRes, hiringManagerRes] = await Promise.all([
+          authedFetch(`/api/users?role=interviewer`),
+          authedFetch(`/api/users?role=hiring_manager`),
+        ])
+
+        if (!interviewerRes.ok || !hiringManagerRes.ok) throw new Error()
+
+        const interviewerData = await interviewerRes.json()
+        const hiringManagerData = await hiringManagerRes.json()
+
+        setInterviewers([
+          ...(Array.isArray(interviewerData) ? interviewerData : []),
+          ...(Array.isArray(hiringManagerData) ? hiringManagerData : []),
+        ])
       } catch {
         setInterviewers([])
       }
     }
     loadInterviewers()
-  }, [user?.comp_id])
+  }, [user?.comp_id, user?.role]);
 
   function setField(key, value) {
     setFormState((prev) => ({ ...prev, [key]: value }))
@@ -235,33 +245,35 @@ export default function AddCandidateForm({ jobs = [], fixedJobId = null, onClose
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className={form.label}>Interviewer</label>
-              <InterviewerCombobox
-                value={{
-                  label: formState.interviewer,
-                  userId: formState.interviewer_user_id,
-                }}
-                onChange={({ label, userId }) => {
-                  setField('interviewer', label)
-                  setField('interviewer_user_id', userId)
-                }}
-                options={interviewers}
-                onOpenChange={setInterviewerOpen}
-              />
-            </div>
+          {user?.role === "recruiter" && (
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className={form.label}>Interviewer</label>
+                <InterviewerCombobox
+                  value={{
+                    label: formState.interviewer,
+                    userId: formState.interviewer_user_id,
+                  }}
+                  onChange={({ label, userId }) => {
+                    setField('interviewer', label)
+                    setField('interviewer_user_id', userId)
+                  }}
+                  options={interviewers}
+                  onOpenChange={setInterviewerOpen}
+                />
+              </div>
 
-            <div>
-              <label className={form.label}>Interview Date</label>
-              <input
-                type="datetime-local"
-                value={formState.scheduled_at}
-                onChange={(e) => setField('scheduled_at', e.target.value)}
-                className={form.input}
-              />
+              <div>
+                <label className={form.label}>Interview Date</label>
+                <input
+                  type="datetime-local"
+                  value={formState.scheduled_at}
+                  onChange={(e) => setField('scheduled_at', e.target.value)}
+                  className={form.input}
+                />
+              </div>
             </div>
-          </div>
+          )}
 
           {error && <p className={form.error}>{error}</p>}
 
