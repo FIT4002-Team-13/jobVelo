@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { flex, button } from "../styles/layout";
+import Sidebar from "../components/common/Sidebar";
 import { useAuth } from "../lib/AuthContext.jsx";
 import { authedFetch } from "../lib/api.js";
 import { useToast } from "../components/common/ToastContext.jsx";
@@ -11,6 +12,9 @@ import { InterviewSectionTimeline } from "../components/interview/InterviewSecti
 import { InterviewReportModal } from "../components/interview/InterviewReportModal.jsx";
 import InterviewPrepPage from "./InterviewPrepPage.jsx";
 import InterviewPostInterviewPage from "./InterviewPostInterviewPage.jsx";
+import PdfPreview from "../components/candidate/PdfPreview.jsx";
+import CandidateInfoCard from "../components/candidate/CandidateInfoCard.jsx";
+import CandidateScorePanel from "../components/candidate/CandidateScorePanel.jsx";
 
 import { useInterviewData } from "../hooks/useInterviewData.js";
 import { useBias } from "../hooks/useBias.js";
@@ -19,6 +23,88 @@ import { useTranscript } from "../hooks/useTranscript.js";
 import { useInterviewQuestions } from "../hooks/useInterviewQuestions.js";
 import { useAudioCapture } from "../hooks/useAudioCapture.js";
 import { formatTimer, parseTimestamp } from "../utils/time.js";
+
+function InterviewDocPanel({
+  centerView,
+  cvUrl,
+  coverLetterUrl,
+  candidate,
+  job,
+  interview,
+  jobCand,
+  cvAnalysis,
+  interviewerLabel,
+  onStartInterview,
+  onViewCvAnalysis,
+}) {
+  if (centerView === "cv") {
+    const src = cvUrl?.startsWith("/api/files/") ? cvUrl.slice("/api/files/".length) : cvUrl;
+    return (
+      <div className="flex-1 overflow-hidden flex flex-col">
+        {src ? (
+          <div className="flex-1 overflow-y-auto p-6">
+            <PdfPreview src={src} label="CV" />
+          </div>
+        ) : (
+          <div className="flex-1 flex items-center justify-center">
+            <p className="text-sm text-neutral-400">No CV on file.</p>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  if (centerView === "cover-letter") {
+    const src = coverLetterUrl?.startsWith("/api/files/") ? coverLetterUrl.slice("/api/files/".length) : coverLetterUrl;
+    return (
+      <div className="flex-1 overflow-hidden flex flex-col">
+        {src ? (
+          <div className="flex-1 overflow-y-auto p-6">
+            <PdfPreview src={src} label="Cover Letter" />
+          </div>
+        ) : (
+          <div className="flex-1 flex items-center justify-center">
+            <p className="text-sm text-neutral-400">No cover letter on file.</p>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  if (centerView === "profile") {
+    return (
+      <div className="flex-1 overflow-y-auto px-6 py-6">
+        <div className="mb-5 grid grid-cols-11 gap-5 items-stretch">
+          <div className="col-span-7">
+            <CandidateInfoCard
+              candidate={candidate}
+              job={job}
+              interview={interview}
+              jobCand={jobCand}
+              interviewer={interviewerLabel}
+              onStartInterview={onStartInterview}
+              onEdit={null}
+              cvAnalysis={cvAnalysis}
+              onViewCvAnalysis={onViewCvAnalysis}
+              onAnalyseCv={null}
+              analysingCv={false}
+            />
+          </div>
+          <div className="col-span-4">
+            <CandidateScorePanel
+              jobCand={jobCand}
+              interview={interview}
+              onViewEvidence={() => {}}
+              onViewTranscription={null}
+            />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return null;
+}
 
 export default function InterviewPage() {
   const { id } = useParams();
@@ -32,21 +118,34 @@ export default function InterviewPage() {
   const beginningRef = useRef(false);
   const [reportState, setReportState] = useState({ phase: "idle" });
   const [prefetchedReport, setPrefetchedReport] = useState(null);
+  const [centerView, setCenterView] = useState("transcript");
 
   const {
     serverData,
     candidateName,
     candidateRole,
+    candidate,
+    job,
     cvUrl,
+    setCvUrl,
+    coverLetterUrl,
+    setCoverLetterUrl,
     jobId,
     candId,
     cvAnalysis,
+    jobCand,
     isCompleted,
     setIsCompleted,
     intvStatus,
     setIntvStatus,
     intvDateTime,
   } = useInterviewData(id);
+
+  const phase = isCompleted
+    ? "debrief"
+    : intvStatus === "scheduled" || intvStatus === "not_scheduled"
+    ? "prep"
+    : "live";
 
   const { biasWarnings, biasIncidentsRef, addBiasWarning, dismissBiasWarning } =
     useBias(timerRef);
@@ -103,6 +202,10 @@ export default function InterviewPage() {
   useEffect(() => {
     generateFollowUpRef.current = generateFollowUpQuestions;
   }, [generateFollowUpQuestions]);
+
+  useEffect(() => {
+    setCenterView("transcript");
+  }, [phase]);
 
   const {
     isMicActive,
@@ -235,14 +338,10 @@ export default function InterviewPage() {
     });
   }, [isCompleted]);
 
-  const phase = isCompleted
-    ? "debrief"
-    : intvStatus === "scheduled" || intvStatus === "not_scheduled"
-    ? "prep"
-    : "live";
-
   return (
-    <div className="h-screen flex flex-col bg-neutral-50 font-sans overflow-hidden">
+    <div className="flex h-screen bg-neutral-50 font-sans">
+      <Sidebar />
+    <div className="flex-1 flex flex-col overflow-hidden">
       <header className="bg-neutral-0 border-b border-neutral-200 px-10 py-4 shrink-0">
         <div className={flex.rowBetween}>
           <div className={`${flex.row} gap-16`}>
@@ -271,37 +370,17 @@ export default function InterviewPage() {
           </div>
 
           <div className={`${flex.row} gap-4 items-center`}>
-            <button
-              className={button.primary}
-              onClick={() => cvUrl && window.open(cvUrl, "_blank")}
-              disabled={!cvUrl}
-            >
-              View Resume
-            </button>
-            {phase === "debrief" ? (
+            {phase !== "prep" && phase !== "debrief" && (
               <button
-                className={button.outline}
-                onClick={() =>
-                  reportState.data
-                    ? setReportState({ phase: "ready", data: reportState.data })
-                    : completeInterview()
-                }
+                className={`${button.outline} ${
+                  isScreenSharing
+                    ? "bg-sky-100 text-sky-800 hover:bg-sky-200"
+                    : ""
+                }`}
+                onClick={() => void toggleScreenShare()}
               >
-                View Report
+                {isScreenSharing ? "Stop screen share" : "Share screen"}
               </button>
-            ) : (
-              phase !== "prep" && (
-                <button
-                  className={`${button.outline} ${
-                    isScreenSharing
-                      ? "bg-sky-100 text-sky-800 hover:bg-sky-200"
-                      : ""
-                  }`}
-                  onClick={() => void toggleScreenShare()}
-                >
-                  {isScreenSharing ? "Stop screen share" : "Share screen"}
-                </button>
-              )
             )}
             {phase !== "prep" && (
               <div
@@ -317,75 +396,92 @@ export default function InterviewPage() {
                 />
               </div>
             )}
-            {phase === "debrief" && (
-              <button
-                type="button"
-                onClick={() =>
-                  navigate(
-                    candId && jobId
-                      ? `/candidates/${candId}/${jobId}`
-                      : `/jobs/${jobId}`,
-                    { replace: true }
-                  )
-                }
-                className="rounded-xl border border-mint-200 bg-white px-4 py-1.5 text-sm font-semibold text-mint-700 transition-colors hover:bg-mint-100"
-              >
-                Back to candidate
-              </button>
-            )}
           </div>
         </div>
-        {phase === "debrief" ? (
-          <p className="mt-2 text-right text-xs font-medium text-mint-700">
-            <span className="font-bold">Interview completed.</span>{" "}
-            The transcript below is read-only - open the report for scores,
-            strengths and the summary.
+        {phase !== "prep" && phase !== "debrief" && audioStatus && (
+          <p
+            className={`mt-2 text-right text-xs font-medium ${
+              /denied|error|unable|no (microphone|computer audio|screen)|cancelled/i.test(
+                audioStatus
+              )
+                ? "text-coral-500"
+                : "text-neutral-400"
+            }`}
+          >
+            {audioStatus}
           </p>
-        ) : (
-          phase !== "prep" &&
-          audioStatus && (
-            <p
-              className={`mt-2 text-right text-xs font-medium ${
-                /denied|error|unable|no (microphone|computer audio|screen)|cancelled/i.test(
-                  audioStatus
-                )
-                  ? "text-coral-500"
-                  : "text-neutral-400"
-              }`}
-            >
-              {audioStatus}
-            </p>
-          )
+        )}
+        {phase !== "live" && (
+          <div className="mt-3 pt-3 border-t border-neutral-100 flex items-center gap-2">
+            {[
+              { id: "transcript", label: phase === "debrief" ? "Transcript" : "Prep" },
+              { id: "cv", label: "CV" },
+              { id: "cover-letter", label: "Cover Letter" },
+              { id: "profile", label: "Profile" },
+            ].map((v) => (
+              <button
+                key={v.id}
+                onClick={() => setCenterView(v.id)}
+                className={`rounded-xl px-4 py-1 text-sm font-semibold transition-colors ${
+                  centerView === v.id
+                    ? "bg-primary-500 text-white"
+                    : "bg-primary-100 text-primary-500 hover:bg-primary-200"
+                }`}
+              >
+                {v.label}
+              </button>
+            ))}
+          </div>
         )}
       </header>
 
       {phase === "prep" ? (
-        <InterviewPrepPage
-          analysis={cvAnalysis}
-          scheduledLabel={
-            intvDateTime
-              ? new Date(intvDateTime).toLocaleString("en-AU", {
-                  weekday: "short",
-                  day: "numeric",
-                  month: "short",
-                  hour: "numeric",
-                  minute: "2-digit",
-                  hour12: true,
-                })
-              : null
-          }
-          onBegin={beginInterview}
-          onViewFullAnalysis={
-            cvAnalysis?.jobcand_id
-              ? () => navigate(`/cv-analysis/${cvAnalysis.jobcand_id}`)
-              : null
-          }
-          isMicActive={isMicActive}
-          isScreenSharing={isScreenSharing}
-          audioStatus={audioStatus}
-          onSetupRecording={() => void toggleScreenShare()}
-          onStopRecording={() => void stopScreenShare()}
-        />
+        centerView === "transcript" ? (
+          <InterviewPrepPage
+            analysis={cvAnalysis}
+            scheduledLabel={
+              intvDateTime
+                ? new Date(intvDateTime).toLocaleString("en-AU", {
+                    weekday: "short",
+                    day: "numeric",
+                    month: "short",
+                    hour: "numeric",
+                    minute: "2-digit",
+                    hour12: true,
+                  })
+                : null
+            }
+            onBegin={beginInterview}
+            onViewFullAnalysis={
+              cvAnalysis?.jobcand_id
+                ? () => navigate(`/cv-analysis/${cvAnalysis.jobcand_id}`)
+                : null
+            }
+            isMicActive={isMicActive}
+            isScreenSharing={isScreenSharing}
+            audioStatus={audioStatus}
+            onSetupRecording={() => void toggleScreenShare()}
+            onStopRecording={() => void stopScreenShare()}
+          />
+        ) : (
+          <InterviewDocPanel
+            centerView={centerView}
+            cvUrl={cvUrl}
+            coverLetterUrl={coverLetterUrl}
+            candidate={candidate}
+            job={job}
+            interview={serverData}
+            jobCand={jobCand}
+            cvAnalysis={cvAnalysis}
+            interviewerLabel={interviewerLabel}
+            onStartInterview={beginInterview}
+            onViewCvAnalysis={
+              cvAnalysis?.jobcand_id
+                ? () => navigate(`/cv-analysis/${cvAnalysis.jobcand_id}`)
+                : null
+            }
+          />
+        )
       ) : phase === "debrief" ? (
         <InterviewPostInterviewPage
           transcript={transcript}
@@ -402,9 +498,24 @@ export default function InterviewPage() {
                   candidate_report: serverData.intv_candidate_report,
                   interviewer_report: serverData.intv_interviewer_report,
                   scores: null,
+                  bias_incidents: serverData.intv_bias_incidents ?? [],
                 }
               : null)
           }
+          cvUrl={cvUrl}
+          setCvUrl={setCvUrl}
+          coverLetterUrl={coverLetterUrl}
+          setCoverLetterUrl={setCoverLetterUrl}
+          cvAnalysis={cvAnalysis}
+          jobCand={jobCand}
+          candId={candId}
+          jobId={jobId}
+          centerView={centerView}
+          interview={serverData}
+          candidate={candidate}
+          job={job}
+          interviewerName={interviewerLabel}
+          onSwitchToTranscript={() => setCenterView("transcript")}
         />
       ) : (
         <div
@@ -500,17 +611,11 @@ export default function InterviewPage() {
           candidateRole={candidateRole}
           interviewerName={user?.full_name}
           onClose={() => setReportState({ phase: "idle" })}
-          onDone={() =>
-            navigate(
-              candId && jobId
-                ? `/candidates/${candId}/${jobId}`
-                : `/jobs/${jobId}`,
-              { replace: true }
-            )
-          }
+          onDone={() => setReportState({ phase: "idle" })}
           onRetry={() => completeInterview()}
         />
       )}
+    </div>
     </div>
   );
 }

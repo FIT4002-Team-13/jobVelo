@@ -5,10 +5,14 @@ export function useInterviewData(id) {
   const [serverData, setServerData] = useState(null);
   const [candidateName, setCandidateName] = useState("");
   const [candidateRole, setCandidateRole] = useState("");
+  const [candidate, setCandidate] = useState(null);
+  const [job, setJob] = useState(null);
   const [cvUrl, setCvUrl] = useState(null);
+  const [coverLetterUrl, setCoverLetterUrl] = useState(null);
   const [jobId, setJobId] = useState(null);
   const [candId, setCandId] = useState(null);
   const [cvAnalysis, setCvAnalysis] = useState(null);
+  const [jobCand, setJobCand] = useState(null);
   const [isCompleted, setIsCompleted] = useState(false);
   const [intvStatus, setIntvStatus] = useState(null);
   const [intvDateTime, setIntvDateTime] = useState(null);
@@ -27,7 +31,10 @@ export function useInterviewData(id) {
           setJobId(data.job_id);
           authedFetch(`/api/jobs/${data.job_id}`)
             .then((r) => r.json())
-            .then((job) => { if (job.title) setCandidateRole(job.title); })
+            .then((j) => {
+              if (j.title) setCandidateRole(j.title);
+              setJob(j);
+            })
             .catch(() => {});
         }
 
@@ -38,16 +45,19 @@ export function useInterviewData(id) {
             .then((cand) => {
               if (cand.cand_full_name) setCandidateName(cand.cand_full_name);
               if (cand.cand_cv_url) setCvUrl(cand.cand_cv_url);
+              if (cand.cand_cover_letter_url) setCoverLetterUrl(cand.cand_cover_letter_url);
+              setCandidate(cand);
             })
             .catch(() => {});
         }
 
-        if (data.cand_id && data.job_id && !completed) {
+        if (data.cand_id && data.job_id) {
           authedFetch(`/api/job-candidates/by-candidate/${data.cand_id}`)
             .then((r) => (r.ok ? r.json() : []))
             .then((links) => {
               const link = Array.isArray(links) ? links.find((l) => l.job_id === data.job_id) : null;
               if (!link?.jobcand_id) return;
+              setJobCand(link);
               api
                 .getCvAnalysisByJobcand(link.jobcand_id)
                 .then((a) => {
@@ -65,10 +75,16 @@ export function useInterviewData(id) {
     candidateName,
     setCandidateName,
     candidateRole,
+    candidate,
+    job,
     cvUrl,
+    setCvUrl,
+    coverLetterUrl,
+    setCoverLetterUrl,
     jobId,
     candId,
     cvAnalysis,
+    jobCand,
     isCompleted,
     setIsCompleted,
     intvStatus,

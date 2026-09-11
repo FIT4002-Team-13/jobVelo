@@ -136,6 +136,11 @@ export default function CandidateDetailPage() {
 
         const selectedInterview = allInterviews[0] ?? null
 
+        if (selectedInterview?.intv_id) {
+          navigate(`/interview/${selectedInterview.intv_id}`, { replace: true })
+          return
+        }
+
         setCandidate(candData)
         setJobCand(selectedJobCand)
         setInterview(selectedInterview)
