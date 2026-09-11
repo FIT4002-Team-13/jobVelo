@@ -9,6 +9,10 @@ export function useInterviewData(id) {
   const [jobId, setJobId] = useState(null);
   const [candId, setCandId] = useState(null);
   const [cvAnalysis, setCvAnalysis] = useState(null);
+  // Flips true once the CV-analysis lookup has settled (found, absent, or
+  // failed), so the question pool knows whether to seed from it or fall back
+  // to job-description questions - without racing the fetch.
+  const [cvAnalysisLoaded, setCvAnalysisLoaded] = useState(false);
   const [isCompleted, setIsCompleted] = useState(false);
   const [intvStatus, setIntvStatus] = useState(null);
   const [intvDateTime, setIntvDateTime] = useState(null);
@@ -47,15 +51,21 @@ export function useInterviewData(id) {
             .then((r) => (r.ok ? r.json() : []))
             .then((links) => {
               const link = Array.isArray(links) ? links.find((l) => l.job_id === data.job_id) : null;
-              if (!link?.jobcand_id) return;
+              if (!link?.jobcand_id) {
+                setCvAnalysisLoaded(true);
+                return;
+              }
               api
                 .getCvAnalysisByJobcand(link.jobcand_id)
                 .then((a) => {
                   if (a && (a.status === "completed" || a.key_strengths)) setCvAnalysis(a);
                 })
-                .catch(() => {});
+                .catch(() => {})
+                .finally(() => setCvAnalysisLoaded(true));
             })
-            .catch(() => {});
+            .catch(() => setCvAnalysisLoaded(true));
+        } else {
+          setCvAnalysisLoaded(true);
         }
       });
   }, [id]);
@@ -69,6 +79,7 @@ export function useInterviewData(id) {
     jobId,
     candId,
     cvAnalysis,
+    cvAnalysisLoaded,
     isCompleted,
     setIsCompleted,
     intvStatus,

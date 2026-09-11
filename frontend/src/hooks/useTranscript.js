@@ -142,7 +142,10 @@ export function useTranscript(id, { serverData, candidateName, userId, isComplet
       ]);
     }
 
-    if (isCandidate && text?.trim()) {
+    // Accumulate only FINAL candidate lines (not live partials) and wait for a
+    // longer real pause before considering a follow-up, so the generator works
+    // from complete answers and doesn't fire on every brief hesitation.
+    if (isFinal && isCandidate && text?.trim()) {
       pendingCandidateResponseRef.current = [pendingCandidateResponseRef.current, text.trim()]
         .filter(Boolean)
         .join(" ");
@@ -153,7 +156,7 @@ export function useTranscript(id, { serverData, candidateName, userId, isComplet
         if (!response) return;
         pendingCandidateResponseRef.current = "";
         generateFollowUpRef.current?.(response);
-      }, 2000);
+      }, 4500);
     }
   }
 

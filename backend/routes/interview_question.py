@@ -5,21 +5,24 @@ from pydantic import BaseModel
 
 from database import get_db
 from models.interview_question import (
-    FollowUpQuestionResult,
+    ReactiveQuestionsResult,
     SimilarQuestion,
     SimilarQuestionResult,
     SuggestedQuestionsList,
 )
 from services.openai_service import (
-    generate_follow_up_question,
     generate_interview_questions,
+    generate_reactive_questions,
     generate_similar_question,
 )
 
 
-class FollowUpQuestionRequest(BaseModel):
+class ReactiveQuestionRequest(BaseModel):
     candidate_response: str
     interview_context: str = ""
+    # The interview section the interviewer is currently in (name + short
+    # description), so the suggestion can be steered to fit where they are.
+    section_context: str = ""
 
 
 router = APIRouter(prefix="/api/interview-questions", tags=["interview_questions"])
@@ -72,12 +75,12 @@ async def suggest_questions(
         ) from error
 
 
-@router.post("/{job_id}/follow-up", response_model=FollowUpQuestionResult)
-async def create_follow_up_question(
+@router.post("/{job_id}/reactive", response_model=ReactiveQuestionsResult)
+async def create_reactive_questions(
     job_id: str,
-    request: FollowUpQuestionRequest,
+    request: ReactiveQuestionRequest,
     db: AsyncIOMotorDatabase = Depends(get_db),
-) -> FollowUpQuestionResult:
+) -> ReactiveQuestionsResult:
     if not ObjectId.is_valid(job_id):
         raise HTTPException(
             status_code=400,
@@ -107,12 +110,14 @@ async def create_follow_up_question(
         )
 
     try:
-        return await generate_follow_up_question(
+        return await generate_reactive_questions(
             job_title=job.get("title", ""),
             job_description=description,
             transcript=(
                 f"{request.interview_context}\nCandidate: {request.candidate_response}"
             ).strip(),
+            candidate_response=request.candidate_response.strip(),
+            section_context=request.section_context.strip(),
         )
 
     except RuntimeError as error:
@@ -122,11 +127,11 @@ async def create_follow_up_question(
         ) from error
 
     except Exception as error:
-        print("FOLLOW-UP QUESTION ERROR:", repr(error))
+        print("REACTIVE QUESTION ERROR:", repr(error))
 
         raise HTTPException(
             status_code=502,
-            detail=f"Could not generate follow-up question: {error}",
+            detail=f"Could not generate questions: {error}",
         ) from error
 
 

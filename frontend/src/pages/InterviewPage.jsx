@@ -57,6 +57,7 @@ export default function InterviewPage() {
     jobId,
     candId,
     cvAnalysis,
+    cvAnalysisLoaded,
     isCompleted,
     setIsCompleted,
     intvStatus,
@@ -77,6 +78,22 @@ export default function InterviewPage() {
     resumeSection,
     doneSection,
   } = useInterviewSections(id, { serverData, timerRef, intvStatus });
+
+  // The interview section currently running/paused, kept in a ref so the
+  // question generator can steer follow-ups to fit where the interview is.
+  const activeSectionRef = useRef(null);
+  useEffect(() => {
+    const idx = sectionStates.findIndex(
+      (st) => st.status === "running" || st.status === "paused"
+    );
+    activeSectionRef.current =
+      idx === -1
+        ? null
+        : {
+            name: sections[idx]?.name || "",
+            description: sections[idx]?.description || "",
+          };
+  }, [sections, sectionStates]);
 
   const {
     transcript,
@@ -111,14 +128,21 @@ export default function InterviewPage() {
     questionsError,
     similarQuestionId,
     displayedQuestions,
-    generateFollowUpQuestions,
+    generateReactiveQuestions,
     generateMoreLike,
     ignoreQuestion,
-  } = useInterviewQuestions(jobId, { isCompleted, intvStatus, transcriptRef });
+  } = useInterviewQuestions(jobId, {
+    isCompleted,
+    intvStatus,
+    transcriptRef,
+    activeSectionRef,
+    cvQuestions: cvAnalysis?.interview_questions,
+    cvAnalysisLoaded,
+  });
 
   useEffect(() => {
-    generateFollowUpRef.current = generateFollowUpQuestions;
-  }, [generateFollowUpQuestions]);
+    generateFollowUpRef.current = generateReactiveQuestions;
+  }, [generateReactiveQuestions]);
 
   const {
     isMicActive,

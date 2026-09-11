@@ -1,14 +1,28 @@
 import { useEffect, useState } from "react";
 import { badge, button } from "../../styles/layout";
 
+// Three topic categories, matching the CV-analysis report. US "behavioral" and
+// anything unexpected fold into behavioural.
+const CATEGORY_META = {
+  technical: { label: "Technical", color: "bg-mint-100 text-mint-700" },
+  behavioural: { label: "Behavioural", color: "bg-sky-100 text-sky-700" },
+  experience: { label: "Experience", color: "bg-amber-100 text-amber-700" },
+};
+
 export function normaliseQuestion(question, index = 0, isFollowUp = false, isNew = false) {
-  const isTechnical = question.category === "technical";
+  const value =
+    question.category === "technical"
+      ? "technical"
+      : question.category === "experience"
+      ? "experience"
+      : "behavioural";
+  const meta = CATEGORY_META[value];
 
   return {
     id: `${Date.now()}-${index}-${Math.random()}`,
-    category: isTechnical ? "Technical" : "Behavioural",
-    categoryValue: isTechnical ? "technical" : "behavioural",
-    categoryColor: isTechnical ? "bg-mint-100 text-mint-700" : "bg-sky-100 text-sky-700",
+    category: meta.label,
+    categoryValue: value,
+    categoryColor: meta.color,
     text: question.question,
     why: question.reason,
     isFollowUp,
