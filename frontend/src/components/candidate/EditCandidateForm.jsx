@@ -48,8 +48,6 @@ export default function EditCandidateForm({
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
 
-  const canManageCandidates =  user?.role === 'admin' || user?.role === 'recruiter'
-
   useEffect(() => {
     async function loadInterviewers() {
       if (!user?.comp_id) return
