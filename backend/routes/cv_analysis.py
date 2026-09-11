@@ -51,6 +51,7 @@ from models.cv_analysis import (
     CvAnalysisPositionFit,
     CvAnalysisQuestion,
 )
+from routes._scoping import assert_jobcand_in_company
 from services.file_storage import delete_upload, read_bytes, save_bytes, save_upload
 from services.gemini_service import analyse_cv
 
@@ -144,23 +145,8 @@ def _serialise(doc: dict, *, cached: bool = False) -> CvAnalysisOut:
     )
 
 
-async def _assert_jobcand_in_company(db, jobcand_id: str, comp_id: ObjectId) -> None:
-    """Tenant guard: 404 unless the job-candidate link's job belongs to the
-    caller's company (404 rather than 403 so link ids can't be probed)."""
-    if not ObjectId.is_valid(jobcand_id):
-        raise HTTPException(status_code=400, detail="Invalid jobcand_id")
-    link = await db.job_candidates.find_one(
-        {"_id": ObjectId(jobcand_id)}, {"job_id": 1}
-    )
-    job_id = (link or {}).get("job_id")
-    if (
-        not job_id
-        or not ObjectId.is_valid(job_id)
-        or not await db.jobs.find_one(
-            {"_id": ObjectId(job_id), "comp_id": comp_id}, {"_id": 1}
-        )
-    ):
-        raise HTTPException(status_code=404, detail="Job-candidate link not found")
+# Tenant guard lives in routes/_scoping.py now.
+_assert_jobcand_in_company = assert_jobcand_in_company
 
 
 async def _lookup_jobcand_context(jobcand_id: str) -> tuple[dict, dict, dict]:

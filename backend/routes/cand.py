@@ -21,6 +21,10 @@ from dependencies import get_current_comp_id
 from models.candidate import (
     CandidateCreate,
     CandidateCreateForJob,
+    CandidateDetailInterviewer,
+    CandidateDetailJob,
+    CandidateDetailJobCandidate,
+    CandidateDetailOut,
     CandidateOut,
     CandidateUpdate,
 )
@@ -528,6 +532,99 @@ async def get_candidate(
         )
 
     return candidate_helper(candidate)
+
+
+@router.get("/{cand_id}/detail", response_model=CandidateDetailOut)
+async def get_candidate_detail(
+    cand_id: str,
+    job_id: str,
+    comp_id: ObjectId = Depends(get_current_comp_id),
+) -> CandidateDetailOut:
+    """Everything the candidate-detail screen renders, in one response:
+    candidate + the selected job + their job-candidate link (ratings / rank /
+    plan) + the interview for that pair + the interviewer's name + CV
+    analysis. Replaces the page's 5-way Promise.all plus two follow-up calls.
+
+    Cross-tenant candidate or job -> 404 (never 403) so ids can't be probed.
+    Related slices (link, interview, interviewer, analysis) are best-effort
+    and degrade to null."""
+    # Deferred imports: interview_helper lives in the heavy interviews route
+    # module and _serialise pulls in Gemini config - import lazily to avoid
+    # an import cycle and keep this module light.
+    from routes.cv_analysis import _serialise
+    from routes.interview import interview_helper
+
+    db = get_db()
+
+    if not ObjectId.is_valid(cand_id):
+        raise HTTPException(status_code=400, detail="Invalid candidate id.")
+    if not ObjectId.is_valid(job_id):
+        raise HTTPException(status_code=400, detail="Invalid job id.")
+
+    candidate = await db.candidates.find_one(
+        {"_id": ObjectId(cand_id), "comp_id": comp_id}
+    )
+    if not candidate:
+        raise HTTPException(status_code=404, detail="Candidate not found.")
+
+    job = await db.jobs.find_one({"_id": ObjectId(job_id), "comp_id": comp_id})
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found.")
+
+    jobcand_ctx = None
+    cv_analysis_out = None
+    link = await db.job_candidates.find_one({"cand_id": cand_id, "job_id": job_id})
+    if link:
+        jobcand_id = str(link["_id"])
+        jobcand_ctx = CandidateDetailJobCandidate(
+            jobcand_id=jobcand_id,
+            cand_id=str(link.get("cand_id", cand_id)),
+            job_id=str(link.get("job_id", job_id)),
+            status=link.get("status"),
+            ratings=link.get("ratings"),
+            rank=link.get("rank"),
+            plan_sections=link.get("plan_sections"),
+        )
+        analysis = await db.cv_analyses.find_one({"jobcand_id": jobcand_id})
+        if analysis:
+            try:
+                cv_analysis_out = _serialise(analysis, cached=True)
+            except Exception:
+                logger.warning(
+                    "Dropping unparseable CV analysis for jobcand %s",
+                    jobcand_id,
+                    exc_info=True,
+                )
+
+    interview_doc = await db.interviews.find_one(
+        {"cand_id": cand_id, "job_id": job_id}
+    )
+    interview_out = interview_helper(interview_doc) if interview_doc else None
+
+    interviewer_ctx = None
+    if interview_doc:
+        iu = await db.interview_users.find_one(
+            {"intv_id": str(interview_doc["_id"])}, {"user_id": 1}
+        )
+        user_id = (iu or {}).get("user_id")
+        if user_id and ObjectId.is_valid(str(user_id)):
+            user = await db.users.find_one(
+                {"_id": ObjectId(str(user_id))}, {"full_name": 1, "username": 1}
+            )
+            if user:
+                interviewer_ctx = CandidateDetailInterviewer(
+                    user_id=str(user["_id"]),
+                    full_name=user.get("full_name") or user.get("username"),
+                )
+
+    return CandidateDetailOut(
+        candidate=candidate_helper(candidate),
+        job=CandidateDetailJob(job_id=str(job["_id"]), title=job.get("title")),
+        job_candidate=jobcand_ctx,
+        interview=interview_out,
+        interviewer=interviewer_ctx,
+        cv_analysis=cv_analysis_out,
+    )
 
 
 @router.patch("/{cand_id}", response_model=CandidateOut)

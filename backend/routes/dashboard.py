@@ -14,7 +14,6 @@ from datetime import datetime, timedelta, timezone
 
 from bson import ObjectId
 from fastapi import APIRouter, Depends
-from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from database import get_db
 from dependencies import get_current_comp_id, get_current_user
@@ -24,7 +23,6 @@ router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
 
 @router.get("/summary")
 async def get_summary(
-    db: AsyncIOMotorDatabase = Depends(get_db),
     user: dict = Depends(get_current_user),
     comp_id: ObjectId = Depends(get_current_comp_id),
 ):
@@ -54,6 +52,7 @@ async def get_summary(
     Today is taken in UTC for now - swap to the company's timezone once
     that becomes a stored field on the company document.
     """
+    db = get_db()
     user_id_str = str(user["_id"])
 
     # 1. Interviews this user is assigned to (via interview_users links).

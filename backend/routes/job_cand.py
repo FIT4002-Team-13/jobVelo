@@ -23,10 +23,12 @@ from database import get_db
 from dependencies import get_current_comp_id
 from models.job_candidate import (
     JobCandidateCreate,
+    JobCandidateFlatOut,
     JobCandidateOut,
     JobCandidatePlanUpdate,
     JobCandidateScoreUpdate,
 )
+from routes._scoping import link_in_company
 from services.openai_service import generate_interview_plan
 
 logger = logging.getLogger(__name__)
@@ -178,17 +180,10 @@ async def create_job_candidate(
     return job_candidate_helper(created_job_candidate)
 
 
-# Helper: confirm a job_candidates link belongs to the caller's company by
-# walking link -> job -> comp_id. Used by the per-link read/update routes so
-# they can't be used to read or score another company's candidates.
-async def _link_in_company(db, link: dict, comp_id: ObjectId) -> bool:
-    job_id = link.get("job_id")
-    if not job_id or not ObjectId.is_valid(job_id):
-        return False
-    job = await db.jobs.find_one(
-        {"_id": ObjectId(job_id), "comp_id": comp_id}, {"_id": 1}
-    )
-    return job is not None
+# Confirm a job_candidates link belongs to the caller's company (walks
+# link -> job -> comp_id). Lives in routes/_scoping.py now; aliased so the
+# per-link read/update routes below don't churn.
+_link_in_company = link_in_company
 
 
 @router.get("/by-job/{job_id}", response_model=list[JobCandidateOut])
@@ -208,10 +203,10 @@ async def list_job_candidates_by_job(
     return [job_candidate_helper(doc) for doc in job_candidates]
 
 
-@router.get("")
+@router.get("", response_model=list[JobCandidateFlatOut])
 async def list_job_candidates_flat(
     comp_id: ObjectId = Depends(get_current_comp_id),
-) -> list[dict]:
+) -> list[JobCandidateFlatOut]:
     """Flat enumeration of the CALLER'S company's job-candidate links,
     joined with the job title + candidate name.
 
@@ -260,21 +255,21 @@ async def list_job_candidates_flat(
         )
     }
 
-    out: list[dict] = []
+    out: list[JobCandidateFlatOut] = []
     for link in links:
         job = jobs_by_id.get(str(link["job_id"]))
         cand = cands_by_id.get(str(link["cand_id"]))
         out.append(
-            {
-                "jobcand_id": str(link["_id"]),
-                "job_id": str(link["job_id"]),
-                "cand_id": str(link["cand_id"]),
-                "job_title": (job or {}).get("title", "(missing job)"),
-                "cand_full_name": (cand or {}).get("cand_full_name")
+            JobCandidateFlatOut(
+                jobcand_id=str(link["_id"]),
+                job_id=str(link["job_id"]),
+                cand_id=str(link["cand_id"]),
+                job_title=(job or {}).get("title", "(missing job)"),
+                cand_full_name=(cand or {}).get("cand_full_name")
                 or (cand or {}).get("name", "(unknown candidate)"),
-                "status": link.get("status"),
-                "has_analysis": str(link["_id"]) in analysed_ids,
-            }
+                status=link.get("status"),
+                has_analysis=str(link["_id"]) in analysed_ids,
+            )
         )
     return out
 

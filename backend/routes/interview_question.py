@@ -1,9 +1,9 @@
 from bson import ObjectId
 from fastapi import APIRouter, Depends, HTTPException
-from motor.motor_asyncio import AsyncIOMotorDatabase
 from pydantic import BaseModel
 
 from database import get_db
+from dependencies import get_current_comp_id
 from models.interview_question import (
     FollowUpQuestionResult,
     SimilarQuestion,
@@ -31,8 +31,9 @@ router = APIRouter(prefix="/api/interview-questions", tags=["interview_questions
 )
 async def suggest_questions(
     job_id: str,
-    db: AsyncIOMotorDatabase = Depends(get_db),
+    comp_id: ObjectId = Depends(get_current_comp_id),
 ) -> SuggestedQuestionsList:
+    db = get_db()
     # check if the job ID is a valid object
     if not ObjectId.is_valid(job_id):
         raise HTTPException(
@@ -40,7 +41,7 @@ async def suggest_questions(
             detail="Invalid job ID",
         )
 
-    job = await db.jobs.find_one({"_id": ObjectId(job_id)})
+    job = await db.jobs.find_one({"_id": ObjectId(job_id), "comp_id": comp_id})
 
     if job is None:
         raise HTTPException(
@@ -76,15 +77,16 @@ async def suggest_questions(
 async def create_follow_up_question(
     job_id: str,
     request: FollowUpQuestionRequest,
-    db: AsyncIOMotorDatabase = Depends(get_db),
+    comp_id: ObjectId = Depends(get_current_comp_id),
 ) -> FollowUpQuestionResult:
+    db = get_db()
     if not ObjectId.is_valid(job_id):
         raise HTTPException(
             status_code=400,
             detail="Invalid job ID",
         )
 
-    job = await db.jobs.find_one({"_id": ObjectId(job_id)})
+    job = await db.jobs.find_one({"_id": ObjectId(job_id), "comp_id": comp_id})
 
     if not job:
         raise HTTPException(
@@ -132,15 +134,18 @@ async def create_follow_up_question(
 
 @router.post("/{job_id}/similar", response_model=SimilarQuestionResult)
 async def create_similar_question(
-    job_id: str, request: SimilarQuestion, db: AsyncIOMotorDatabase = Depends(get_db)
+    job_id: str,
+    request: SimilarQuestion,
+    comp_id: ObjectId = Depends(get_current_comp_id),
 ):
+    db = get_db()
     if not ObjectId.is_valid(job_id):
         raise HTTPException(
             status_code=400,
             detail="Invalid job ID",
         )
 
-    job = await db.jobs.find_one({"_id": ObjectId(job_id)})
+    job = await db.jobs.find_one({"_id": ObjectId(job_id), "comp_id": comp_id})
 
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")

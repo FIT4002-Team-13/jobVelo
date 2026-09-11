@@ -5,6 +5,9 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
 
+from models.cv_analysis import CvAnalysisOut
+from models.job_candidate import CandidateRatings
+
 # Interview cycle for scheduling + running + post-interview state.
 InterviewStatus = Literal[
     "not_scheduled", "scheduled", "in_progress", "completed", "cancelled"
@@ -204,3 +207,41 @@ class InterviewOut(BaseModel):
     intv_bias_incidents: list[BiasIncident] = Field(default_factory=list)
     intv_created_at: datetime
     intv_updated_at: datetime
+
+
+# ── Aggregate "view" model for the interview screen ─────────────────────────
+# One response that carries everything the live-interview page needs, so the
+# frontend stops fanning /interviews/{id} out into job + candidate +
+# job-candidate + cv-analysis + interviewer follow-up requests.
+
+
+class InterviewContextJob(BaseModel):
+    job_id: str
+    title: str | None = None
+
+
+class InterviewContextCandidate(BaseModel):
+    cand_id: str
+    cand_full_name: str | None = None
+    cand_cv_url: str | None = None
+
+
+class InterviewContextJobCandidate(BaseModel):
+    jobcand_id: str
+    plan_sections: list[dict] | None = None
+    ratings: CandidateRatings | None = None
+    rank: int | None = None
+
+
+class InterviewContextInterviewer(BaseModel):
+    user_id: str
+    full_name: str | None = None
+
+
+class InterviewContextOut(BaseModel):
+    interview: InterviewOut
+    job: InterviewContextJob | None = None
+    candidate: InterviewContextCandidate | None = None
+    job_candidate: InterviewContextJobCandidate | None = None
+    cv_analysis: CvAnalysisOut | None = None
+    interviewer: InterviewContextInterviewer | None = None

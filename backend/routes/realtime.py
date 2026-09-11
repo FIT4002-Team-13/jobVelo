@@ -10,7 +10,8 @@ from services.deepgram_service import DeepgramSession
 from services.openai_service import check_bias
 
 logger = logging.getLogger(__name__)
-router = APIRouter()
+# No prefix: the WS path is hard-coded below. tags= only groups it in /docs.
+router = APIRouter(tags=["realtime"])
 
 
 @router.websocket("/api/realtime/transcribe")

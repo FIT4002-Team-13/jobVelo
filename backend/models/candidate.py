@@ -5,6 +5,10 @@ from typing import Literal
 
 from pydantic import BaseModel, EmailStr, Field, field_validator
 
+from models.cv_analysis import CvAnalysisOut
+from models.interview import InterviewOut
+from models.job_candidate import CandidateRatings
+
 ALLOWED_EXTENSIONS = {".pdf", ".doc", ".docx"}
 
 # Rolled-up status used by the dashboard candidates list. A candidate can be
@@ -96,3 +100,37 @@ class CandidateOut(BaseModel):
     # Rolled-up status across all of this candidate's job_candidates links.
     # None means the candidate has no link yet (profile-only).
     cand_status: CandidateRollupStatus | None = None
+
+
+# ── Aggregate "view" model for the candidate-detail screen ──────────────────
+# Collapses that page's Promise.all of candidate + job-candidates + interviews
+# + job (+ a follow-up interview-users + users pair) into one response.
+
+
+class CandidateDetailJob(BaseModel):
+    job_id: str
+    title: str | None = None
+
+
+class CandidateDetailJobCandidate(BaseModel):
+    jobcand_id: str
+    cand_id: str
+    job_id: str
+    status: str | None = None
+    ratings: CandidateRatings | None = None
+    rank: int | None = None
+    plan_sections: list[dict] | None = None
+
+
+class CandidateDetailInterviewer(BaseModel):
+    user_id: str
+    full_name: str | None = None
+
+
+class CandidateDetailOut(BaseModel):
+    candidate: CandidateOut
+    job: CandidateDetailJob
+    job_candidate: CandidateDetailJobCandidate | None = None
+    interview: InterviewOut | None = None
+    interviewer: CandidateDetailInterviewer | None = None
+    cv_analysis: CvAnalysisOut | None = None
