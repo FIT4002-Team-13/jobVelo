@@ -10,6 +10,7 @@ import { button, page } from '../styles/layout'
 import { JOB_STATUS_OPTIONS } from '../utils/constants.js'
 import { useAsync } from '../hooks/useAsync.js'
 import { useTableControls } from '../hooks/useTableControls.js'
+import { useAuth } from '../lib/AuthContext.jsx'
 
 // One company-wide interviews fetch instead of one per card (the old
 // per-card version was 50 requests for 50 jobs). Best-effort: if it fails,
@@ -39,7 +40,8 @@ export default function JobsPage() {
   const { data, setData, loading, error } = useAsync(loadJobsData, [])
   const jobs = data?.jobs ?? []
   const completedByJob = data?.completedByJob ?? {}
-
+  const { user } = useAuth()
+  const canManageJobs = user?.role === 'admin' || user?.role === 'recruiter'
   const [formModal, setFormModal]   = useState(null)
   const [deleteTarget, setDeleteTarget] = useState(null)
 
@@ -103,13 +105,15 @@ export default function JobsPage() {
             <h1 className="text-4xl font-extrabold tracking-tight text-neutral-800">Job Posting</h1>
             <p className="text-xs text-neutral-400 mt-1">Manage your open positions</p>
           </div>
-          <button
-            type="button"
-            onClick={() => setFormModal('create')}
-            className={`flex items-center gap-2 ${button.primary}`}
-          >
-            <span className="text-lg leading-none">+</span> Create Job
-          </button>
+          {canManageJobs && (
+            <button
+              type="button"
+              onClick={() => setFormModal('create')}
+              className={`flex items-center gap-2 ${button.primary}`}
+            >
+              <span className="text-lg leading-none">+</span> Create Job
+            </button>
+          )}
         </header>
 
         <main className="flex-1 overflow-y-auto px-10 py-8">
@@ -135,9 +139,12 @@ export default function JobsPage() {
             : (
               <div className="grid grid-cols-3 gap-4">
                 {table.paged.map(job => (
-                  <JobCard key={job.id} job={job}
-                    onEdit={j => setFormModal(j)}
-                    onDelete={j => setDeleteTarget(j)} />
+                  <JobCard 
+                  key={job.id} 
+                  job={job}
+                  onEdit={canManageJobs ? j => setFormModal(j) : undefined}
+                  onDelete={canManageJobs ? j => setDeleteTarget(j) : undefined}
+                  />
                 ))}
               </div>
             )
