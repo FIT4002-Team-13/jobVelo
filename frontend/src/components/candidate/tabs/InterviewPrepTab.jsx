@@ -1,5 +1,5 @@
-import { card, button, flex } from "../styles/layout";
-import FitVerdict from "../components/candidate/FitVerdict.jsx";
+import { card, button, flex } from "../../../styles/layout";
+import FitVerdict from "../FitVerdict.jsx";
 
 function PrepInsightList({ title, items, dot }) {
   if (!items?.length) return null;
@@ -25,17 +25,7 @@ function PrepInsightList({ title, items, dot }) {
   );
 }
 
-export default function InterviewPrepPage({
-  analysis,
-  scheduledLabel,
-  onBegin,
-  onViewFullAnalysis,
-  isMicActive = false,
-  isScreenSharing = false,
-  audioStatus,
-  onSetupRecording,
-  onStopRecording,
-}) {
+export default function InterviewPrepTab({ analysis, scheduledLabel, onBegin, onViewFullAnalysis }) {
   const analysisQuestions = analysis?.interview_questions ?? [];
 
   return (
@@ -111,62 +101,11 @@ export default function InterviewPrepPage({
           </div>
         )}
 
-        <div className={`${card.base} ${flex.col} gap-3`}>
-          <h3 className="text-sm font-bold uppercase tracking-wide text-neutral-500">Recording Setup</h3>
-
-          <div className={`${flex.row} items-center gap-3`}>
-            <span
-              className={`w-2 h-2 rounded-pill shrink-0 transition-colors ${
-                isMicActive ? "bg-mint-500" : "bg-neutral-300"
-              }`}
-            />
-            <span className="flex-1 text-sm text-neutral-700">
-              {isMicActive && isScreenSharing
-                ? "Mic + screen share active"
-                : isMicActive
-                ? "Mic active"
-                : "Microphone & screen share"}
-            </span>
-            {isMicActive ? (
-              <button
-                type="button"
-                onClick={onStopRecording}
-                className="text-xs font-medium text-coral-500 hover:text-coral-600"
-              >
-                Stop
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={onSetupRecording}
-                className={`${button.outline} !py-1 !px-3 text-xs`}
-              >
-                Set up recording
-              </button>
-            )}
-          </div>
-
-          {audioStatus && audioStatus !== "Ready to start recording" && (
-            <p
-              className={`text-xs ${
-                /denied|error|unable|no (microphone|screen)|cancelled/i.test(audioStatus)
-                  ? "text-coral-500"
-                  : "text-neutral-400"
-              }`}
-            >
-              {audioStatus}
-            </p>
-          )}
-        </div>
-
         <div className={`${flex.col} items-center gap-2 pt-2`}>
           <button
             type="button"
             onClick={onBegin}
-            disabled={!isMicActive}
-            className={`${flex.row} gap-2 ${button.primary} !px-8 !py-3 text-base transition-opacity ${
-              !isMicActive ? "opacity-40 cursor-not-allowed" : ""
-            }`}
+            className={`${flex.row} gap-2 ${button.primary} !px-8 !py-3 text-base`}
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
               <polygon points="5 3 19 12 5 21 5 3" />
@@ -174,9 +113,7 @@ export default function InterviewPrepPage({
             Begin Interview
           </button>
           <p className="text-xs text-neutral-400">
-            {isMicActive
-              ? "Ready — click to open the live transcription workspace."
-              : "Set up recording above to enable this button."}
+            Opens the live recording workspace, where you&apos;ll grant mic access to start.
           </p>
         </div>
       </div>

@@ -63,9 +63,11 @@ export function useAudioCapture({
       setTimer(finalSeconds);
       return;
     }
-    // Mic access (and the elapsed timer) should only start once the
-    // interviewer clicks "Begin Interview" - not the moment this page's
-    // data loads, which happens while still showing the prep screen.
+    // This hook only ever mounts on the live interview page, reached once
+    // "Begin Interview" has already flipped the status server-side - so
+    // intvStatus is already past "scheduled"/"not_scheduled" by the time we
+    // get here. Mic access itself is gated behind the Recording Setup modal
+    // (an explicit user gesture), not started automatically here.
     if (intvStatus === "scheduled" || intvStatus === "not_scheduled") return;
     autoStartedRef.current = true;
 
@@ -73,18 +75,12 @@ export function useAudioCapture({
     accumulatedRef.current = priorSeconds;
     timerRef.current = priorSeconds;
     setTimer(priorSeconds);
-    // Anchor the timer to when the interview officially begins, regardless
-    // of whether mic/screen were pre-started from the prep screen.
+    // Anchor the timer to when the interview officially began.
     startTimeRef.current = Date.now() - priorSeconds * 1000;
 
-    // Allow audio to flow to the transcription WebSocket now that the
-    // interview has officially begun (not during prep-screen setup).
+    // Allow audio to flow to the transcription WebSocket once the mic is
+    // armed via the Recording Setup modal.
     transcriptionActiveRef.current = true;
-
-    // Skip mic start if the user already granted it from the prep screen.
-    if (!micStreamRef.current) {
-      startMicOnly().catch(() => {});
-    }
   }, [serverData, intvStatus]);
 
   useEffect(() => {
