@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { flex } from "../styles/layout";
 import Sidebar from "../components/common/Sidebar";
 import { useAuth } from "../lib/AuthContext.jsx";
@@ -9,6 +9,7 @@ import { useToast } from "../components/common/ToastContext.jsx";
 import { useInterviewData } from "../hooks/useInterviewData.js";
 import { useTranscript } from "../hooks/useTranscript.js";
 import { parseTimestamp } from "../utils/time.js";
+import StartInterviewModal from "../components/job-candidate/StartInterviewModal.jsx";
 
 import ProfileTab from "../components/candidate/tabs/ProfileTab.jsx";
 import CvTab from "../components/candidate/tabs/CvTab.jsx";
@@ -21,15 +22,26 @@ export default function CandidatePage() {
   const navigate = useNavigate();
   const toast = useToast();
   const { user } = useAuth();
+  const [searchParams] = useSearchParams();
+
+  // A link into this page (e.g. a CV/Cover Letter "View" button elsewhere in
+  // the app) can request an initial tab via ?view= - applied once, the
+  // first time the phase resolves, then the normal profile-on-load default
+  // takes back over for any later phase change.
+  const VALID_TABS = ["profile", "transcript", "cv", "cover-letter"];
+  const requestedViewRef = useRef(
+    VALID_TABS.includes(searchParams.get("view")) ? searchParams.get("view") : null
+  );
 
   const beginningRef = useRef(false);
   const startTimeRef = useRef(Date.now());
   const timerRef = useRef(0);
   const generateFollowUpRef = useRef(null);
-  const [centerView, setCenterView] = useState("profile");
+  const [centerView, setCenterView] = useState(requestedViewRef.current || "profile");
   const [cvUploading, setCvUploading] = useState(false);
   const [clUploading, setClUploading] = useState(false);
   const [prefetchedReport, setPrefetchedReport] = useState(null);
+  const [showStartWarning, setShowStartWarning] = useState(false);
 
   const {
     serverData,
@@ -69,7 +81,13 @@ export default function CandidatePage() {
   }, [phase, id, navigate]);
 
   useEffect(() => {
-    setCenterView("profile");
+    if (!phase) return;
+    if (requestedViewRef.current) {
+      setCenterView(requestedViewRef.current);
+      requestedViewRef.current = null;
+    } else {
+      setCenterView("profile");
+    }
   }, [phase]);
 
   const {
@@ -289,7 +307,7 @@ export default function CandidatePage() {
               jobCand={jobCand}
               interviewerName={interviewerLabel}
               cvAnalysis={cvAnalysis}
-              onStartInterview={phase === "prep" ? beginInterview : null}
+              onStartInterview={phase === "prep" ? () => setShowStartWarning(true) : null}
             />
           )}
 
@@ -297,7 +315,7 @@ export default function CandidatePage() {
             <InterviewPrepTab
               analysis={cvAnalysis}
               scheduledLabel={scheduledLabel}
-              onBegin={beginInterview}
+              onBegin={() => setShowStartWarning(true)}
               onViewFullAnalysis={
                 jobCand?.jobcand_id
                   ? () => navigate(`/cv-analysis/${jobCand.jobcand_id}`)
@@ -340,6 +358,18 @@ export default function CandidatePage() {
           )}
         </div>
       </div>
+
+      {showStartWarning && (
+        <StartInterviewModal
+          candidate={{ name: candidateName, scheduled_at: intvDateTime }}
+          jobTitle={candidateRole}
+          onClose={() => setShowStartWarning(false)}
+          onConfirm={() => {
+            setShowStartWarning(false);
+            beginInterview();
+          }}
+        />
+      )}
     </div>
   );
 }

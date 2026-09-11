@@ -125,7 +125,11 @@ export default function JobDetailPage() {
           (i) => i.intv_status === "in_progress" || i.intv_status === "scheduled"
         );
         if (resumable) {
-          navigate(`/interview/${resumable.intv_id}`);
+          navigate(
+            resumable.intv_status === "in_progress"
+              ? `/interview/${resumable.intv_id}/live`
+              : `/interview/${resumable.intv_id}`
+          );
           return;
         }
       }
@@ -146,7 +150,7 @@ export default function JobDetailPage() {
         setStartTarget(null);
         return;
       }
-      navigate(`/interview/${interview.intv_id}`);
+      navigate(`/interview/${interview.intv_id}/live`);
     } catch {
       // Network failure used to leave the confirm modal stuck open with an
       // unhandled rejection in the console.
@@ -426,7 +430,7 @@ export default function JobDetailPage() {
             onStartInterview={(c) => setStartTarget(c)}
             onEditCandidate={(c) => setEditTarget(c)}
             onDelete={(c) => setDeleteTarget(c)}
-            onOpenInterview={(intvId) => navigate(`/interview/${intvId}`)}
+            onOpenInterview={(intvId) => navigate(`/interview/${intvId}?view=transcript`)}
             onOpenCandidate={(c) => {
               navigate(`/candidates/${c.cand_id}/${id}`)
             }}
