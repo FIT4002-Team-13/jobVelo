@@ -48,6 +48,8 @@ export default function EditCandidateForm({
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
 
+  const canManageCandidates =  user?.role === 'admin' || user?.role === 'recruiter'
+
   useEffect(() => {
     async function loadInterviewers() {
       if (!user?.comp_id) return
@@ -278,33 +280,35 @@ export default function EditCandidateForm({
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className={form.label}>Interviewer</label>
-              <InterviewerCombobox
-                value={{
-                  label: formState.interviewer,
-                  userId: formState.interviewer_user_id,
-                }}
-                onChange={({ label, userId }) => {
-                  setField('interviewer', label)
-                  setField('interviewer_user_id', userId)
-                }}
-                options={interviewers}
-                onOpenChange={setInterviewerOpen}
-              />
-            </div>
+          {user?.role === "recruiter" && (
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className={form.label}>Interviewer</label>
+                <InterviewerCombobox
+                  value={{
+                    label: formState.interviewer,
+                    userId: formState.interviewer_user_id,
+                  }}
+                  onChange={({ label, userId }) => {
+                    setField('interviewer', label)
+                    setField('interviewer_user_id', userId)
+                  }}
+                  options={interviewers}
+                  onOpenChange={setInterviewerOpen}
+                />
+              </div>
 
-            <div>
-              <label className={form.label}>Interview Date</label>
-              <input
-                type="datetime-local"
-                value={formState.scheduled_at}
-                onChange={(e) => setField('scheduled_at', e.target.value)}
-                className={form.input}
-              />
+              <div>
+                <label className={form.label}>Interview Date</label>
+                <input
+                  type="datetime-local"
+                  value={formState.scheduled_at}
+                  onChange={(e) => setField('scheduled_at', e.target.value)}
+                  className={form.input}
+                />
+              </div>
             </div>
-          </div>
+          )}
 
           {error && <p className={form.error}>{error}</p>}
 
