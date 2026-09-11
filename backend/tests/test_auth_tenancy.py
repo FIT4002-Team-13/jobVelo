@@ -24,6 +24,18 @@ async def _aiter(items):
     for item in items:
         yield item
 
+@pytest.fixture()
+def authed_recruiter(client):
+    comp_id = ObjectId()
+    user = {
+        "_id": ObjectId(),
+        "comp_id": comp_id,
+        "role": "recruiter",
+        "full_name": "Test Recruiter",
+    }
+    app.dependency_overrides[get_current_user] = lambda: user
+    yield comp_id, client
+    app.dependency_overrides.clear()
 
 def _cursor(items):
     """Mock for `collection.find(...).to_list(...)` call chains."""
@@ -66,6 +78,18 @@ def authed(client):
     yield comp_id, client
     app.dependency_overrides.clear()
 
+@pytest.fixture()
+def authed_recruiter(client):
+    comp_id = ObjectId()
+    user = {
+        "_id": ObjectId(),
+        "comp_id": comp_id,
+        "role": "recruiter",
+        "full_name": "Test Recruiter",
+    }
+    app.dependency_overrides[get_current_user] = lambda: user
+    yield comp_id, client
+    app.dependency_overrides.clear()
 
 # ── 1. Anonymous requests are rejected everywhere ────────────────────────────
 
@@ -229,8 +253,8 @@ def test_list_interviews_foreign_job_filter_returns_empty(authed):
     assert query["job_id"] == "__no_match__"
 
 
-def test_create_interview_foreign_job_is_404(authed):
-    _, client = authed
+def test_create_interview_foreign_job_is_404(authed_recruiter):
+    _, client = authed_recruiter
     mock_db = MagicMock()
     mock_db.jobs.find_one = AsyncMock(return_value=None)
 
@@ -248,9 +272,9 @@ def test_create_interview_foreign_job_is_404(authed):
     mock_db.interviews.insert_one.assert_not_called()
 
 
-def test_create_interview_foreign_candidate_is_404(authed):
+def test_create_interview_foreign_candidate_is_404(authed_recruiter):
     """Edge: the job is ours but the candidate belongs to another company."""
-    _, client = authed
+    _, client = authed_recruiter
     mock_db = MagicMock()
     mock_db.jobs.find_one = AsyncMock(return_value={"_id": ObjectId()})
     mock_db.candidates.find_one = AsyncMock(return_value=None)
@@ -476,8 +500,8 @@ def test_interview_users_by_user_foreign_user_is_404(authed):
     assert response.status_code == 404
 
 
-def test_interview_users_create_duplicate_is_400(authed):
-    _, client = authed
+def test_interview_users_create_duplicate_is_400(authed_recruiter):
+    _, client = authed_recruiter
     mock_db = _interview_users_db()
     mock_db.users.find_one = AsyncMock(return_value={"_id": ObjectId()})
     mock_db.interview_users.find_one = AsyncMock(return_value={"_id": ObjectId()})
@@ -492,10 +516,10 @@ def test_interview_users_create_duplicate_is_400(authed):
     mock_db.interview_users.insert_one.assert_not_called()
 
 
-def test_interview_users_create_succeeds(authed):
+def test_interview_users_create_succeeds(authed_recruiter):
     """Regression for the datetime.now(datetime.utc) crash: a valid create
     must reach 201, not 500."""
-    _, client = authed
+    _, client = authed_recruiter
     now = datetime.now(timezone.utc)
     link_id = ObjectId()
     user_id, intv_id = str(ObjectId()), str(ObjectId())
@@ -576,8 +600,8 @@ def _create_for_job_payload(job_id: str) -> dict:
     }
 
 
-def test_create_for_job_garbage_job_id_is_404(authed):
-    _, client = authed
+def test_create_for_job_garbage_job_id_is_404(authed_recruiter):
+    _, client = authed_recruiter
     with patch("routes.cand.get_db", return_value=MagicMock()):
         response = client.post(
             "/api/candidates/create-for-job",
@@ -586,8 +610,8 @@ def test_create_for_job_garbage_job_id_is_404(authed):
     assert response.status_code == 404
 
 
-def test_create_for_job_foreign_job_is_404(authed):
-    _, client = authed
+def test_create_for_job_foreign_job_is_404(authed_recruiter):
+    _, client = authed_recruiter
     mock_db = MagicMock()
     mock_db.jobs.find_one = AsyncMock(return_value=None)
 
