@@ -18,23 +18,30 @@ export function normaliseQuestion(question, index = 0, isFollowUp = false, isNew
 
 export function QuestionCard({ q, onMoreLike, onIgnore, isGeneratingSimilar }) {
   const [whyOpen, setWhyOpen] = useState(false);
-  const [glow, setGlow] = useState(Boolean(q.isNew));
+  // A calm, static "New" marker (no pulsing animation) that quietly clears
+  // itself, instead of the old looping glow border.
+  const [showNew, setShowNew] = useState(Boolean(q.isNew));
 
   useEffect(() => {
     if (!q.isNew) return undefined;
-    const t = setTimeout(() => setGlow(false), 6000);
+    const t = setTimeout(() => setShowNew(false), 3500);
     return () => clearTimeout(t);
   }, [q.isNew]);
 
   return (
     <div
       className={`flex w-[290px] shrink-0 flex-col rounded-2xl border bg-neutral-0 p-4 ${
-        glow ? "new-question-glow" : "border-neutral-200"
+        showNew ? "border-primary-300" : "border-neutral-200"
       }`}
     >
       <div className="mb-3 flex items-center justify-between gap-2 shrink-0">
         <div className="flex min-w-0 items-center gap-1.5">
           <span className={`${badge.sm} ${q.categoryColor}`}>{q.category}</span>
+          {showNew && (
+            <span className="inline-flex items-center rounded-pill bg-primary-500 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">
+              New
+            </span>
+          )}
           {q.isFollowUp && (
             <span className="inline-flex items-center gap-1 rounded-pill bg-primary-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-primary-600">
               <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -110,7 +117,7 @@ export function SuggestedQuestionDeck({
   onIgnore,
 }) {
   return (
-    <div className="card-flat flex flex-col flex-1 overflow-hidden">
+    <div className="card-flat flex flex-col flex-1 min-h-0 overflow-hidden">
       <div className="flex items-center justify-between border-b border-neutral-100 px-6 pt-3.5 pb-2.5 shrink-0">
         <h2 className="text-base font-semibold text-neutral-800">Suggested Questions</h2>
         {questions.length > 0 && (

@@ -377,7 +377,7 @@ export default function InterviewPage() {
             candidateLabel={candidateLabel}
           />
 
-          <div className={`flex-1 ${flex.col} gap-4 overflow-hidden`}>
+          <div className={`flex-1 ${flex.col} gap-4 overflow-hidden min-h-0`}>
             {sections.length > 0 && (
               <InterviewSectionTimeline
                 sections={sections}
