@@ -34,6 +34,7 @@ export default function AddCandidateForm({ jobs = [], fixedJobId = null, onClose
     async function loadInterviewers() {
       if (!user?.comp_id || user?.role !== "recruiter") return;
       try {
+        console.log('LOADING INTERVIEWERS + HIRING MANAGERS')
         const [interviewerRes, hiringManagerRes] = await Promise.all([
           authedFetch(`/api/users?role=interviewer`),
           authedFetch(`/api/users?role=hiring_manager`),
@@ -54,6 +55,8 @@ export default function AddCandidateForm({ jobs = [], fixedJobId = null, onClose
     }
     loadInterviewers()
   }, [user?.comp_id, user?.role]);
+
+  console.log('ADD CANDIDATE FORM MOUNTED')
 
   function setField(key, value) {
     setFormState((prev) => ({ ...prev, [key]: value }))

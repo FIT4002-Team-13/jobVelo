@@ -50,18 +50,28 @@ export default function EditCandidateForm({
 
   useEffect(() => {
     async function loadInterviewers() {
-      if (!user?.comp_id) return
+      if (!user?.comp_id || !['recruiter', 'admin'].includes(user?.role)) return
       try {
-        const res = await authedFetch(`/api/users?role=interviewer`)
-        if (!res.ok) throw new Error()
-        const data = await res.json()
-        setInterviewers(Array.isArray(data) ? data : [])
-      } catch {
+        const [interviewerRes, hiringManagerRes] = await Promise.all([
+          authedFetch('/api/users?role=interviewer'),
+          authedFetch('/api/users?role=hiring_manager'),
+        ])
+
+        if (!interviewerRes.ok || !hiringManagerRes.ok) throw new Error()
+
+        const interviewerData = await interviewerRes.json()
+        const hiringManagerData = await hiringManagerRes.json()
+
+        setInterviewers([
+          ...(Array.isArray(interviewerData) ? interviewerData : []),
+          ...(Array.isArray(hiringManagerData) ? hiringManagerData : []),
+        ])
+          } catch {
         setInterviewers([])
       }
     }
     loadInterviewers()
-  }, [user?.comp_id])
+  }, [user?.comp_id, user?.role])
 
   function setField(key, value) {
     setFormState((prev) => ({ ...prev, [key]: value }))
