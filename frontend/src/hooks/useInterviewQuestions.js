@@ -2,31 +2,92 @@ import { useState, useRef, useEffect } from "react";
 import { authedFetch } from "../lib/api.js";
 import { normaliseQuestion } from "../components/interview/InterviewQuestionDeck.jsx";
 
-export function useInterviewQuestions(jobId, { isCompleted, intvStatus, transcriptRef }) {
-  const [questions, setQuestions] = useState([]);
-  const [questionsLoading, setQuestionsLoading] = useState(false);
-  const [questionsError, setQuestionsError] = useState("");
+// One shared question pool holds prepared questions AND live follow-ups /
+// "more like this" together. New questions go to the FRONT (newest first); the
+// interviewer removes them by asking or ignoring; nothing is dropped
+// automatically except beyond a generous cap so the deck can't grow forever.
+const POOL_CAP = 12;
+
+// Spread a list of {category,...} across categories round-robin so the topic
+// mix is interleaved rather than grouped.
+function interleaveByCategory(list) {
+  const byCategory = new Map();
+  for (const q of list || []) {
+    if (!byCategory.has(q.category)) byCategory.set(q.category, []);
+    byCategory.get(q.category).push(q);
+  }
+  const out = [];
+  let addedAny = true;
+  while (addedAny) {
+    addedAny = false;
+    for (const bucket of byCategory.values()) {
+      const next = bucket.shift();
+      if (next) {
+        out.push(next);
+        addedAny = true;
+      }
+    }
+  }
+  return out;
+}
+
+export function useInterviewQuestions(
+  jobId,
+  { isCompleted, intvStatus, transcriptRef, activeSectionRef, cvQuestions, cvAnalysisLoaded }
+) {
+  const [pool, setPool] = useState([]);
+  const [poolLoading, setPoolLoading] = useState(false);
+  const [poolError, setPoolError] = useState("");
   const [similarQuestionId, setSimilarQuestionId] = useState(null);
-  const [followUpQuestions, setFollowUpQuestions] = useState([]);
-  const [, setFollowUpLoading] = useState(false);
 
-  const questionsRef = useRef([]);
-  const questionsRequestedJobRef = useRef(null);
-  const pendingCategoriesRef = useRef([]);
-  const followUpGeneratingRef = useRef(false);
-
-  const BASE_QUESTION_COUNT = 2;
+  const poolRef = useRef([]);
+  const initialRequestedRef = useRef(null);
+  const reactiveGeneratingRef = useRef(false);
 
   useEffect(() => {
-    questionsRef.current = questions;
-  }, [questions]);
+    poolRef.current = pool;
+  }, [pool]);
 
+  // Prepend freshly generated questions to the front of the shared pool.
+  function prependToPool(items) {
+    if (!items.length) return;
+    setPool((current) => {
+      const next = [...items, ...current].slice(0, POOL_CAP);
+      poolRef.current = next;
+      return next;
+    });
+  }
+
+  // Seed the pool once when the interview goes live. Prefer the candidate's
+  // CV-analysis questions (specific to their resume); fall back to
+  // job-description questions only when there's no analysis. We wait for the
+  // CV lookup to settle first so we don't fall back before it has loaded.
   useEffect(() => {
-    if (!jobId || isCompleted || intvStatus !== "in_progress" || questionsRequestedJobRef.current === jobId) return;
+    if (
+      !jobId ||
+      isCompleted ||
+      intvStatus !== "in_progress" ||
+      !cvAnalysisLoaded ||
+      initialRequestedRef.current === jobId
+    )
+      return;
 
-    questionsRequestedJobRef.current = jobId;
-    setQuestionsLoading(true);
-    setQuestionsError("");
+    initialRequestedRef.current = jobId;
+
+    // CV-analysis questions carry {category, question, rationale}; map rationale
+    // -> reason for the shared normaliser. If present, seed from them and skip
+    // the JD call entirely.
+    if (cvQuestions && cvQuestions.length) {
+      const seeded = interleaveByCategory(cvQuestions).map((q, i) =>
+        normaliseQuestion({ category: q.category, question: q.question, reason: q.rationale }, i)
+      );
+      poolRef.current = seeded;
+      setPool(seeded);
+      return;
+    }
+
+    setPoolLoading(true);
+    setPoolError("");
 
     authedFetch(`/api/interview-questions/${jobId}`, {
       method: "POST",
@@ -38,29 +99,27 @@ export function useInterviewQuestions(jobId, { isCompleted, intvStatus, transcri
         return data;
       })
       .then((data) => {
-        const behavioural = data.questions.filter((q) => q.category === "behavioural");
-        const technical = data.questions.filter((q) => q.category === "technical");
-        const interleaved = [];
-        const maxLen = Math.max(behavioural.length, technical.length);
-        for (let i = 0; i < maxLen; i += 1) {
-          if (behavioural[i]) interleaved.push(behavioural[i]);
-          if (technical[i]) interleaved.push(technical[i]);
-        }
-        setQuestions(interleaved.map((q, i) => normaliseQuestion(q, i)));
+        const seeded = interleaveByCategory(data.questions).map((q, i) => normaliseQuestion(q, i));
+        poolRef.current = seeded;
+        setPool(seeded);
       })
       .catch((error) => {
         console.error("Question generation failed", error);
-        setQuestionsError(error.message || "Unable to generate questions");
+        setPoolError(error.message || "Unable to generate questions");
       })
-      .finally(() => setQuestionsLoading(false));
-  }, [jobId, isCompleted, intvStatus]);
+      .finally(() => setPoolLoading(false));
+  }, [jobId, isCompleted, intvStatus, cvAnalysisLoaded, cvQuestions]);
 
-  async function generateFollowUpQuestions(candidateResponse) {
-    if (!jobId || !candidateResponse?.trim() || followUpGeneratingRef.current) return;
+  // React to the candidate's latest answer. The model returns 0..N questions,
+  // freely mixing "follow_up" (their answer was ambiguous) and "general" (they
+  // touched a JD-relevant topic) - or nothing when the answer was clear and
+  // off-scope. Whatever comes back is pushed to the FRONT of the flat pool with
+  // no cap on follow-ups and no ordering; older questions stay put (queue,
+  // don't drop). Single-flight only, so one call runs at a time.
+  async function generateReactiveQuestions(candidateResponse) {
+    if (!jobId || !candidateResponse?.trim() || reactiveGeneratingRef.current) return;
 
-    followUpGeneratingRef.current = true;
-    setFollowUpLoading(true);
-
+    reactiveGeneratingRef.current = true;
     try {
       const recentContext = transcriptRef.current
         .filter((e) => e.text)
@@ -68,117 +127,86 @@ export function useInterviewQuestions(jobId, { isCompleted, intvStatus, transcri
         .map((e) => `${e.speaker}: ${e.text}`)
         .join("\n");
 
-      const response = await authedFetch(`/api/interview-questions/${jobId}/follow-up`, {
+      const section = activeSectionRef?.current;
+      const sectionContext = section
+        ? `${section.name}${section.description ? ` - ${section.description}` : ""}`
+        : "";
+
+      const response = await authedFetch(`/api/interview-questions/${jobId}/reactive`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Accept: "application/json" },
         body: JSON.stringify({
           candidate_response: candidateResponse.trim(),
           interview_context: recentContext,
+          section_context: sectionContext,
         }),
       });
 
       const data = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(data.detail || "Follow-up question generation failed");
+      if (!response.ok) throw new Error(data.detail || "Question generation failed");
 
-      const newFollowUps = (data.questions || []).slice(0, 2).map((q, i) => normaliseQuestion(q, i, true, true));
-      setFollowUpQuestions((prev) => [...newFollowUps, ...prev].slice(0, 2));
+      const fresh = (data.questions || []).map((q, i) =>
+        normaliseQuestion(
+          { category: q.category, question: q.question, reason: q.reason },
+          i,
+          q.kind === "follow_up",
+          true
+        )
+      );
+      prependToPool(fresh);
     } catch (error) {
-      console.error("Follow-up question generation failed", error);
+      console.error("Reactive question generation failed", error);
     } finally {
-      setFollowUpLoading(false);
-      followUpGeneratingRef.current = false;
+      reactiveGeneratingRef.current = false;
     }
   }
 
+  // "More like this" -> a fresh variant pushed to the front of the pool.
   async function generateMoreLike(question) {
     if (!jobId || similarQuestionId) return;
 
     setSimilarQuestionId(question.id);
-    setQuestionsError("");
+    setPoolError("");
 
     try {
       const response = await authedFetch(`/api/interview-questions/${jobId}/similar`, {
         method: "POST",
         headers: { Accept: "application/json", "Content-Type": "application/json" },
-        body: JSON.stringify({ original_question: question.text, category: question.categoryValue }),
+        body: JSON.stringify({
+          original_question: question.text,
+          category: question.categoryValue,
+        }),
       });
 
       const data = await response.json();
       if (!response.ok) throw new Error(data.detail || "Similar question generation failed");
 
-      const similarQuestion = normaliseQuestion(data, 0, false, true);
-      setQuestions((current) => [similarQuestion, ...current].slice(0, 6));
+      prependToPool([normaliseQuestion(data, 0, question.isFollowUp, true)]);
     } catch (error) {
       console.error("Similar question generation failed", error);
-      setQuestionsError(error.message || "Unable to generate a similar question");
+      setPoolError(error.message || "Unable to generate a similar question");
     } finally {
       setSimilarQuestionId(null);
     }
   }
 
-  async function ignoreQuestion(question) {
-    if (!jobId) return;
-
-    if (question.isFollowUp) {
-      setFollowUpQuestions((current) => current.filter((q) => q.id !== question.id));
-      return;
-    }
-
-    const remaining = questionsRef.current.filter((q) => q.id !== question.id);
-    questionsRef.current = remaining;
-    setQuestions(remaining);
-    setQuestionsError("");
-
-    if (remaining.length >= BASE_QUESTION_COUNT) return;
-
-    const behInList = remaining.filter((q) => q.categoryValue === "behavioural").length;
-    const techInList = remaining.filter((q) => q.categoryValue === "technical").length;
-    const behPending = pendingCategoriesRef.current.filter((c) => c === "behavioural").length;
-    const techPending = pendingCategoriesRef.current.filter((c) => c === "technical").length;
-    const neededCategory = behInList + behPending <= techInList + techPending ? "behavioural" : "technical";
-
-    pendingCategoriesRef.current = [...pendingCategoriesRef.current, neededCategory];
-
-    try {
-      const response = await authedFetch(`/api/interview-questions/${jobId}/similar`, {
-        method: "POST",
-        headers: { Accept: "application/json", "Content-Type": "application/json" },
-        body: JSON.stringify({ original_question: question.text, category: neededCategory }),
-      });
-
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.detail || "Replacement question generation failed");
-
-      const replacement = normaliseQuestion(data, 0, false, true);
-      setQuestions((current) => {
-        const next = [...current, replacement];
-        questionsRef.current = next;
-        return next;
-      });
-    } catch (error) {
-      console.error("Ignore replacement failed", error);
-      setQuestionsError(error.message || "Unable to generate a replacement question");
-    } finally {
-      const idx = pendingCategoriesRef.current.indexOf(neededCategory);
-      if (idx !== -1) {
-        pendingCategoriesRef.current = [
-          ...pendingCategoriesRef.current.slice(0, idx),
-          ...pendingCategoriesRef.current.slice(idx + 1),
-        ];
-      }
-    }
+  // Asked or ignored -> drop it from the pool. Fresh questions arrive via the
+  // triggers above (follow-ups, more-like-this), so there's no forced top-up.
+  function ignoreQuestion(question) {
+    setPool((current) => {
+      const next = current.filter((q) => q.id !== question.id);
+      poolRef.current = next;
+      return next;
+    });
   }
 
-  const displayedQuestions = [...followUpQuestions, ...questions].slice(0, 6);
-
   return {
-    questions,
-    questionsLoading,
-    questionsError,
+    questions: pool,
+    questionsLoading: poolLoading,
+    questionsError: poolError,
     similarQuestionId,
-    followUpQuestions,
-    displayedQuestions,
-    generateFollowUpQuestions,
+    displayedQuestions: pool,
+    generateReactiveQuestions,
     generateMoreLike,
     ignoreQuestion,
   };

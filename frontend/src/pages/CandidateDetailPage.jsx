@@ -271,6 +271,7 @@ export default function CandidateDetailPage() {
               interview={interview}
               jobCand={jobCand}
               interviewer={interviewerName}
+              assignedInterviewerId={interviewerUserId}
               onStartInterview={() => {
                 if (interview?.intv_status === 'in_progress') {
                   navigate(`/interview/${interview.intv_id}`)

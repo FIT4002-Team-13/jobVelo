@@ -138,6 +138,9 @@ async def list_candidates_for_job(
                 ),
                 "scheduled_at": scheduled_at,
                 "interviewer": interviewer_name,
+                # The assigned interviewer's user id, so the frontend can let
+                # ONLY that interviewer resume an in-progress interview.
+                "interviewer_user_id": user_id,
                 "ratings": ratings or None,
                 "score": avg,
                 "intv_completed": completed_interview is not None,

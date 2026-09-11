@@ -3,6 +3,14 @@ export default {
   content: ['./index.html', './src/**/*.{js,jsx,ts,tsx}'],
   theme: {
     extend: {
+      // Height-based variants for dense, fixed-height app views (e.g. the live
+      // interview page) so they stay fully visible on shorter laptop screens
+      // without needing the browser zoomed out. `raw` keeps them independent of
+      // the width breakpoints.
+      screens: {
+        short: { raw: '(max-height: 900px)' },
+        shorter: { raw: '(max-height: 760px)' },
+      },
       colors: {
         primary: {
           50: '#EEF2FD',

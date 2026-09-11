@@ -1,14 +1,28 @@
 import { useEffect, useState } from "react";
 import { badge, button } from "../../styles/layout";
 
+// Three topic categories, matching the CV-analysis report. US "behavioral" and
+// anything unexpected fold into behavioural.
+const CATEGORY_META = {
+  technical: { label: "Technical", color: "bg-mint-100 text-mint-700" },
+  behavioural: { label: "Behavioural", color: "bg-sky-100 text-sky-700" },
+  experience: { label: "Experience", color: "bg-amber-100 text-amber-700" },
+};
+
 export function normaliseQuestion(question, index = 0, isFollowUp = false, isNew = false) {
-  const isTechnical = question.category === "technical";
+  const value =
+    question.category === "technical"
+      ? "technical"
+      : question.category === "experience"
+      ? "experience"
+      : "behavioural";
+  const meta = CATEGORY_META[value];
 
   return {
     id: `${Date.now()}-${index}-${Math.random()}`,
-    category: isTechnical ? "Technical" : "Behavioural",
-    categoryValue: isTechnical ? "technical" : "behavioural",
-    categoryColor: isTechnical ? "bg-mint-100 text-mint-700" : "bg-sky-100 text-sky-700",
+    category: meta.label,
+    categoryValue: value,
+    categoryColor: meta.color,
     text: question.question,
     why: question.reason,
     isFollowUp,
@@ -18,25 +32,27 @@ export function normaliseQuestion(question, index = 0, isFollowUp = false, isNew
 
 export function QuestionCard({ q, onMoreLike, onIgnore, isGeneratingSimilar }) {
   const [whyOpen, setWhyOpen] = useState(false);
+  // A light, brief glow marking a newly generated question - clears itself just
+  // after the 2-cycle animation so it's a quick nudge, not a constant pulse.
   const [glow, setGlow] = useState(Boolean(q.isNew));
 
   useEffect(() => {
     if (!q.isNew) return undefined;
-    const t = setTimeout(() => setGlow(false), 6000);
+    const t = setTimeout(() => setGlow(false), 2500);
     return () => clearTimeout(t);
   }, [q.isNew]);
 
   return (
     <div
-      className={`flex w-[290px] shrink-0 flex-col rounded-2xl border bg-neutral-0 p-4 ${
+      className={`flex w-[290px] short:w-[268px] shrink-0 flex-col rounded-2xl border bg-neutral-0 p-4 short:p-3.5 ${
         glow ? "new-question-glow" : "border-neutral-200"
       }`}
     >
-      <div className="mb-3 flex items-center justify-between gap-2 shrink-0">
+      <div className="mb-3 short:mb-2 flex items-center justify-between gap-2 shrink-0">
         <div className="flex min-w-0 items-center gap-1.5">
           <span className={`${badge.sm} ${q.categoryColor}`}>{q.category}</span>
           {q.isFollowUp && (
-            <span className="inline-flex items-center gap-1 rounded-pill bg-primary-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-primary-600">
+            <span className="inline-flex items-center gap-1 whitespace-nowrap rounded-pill bg-primary-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-primary-600">
               <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                 <polyline points="9 14 4 9 9 4" />
                 <path d="M4 9h10a6 6 0 0 1 6 6v2" />
@@ -62,7 +78,7 @@ export function QuestionCard({ q, onMoreLike, onIgnore, isGeneratingSimilar }) {
       </div>
 
       <div className="scrollbar-hide flex-1 overflow-y-auto">
-        <p className="text-base leading-relaxed text-neutral-800">{q.text}</p>
+        <p className="text-sm leading-relaxed text-neutral-800">{q.text}</p>
         {whyOpen && (
           <p className="mt-3 rounded-xl bg-neutral-50 p-3 text-xs leading-relaxed text-neutral-500">
             {q.why}
@@ -70,7 +86,7 @@ export function QuestionCard({ q, onMoreLike, onIgnore, isGeneratingSimilar }) {
         )}
       </div>
 
-      <div className="mt-3 flex flex-col gap-1.5 shrink-0">
+      <div className="mt-3 short:mt-2 flex flex-col gap-1.5 shrink-0">
         <button
           onClick={() => onIgnore?.(q)}
           className={`${button.danger} w-full py-1.5 text-xs font-semibold rounded-lg`}
@@ -110,8 +126,8 @@ export function SuggestedQuestionDeck({
   onIgnore,
 }) {
   return (
-    <div className="card-flat flex flex-col flex-1 overflow-hidden">
-      <div className="flex items-center justify-between border-b border-neutral-100 px-6 pt-3.5 pb-2.5 shrink-0">
+    <div className="card-flat flex flex-col flex-1 min-h-0 overflow-hidden">
+      <div className="flex items-center justify-between border-b border-neutral-100 px-6 pt-2.5 short:pt-2 pb-2 short:pb-1.5 shrink-0">
         <h2 className="text-base font-semibold text-neutral-800">Suggested Questions</h2>
         {questions.length > 0 && (
           <span className="text-xs font-semibold text-neutral-300">{questions.length}</span>
@@ -119,19 +135,19 @@ export function SuggestedQuestionDeck({
       </div>
 
       {questionsLoading ? (
-        <div className="flex-row-center flex-1">
+        <div className="flex flex-1 items-center justify-center">
           <p className="text-sm text-neutral-400">Generating questions…</p>
         </div>
       ) : questionsError && questions.length === 0 ? (
-        <div className="flex-row-center flex-1 px-6">
+        <div className="flex flex-1 items-center justify-center px-6">
           <p className="text-sm text-coral-500 text-center">{questionsError}</p>
         </div>
       ) : displayedQuestions.length === 0 ? (
-        <div className="flex-row-center flex-1">
+        <div className="flex flex-1 items-center justify-center">
           <p className="text-sm text-neutral-400">No suggested questions available.</p>
         </div>
       ) : (
-        <div className="flex-1 overflow-x-auto overflow-y-hidden px-6 py-4">
+        <div className="flex-1 overflow-x-auto overflow-y-hidden px-6 py-3 short:py-2">
           <div className="flex h-full items-stretch gap-4">
             {displayedQuestions.map((q) => (
               <QuestionCard
