@@ -169,8 +169,11 @@ export function useTranscript(id, { serverData, candidateName, userId, isComplet
   function jumpToTranscriptEntry(quote) {
     const interviewerLabel = userId || "Interviewer";
     const match = [...transcriptRef.current]
-      .reverse()
-      .find((entry) => entry.speaker === interviewerLabel && entry.text === quote);
+        .reverse()
+        .find((entry) => entry.speaker_role === "interviewer" && entry.text === quote) ||
+      [...transcriptRef.current]
+        .reverse()
+        .find((entry) => entry.speaker === interviewerLabel && entry.text === quote);
     if (!match) return;
 
     document.getElementById(`transcript-entry-${match.id}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
@@ -243,6 +246,24 @@ export function useTranscript(id, { serverData, candidateName, userId, isComplet
 
     if (!key) return;
 
+    const demotedKeys = new Set();
+    if (person?.role === "interviewer" || person?.role === "candidate") {
+      for (const [existingKey, existing] of Object.entries(speakerAssignmentsRef.current)) {
+        if (existingKey === key) continue;
+        if (existing.speaker_role === person.role) {
+          storeSpeakerAssignment(existingKey, {
+            stream_id: existing.stream_id,
+            speaker_id: existing.speaker_id,
+            source: existing.source,
+            participant_id: null,
+            speaker_name: null,
+            speaker_role: null,
+          });
+          demotedKeys.add(existingKey);
+        }
+      }
+    }
+
     storeSpeakerAssignment(key, {
       stream_id: entry.stream_id,
       speaker_id: entry.speaker_id,
@@ -254,11 +275,16 @@ export function useTranscript(id, { serverData, candidateName, userId, isComplet
 
     setTranscript(prev => {
       const updated = prev.map(item => {
-        if (detectedSpeakerKey(item) !== key) {
-          return item;
+        const itemKey = detectedSpeakerKey(item);
+
+        if (itemKey === key) {
+          return {...item, speaker: person?.name || `Speaker ${item.speaker_id + 1}`, participant_id: person?.id ?? null, speaker_role: person?.role ?? null};
+        }
+        if (itemKey && demotedKeys.has(itemKey)) {
+          return { ...item, speaker: `Speaker ${item.speaker_id + 1}`, participant_id: null, speaker_role: null};
         }
 
-        return {...item, speaker: person?.name || `Speaker ${item.speaker_id + 1}`, participant_id: person?.id ?? null, speaker_role: person?.role ?? null};
+        return item;
       });
 
       localStorage.setItem(`transcript-${id}`, JSON.stringify(updated));
