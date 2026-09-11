@@ -76,6 +76,7 @@ export default function ApplicationsPage() {
   const [deleteTarget, setDeleteTarget] = useState(null)
   // application_id currently being analysed (click guard for the CV cell).
   const [analysingId, setAnalysingId] = useState(null)
+  const canManageCandidates = user?.role === 'admin' || user?.role === 'recruiter'
 
   // Lighter-weight than a full reload() - only re-fetches the rows (jobs
   // rarely change as a side effect of a candidate action).
@@ -182,14 +183,15 @@ export default function ApplicationsPage() {
               Manage all candidates across jobs
             </p>
           </div>
-
-          <button
-            type="button"
-            onClick={() => setShowAddModal(true)}
-            className={`flex items-center gap-2 ${button.primary}`}
-          >
-            <span className="text-lg leading-none">+</span> Add Candidate
-          </button>
+          {user?.role === "recruiter" && (
+            <button
+              type="button"
+              onClick={() => setShowAddModal(true)}
+              className={`flex items-center gap-2 ${button.primary}`}
+            >
+              <span className="text-lg leading-none">+</span> Add Candidate
+            </button>
+          )}
         </header>
 
         <main className="flex-1 overflow-y-auto px-10 py-8">
@@ -421,38 +423,41 @@ export default function ApplicationsPage() {
                           {/* Editing is locked once the interview is finished -
                               mirrors the backend guard that keeps completed/
                               cancelled interviews immutable. */}
-                          <button
-                            type="button"
-                            disabled={row.status === 'COMPLETED' || row.status === 'CANCELLED'}
-                            onClick={() => {
-                              if (row.status === 'COMPLETED' || row.status === 'CANCELLED') return
-                              setSelectedRow(row)
-                              setShowEditModal(true)
-                            }}
-                            className={`flex h-7 w-7 items-center justify-center rounded-lg transition-colors ${
-                              row.status === 'COMPLETED' || row.status === 'CANCELLED'
-                                ? 'cursor-not-allowed text-neutral-200'
-                                : 'text-neutral-400 hover:bg-neutral-100 hover:text-neutral-600'
-                            }`}
-                            title={
-                              row.status === 'COMPLETED' || row.status === 'CANCELLED'
-                                ? 'This interview is finished - the application can no longer be edited.'
-                                : 'Edit candidate'
-                            }
-                            aria-label="Edit candidate"
-                          >
-                            <svg
-                              width="14"
-                              height="14"
-                              viewBox="0 0 24 24"
-                              fill="none"
-                              stroke="currentColor"
-                              strokeWidth="2"
+                          {canManageCandidates && (
+                            <button
+                              type="button"
+                              disabled={row.status === 'COMPLETED' || row.status === 'CANCELLED'}
+                              onClick={() => {
+                                if (row.status === 'COMPLETED' || row.status === 'CANCELLED') return
+                                setSelectedRow(row)
+                                setShowEditModal(true)
+                              }}
+                              className={`flex h-7 w-7 items-center justify-center rounded-lg transition-colors ${
+                                row.status === 'COMPLETED' || row.status === 'CANCELLED'
+                                  ? 'cursor-not-allowed text-neutral-200'
+                                  : 'text-neutral-400 hover:bg-neutral-100 hover:text-neutral-600'
+                              }`}
+                              title={
+                                row.status === 'COMPLETED' || row.status === 'CANCELLED'
+                                  ? 'This interview is finished - the application can no longer be edited.'
+                                  : 'Edit candidate'
+                              }
+                              aria-label="Edit candidate"
                             >
-                              <path d="M12 20h9" />
-                              <path d="M16.5 3.5a2.121 2.121 0 1 1 3 3L7 19l-4 1 1-4 12.5-12.5z" />
-                            </svg>
-                          </button>
+                              <svg
+                                width="14"
+                                height="14"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2"
+                              >
+                                <path d="M12 20h9" />
+                                <path d="M16.5 3.5a2.121 2.121 0 1 1 3 3L7 19l-4 1 1-4 12.5-12.5z" />
+                              </svg>
+                            </button>
+                          )}
+                          {canManageCandidates && (
                           <button
                             type="button"
                             onClick={() => setDeleteTarget(row)}
@@ -476,6 +481,7 @@ export default function ApplicationsPage() {
                               <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
                             </svg>
                           </button>
+                          )}
                         </div>
                       </td>
                     </tr>

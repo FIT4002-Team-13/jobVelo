@@ -11,7 +11,7 @@ from bson import ObjectId
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 
 from database import get_db
-from dependencies import get_current_comp_id
+from dependencies import get_current_comp_id, get_current_user
 from routes.jobs import delete_cv_analyses_for_links
 
 router = APIRouter(prefix="/api/jobs", tags=["jobs"])
@@ -27,6 +27,7 @@ def _validate_oid(value: str, what: str = "job") -> ObjectId:
 async def list_candidates_for_job(
     job_id: str,
     comp_id: ObjectId = Depends(get_current_comp_id),
+    user: dict = Depends(get_current_user),
     db=Depends(get_db),
 ):
     """Joined view: every candidate linked to this job, flattened with
@@ -42,6 +43,49 @@ async def list_candidates_for_job(
     links = await db.job_candidates.find({"job_id": job_id}).to_list(length=500)
     if not links:
         return []
+
+    # Interviewers should only see candidates whose interview is assigned
+    # to them. Other roles can see all candidates for the job.
+    if user.get("role") == "interviewer":
+        assigned_links = await db.interview_users.find(
+            {"user_id": str(user["_id"])},
+            {"intv_id": 1},
+        ).to_list(length=500)
+
+        assigned_intv_ids = {
+            link["intv_id"]
+            for link in assigned_links
+            if link.get("intv_id")
+        }
+
+        assigned_interviews = await db.interviews.find(
+            {
+                "job_id": job_id,
+                "_id": {
+                    "$in": [
+                        ObjectId(intv_id)
+                        for intv_id in assigned_intv_ids
+                        if ObjectId.is_valid(intv_id)
+                    ]
+                },
+            },
+            {"cand_id": 1},
+        ).to_list(length=500)
+
+        assigned_cand_ids = {
+            interview["cand_id"]
+            for interview in assigned_interviews
+            if interview.get("cand_id")
+        }
+
+        links = [
+            link
+            for link in links
+            if link.get("cand_id") in assigned_cand_ids
+        ]
+
+        if not links:
+            return []
 
     # Bulk fetch the candidates referenced by the links. Skip any invalid
     # cand_ids defensively so one bad row can't fail the whole query.
@@ -137,6 +181,7 @@ async def list_candidates_for_job(
                     else "NOT SCHEDULED"
                 ),
                 "scheduled_at": scheduled_at,
+                "interviewer_user_id": user_id,
                 "interviewer": interviewer_name,
                 "ratings": ratings or None,
                 "score": avg,

@@ -6,7 +6,7 @@ from bson import ObjectId
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from database import get_db
-from dependencies import get_current_comp_id
+from dependencies import get_current_comp_id, require_role
 from models.user_interview import InterviewUserCreate, InterviewUserOut
 
 router = APIRouter(prefix="/api/interview-users", tags=["interview_users"])
@@ -49,6 +49,7 @@ def interview_user_helper(interview_user: dict) -> InterviewUserOut:
 async def create_interview_user(
     payload: InterviewUserCreate,
     comp_id: ObjectId = Depends(get_current_comp_id),
+    _user: dict = Depends(require_role("recruiter")),
 ) -> InterviewUserOut:
     """Create the user-interview relationship.
 

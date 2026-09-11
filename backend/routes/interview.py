@@ -229,7 +229,7 @@ def interview_helper(interview: dict) -> InterviewOut:
 )
 async def create_interview(
     payload: InterviewCreate,
-    _user: dict = Depends(require_role("interviewer")),
+    _user: dict = Depends(require_role("recruiter")),
     comp_id: ObjectId = Depends(get_current_comp_id),
 ) -> InterviewOut:
     """Insert a new interview document.
@@ -627,7 +627,7 @@ async def _persist_completion(
 async def complete_interview(
     intv_id: str,
     payload: InterviewCompleteRequest,
-    _user: dict = Depends(require_role("interviewer")),
+    _user: dict = Depends(require_role("interviewer", "hiring_manager")),
     comp_id: ObjectId = Depends(get_current_comp_id),
 ) -> InterviewCompleteOut:
     """Called when the interviewer clicks Complete.
@@ -976,10 +976,26 @@ def _transcript_to_text(entries: list[dict]) -> str:
 async def update_interview(
     intv_id: str,
     payload: InterviewUpdate,
+    user: dict = Depends(require_role("interviewer", "hiring_manager")),
     comp_id: ObjectId = Depends(get_current_comp_id),
 ) -> InterviewOut:
     db = get_db()
+
     existing_interview = await _get_interview_in_company(db, intv_id, comp_id)
+
+    if payload.intv_status == "in_progress":
+        assigned = await db.interview_users.find_one(
+            {
+                "intv_id": intv_id,
+                "user_id": str(user["_id"]),
+            }
+        )
+
+        if not assigned:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You are not assigned to this interview.",
+            )
 
     update_data = payload.model_dump(exclude_unset=True)
 
@@ -993,7 +1009,10 @@ async def update_interview(
         {"$set": update_data},
     )
 
-    updated_interview = await db.interviews.find_one({"_id": ObjectId(intv_id)})
+    updated_interview = await db.interviews.find_one(
+        {"_id": ObjectId(intv_id)}
+    )
+
     if not updated_interview:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

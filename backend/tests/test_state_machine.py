@@ -105,7 +105,6 @@ def _complete_db(interview_doc, claim_result="claimed"):
     mock_db.job_candidates.update_one = AsyncMock()
     return mock_db
 
-
 @pytest.fixture()
 def authed(client):
     user = {
@@ -119,13 +118,26 @@ def authed(client):
     app.dependency_overrides.clear()
 
 
+@pytest.fixture()
+def authed_recruiter(client):
+    user = {
+        "_id": ObjectId(),
+        "comp_id": ObjectId(),
+        "role": "recruiter",
+        "full_name": "Test Recruiter",
+    }
+    app.dependency_overrides[get_current_user] = lambda: user
+    yield user["comp_id"], client
+    app.dependency_overrides.clear()
+
+
 # ── 3.3 create-for-job: completed interviews are immutable ───────────────────
 
 
-def test_create_for_job_leaves_completed_interview_untouched(authed):
+def test_create_for_job_leaves_completed_interview_untouched(authed_recruiter):
     """Re-submitting the add-candidate popup for a candidate whose interview
     is COMPLETED must not reschedule it or replace its interviewer links."""
-    comp_id, client = authed
+    comp_id, client = authed_recruiter
     job_id = ObjectId()
     cand_id = ObjectId()
     candidate = {
@@ -181,8 +193,8 @@ def test_create_for_job_leaves_completed_interview_untouched(authed):
 # ── 3.1 delete cascades ──────────────────────────────────────────────────────
 
 
-def test_delete_job_cascades_interviews_links_and_analyses(authed):
-    _, client = authed
+def test_delete_job_cascades_interviews_links_and_analyses(authed_recruiter):
+    _, client = authed_recruiter
     job_id = ObjectId()
     link_id, intv_id = ObjectId(), ObjectId()
 
