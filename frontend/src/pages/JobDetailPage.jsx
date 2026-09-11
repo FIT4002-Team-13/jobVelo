@@ -10,7 +10,7 @@ import { flex, card, badge, button, page } from "../styles/layout";
 
 import { useAuth } from "../lib/AuthContext.jsx";
 import { useToast } from "../components/common/ToastContext.jsx";
-import { authedFetch, downloadFileWithAuth } from "../lib/api.js";
+import { api, downloadFileWithAuth } from "../lib/api.js";
 import { formatDate, formatMediumDate } from "../utils/format.js";
 import { JOB_STATUS_STYLES, FALLBACK_STATUS_CLASS } from "../utils/status.js";
 import InterviewStatusPanel from "../components/job-candidate/InterviewStatusPanel";
@@ -47,32 +47,21 @@ export default function JobDetailPage() {
   useEffect(() => {
     async function load() {
       try {
-        const [jobRes, candsRes, jobsRes] = await Promise.all([
-          authedFetch(`/api/jobs/${id}`),
-          authedFetch(`/api/jobs/${id}/candidates`),
-          authedFetch(`/api/jobs`),
+        const [job, cands, jobs] = await Promise.all([
+          api.getJob(id),
+          // Defend against the candidates endpoint failing or returning a
+          // non-array shape. Without this guard the InterviewStatusPanel and
+          // CandidatesTable crash with "candidates is not iterable".
+          api.getJobCandidates(id).catch(() => []),
+          // Best-effort: without the list the edit modal's job select just
+          // shows the current job.
+          api.listJobs().catch(() => []),
         ]);
-        // Best-effort: without the list the edit modal's job select just
-        // shows the current job.
-        if (jobsRes.ok) {
-          const jobsData = await jobsRes.json().catch(() => []);
-          setAllJobs(Array.isArray(jobsData) ? jobsData : []);
-        }
-        if (!jobRes.ok) throw new Error("Job not found.");
-        setJob(await jobRes.json());
-
-        // Defend against the candidates endpoint failing or returning a
-        // non-array shape (e.g. FastAPI's {detail: ...} on a 404). Without
-        // this guard the InterviewStatusPanel and CandidatesTable crash with
-        // "candidates is not iterable" on first render.
-        if (candsRes.ok) {
-          const data = await candsRes.json().catch(() => []);
-          setCandidates(Array.isArray(data) ? data : []);
-        } else {
-          setCandidates([]);
-        }
+        setJob(job);
+        setCandidates(Array.isArray(cands) ? cands : []);
+        setAllJobs(Array.isArray(jobs) ? jobs : []);
       } catch (err) {
-        setError(err.message);
+        setError(err.message || "Job not found.");
       } finally {
         setLoading(false);
       }
@@ -92,15 +81,12 @@ export default function JobDetailPage() {
   // reload is what keeps the table + rankings correct rather than an
   // optimistic append of a half-populated row.
   async function refreshJobAndCandidates() {
-    const [jobRes, candsRes] = await Promise.all([
-      authedFetch(`/api/jobs/${id}`),
-      authedFetch(`/api/jobs/${id}/candidates`),
+    const [job, cands] = await Promise.all([
+      api.getJob(id).catch(() => null),
+      api.getJobCandidates(id).catch(() => []),
     ]);
-    if (jobRes.ok) setJob(await jobRes.json().catch(() => null));
-    if (candsRes.ok) {
-      const data = await candsRes.json().catch(() => []);
-      setCandidates(Array.isArray(data) ? data : []);
-    }
+    if (job) setJob(job);
+    setCandidates(Array.isArray(cands) ? cands : []);
   }
 
   function handleCandidateSaved(saved) {
@@ -116,33 +102,27 @@ export default function JobDetailPage() {
     try {
       // Resume an existing in-progress or scheduled interview rather than
       // creating a duplicate every time the button is clicked.
-      const existingRes = await authedFetch(
-        `/api/interviews?cand_id=${startTarget.cand_id}&job_id=${id}`
+      const existing = await api
+        .listInterviews({ cand_id: startTarget.cand_id, job_id: id })
+        .catch(() => []);
+      const resumable = (Array.isArray(existing) ? existing : []).find(
+        (i) => i.intv_status === "in_progress" || i.intv_status === "scheduled"
       );
-      if (existingRes.ok) {
-        const existing = await existingRes.json();
-        const resumable = existing.find(
-          (i) => i.intv_status === "in_progress" || i.intv_status === "scheduled"
-        );
-        if (resumable) {
-          navigate(`/interview/${resumable.intv_id}`);
-          return;
-        }
+      if (resumable) {
+        navigate(`/interview/${resumable.intv_id}`);
+        return;
       }
 
-      const res = await authedFetch("/api/interviews", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      let interview;
+      try {
+        interview = await api.createInterview({
           cand_id: startTarget.cand_id,
           job_id: id,
           intv_date_time: new Date().toISOString(),
           intv_status: "in_progress",
-        }),
-      });
-      const interview = await res.json();
-      if (!res.ok) {
-        toast.error(interview?.detail || "Failed to start interview.");
+        });
+      } catch (err) {
+        toast.error(err?.message || "Failed to start interview.");
         setStartTarget(null);
         return;
       }
@@ -173,11 +153,8 @@ export default function JobDetailPage() {
   // schedule are whatever the server now says, not an optimistic guess.
   async function reloadCandidates() {
     try {
-      const res = await authedFetch(`/api/jobs/${id}/candidates`);
-      if (res.ok) {
-        const data = await res.json().catch(() => []);
-        setCandidates(Array.isArray(data) ? data : []);
-      }
+      const data = await api.getJobCandidates(id);
+      setCandidates(Array.isArray(data) ? data : []);
     } catch {
       // Keep the stale rows rather than blanking the table.
     }
