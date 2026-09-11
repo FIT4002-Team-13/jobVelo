@@ -434,6 +434,8 @@ def test_complete_echoes_stored_bias_incidents_on_cached_read(authed):
     )
     mock_db.jobs.find_one = AsyncMock(return_value={"_id": job_id, "comp_id": comp_id})
     mock_db.job_candidates.find_one = AsyncMock(return_value=link)
+    # No assigned interviewer -> the assignee guard is a no-op here.
+    mock_db.interview_users.find_one = AsyncMock(return_value=None)
 
     with (
         patch("routes.interview.get_db", return_value=mock_db),
@@ -448,3 +450,35 @@ def test_complete_echoes_stored_bias_incidents_on_cached_read(authed):
     body = res.json()
     assert body["cached"] is True
     assert body["bias_incidents"] == bias
+
+
+def test_complete_rejected_for_non_assigned_interviewer(authed):
+    """Only the assigned interviewer may complete an interview. A different
+    interviewer (even in the same company) is 403'd and the LLM never runs."""
+    comp_id, client = authed
+    cand_id, job_id = ObjectId(), ObjectId()
+    interview = _interview_doc(
+        status="in_progress", cand_id=str(cand_id), job_id=str(job_id)
+    )
+
+    mock_db = MagicMock()
+    mock_db.interviews.find_one = AsyncMock(return_value=interview)
+    mock_db.candidates.find_one = AsyncMock(
+        return_value={"_id": cand_id, "comp_id": comp_id}
+    )
+    mock_db.jobs.find_one = AsyncMock(return_value={"_id": job_id, "comp_id": comp_id})
+    # Interview is assigned to SOMEONE ELSE (a different user id).
+    mock_db.interview_users.find_one = AsyncMock(
+        return_value={"intv_id": str(interview["_id"]), "user_id": str(ObjectId())}
+    )
+
+    with (
+        patch("routes.interview.get_db", return_value=mock_db),
+        patch(
+            "routes.interview.generate_interview_reports", new_callable=AsyncMock
+        ) as gen,
+    ):
+        res = client.post(f"/api/interviews/{interview['_id']}/complete", json={})
+
+    assert res.status_code == 403
+    gen.assert_not_awaited()
