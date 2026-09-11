@@ -283,23 +283,25 @@ export default function JobDetailPage() {
               {" / "}
               {job.candidates_total ?? 0} candidates
             </span>
-            <button
-              type="button"
-              onClick={() => setShowAddCandidate(true)}
-              disabled={isFull}
-              title={
-                isFull
-                  ? `This role is full (${job.candidates_total} candidates).`
-                  : undefined
-              }
-              className={`${flex.row} gap-2 ${button.primary} ${
-                isFull
-                  ? "opacity-50 cursor-not-allowed hover:bg-primary-500"
-                  : ""
-              }`}
-            >
-              + Add Candidate
-            </button>
+            {user?.role === "recruiter" && (
+              <button
+                type="button"
+                onClick={() => setShowAddCandidate(true)}
+                disabled={isFull}
+                title={
+                  isFull
+                    ? `This role is full (${job.candidates_total} candidates).`
+                    : undefined
+                }
+                className={`${flex.row} gap-2 ${button.primary} ${
+                  isFull
+                    ? "opacity-50 cursor-not-allowed hover:bg-primary-500"
+                    : ""
+                }`}
+              >
+                + Add Candidate
+              </button>
+            )}
           </div>
         </header>
 
@@ -338,12 +340,14 @@ export default function JobDetailPage() {
                 </p>
               </div>
               <div className={`${flex.row} gap-2`}>
-                <button
-                  onClick={() => setShowEdit(true)}
-                  className="text-xs font-medium text-neutral-500 border border-neutral-200 px-3 py-1 rounded-lg hover:bg-neutral-50 transition-colors"
-                >
-                  Edit
-                </button>
+                {(user?.role === 'admin' || user?.role === 'recruiter') && (
+                  <button
+                    onClick={() => setShowEdit(true)}
+                    className="text-xs font-medium text-neutral-500 border border-neutral-200 px-3 py-1 rounded-lg hover:bg-neutral-50 transition-colors"
+                  >
+                    Edit
+                  </button>
+                )}
                 <span
                   className={`text-xs font-bold px-3 py-1 rounded-pill ${
                     JOB_STATUS_STYLES[displayStatus] ?? FALLBACK_STATUS_CLASS
