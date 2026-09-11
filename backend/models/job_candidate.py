@@ -98,3 +98,43 @@ class CandidateWithJobOut(BaseModel):
 
     candidate: dict
     job_candidate: dict
+
+
+class JobCandidateRowOut(BaseModel):
+    """Enriched row for GET /api/jobs/{job_id}/candidates - the job's
+    candidate table renders straight from these (name / status / score /
+    scheduled_at / interviewer are all pre-joined server-side).
+
+    `ratings` stays a loose dict here (not CandidateRatings) so a legacy
+    link with a partial ratings blob can't 500 the whole table.
+    """
+
+    id: str
+    cand_id: str
+    job_id: str
+    name: str
+    email: str | None = None
+    phone: str | None = None
+    cv_url: str | None = None
+    cover_letter_url: str | None = None
+    status: str
+    scheduled_at: datetime | None = None
+    interviewer: str | None = None
+    ratings: dict | None = None
+    score: float | None = None
+    intv_completed: bool = False
+    intv_id: str | None = None
+
+
+class JobCandidateFlatOut(BaseModel):
+    """Row for GET /api/job-candidates - the flat picker list used by the
+    CV Analyser. `has_analysis` lets a picker jump straight to the result
+    screen for links that already have a cached analysis."""
+
+    jobcand_id: str
+    job_id: str
+    cand_id: str
+    job_title: str
+    cand_full_name: str
+    status: JobCandidateStatus | None = None
+    has_analysis: bool = False

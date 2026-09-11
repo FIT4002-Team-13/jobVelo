@@ -98,6 +98,35 @@ _ANON_MATRIX = [
     ("get", f"/api/interview-users/by-user/{_OID}", {}),
     ("get", f"/api/interview-users/{_OID}", {}),
     ("post", "/api/interview-users", {"json": {"user_id": _OID, "intv_id": _OID}}),
+    # Phase-B aggregate "view" endpoints.
+    ("get", f"/api/interviews/{_OID}/context", {}),
+    ("get", f"/api/candidates/{_OID}/detail?job_id={_OID}", {}),
+    ("get", f"/api/users/{_OID}", {}),
+    # Phase-C1: routes that moved off `Depends(get_db)` - an anon request must
+    # now 401 at the auth dependency instead of 500-ing inside get_db().
+    ("get", "/api/jobs", {}),
+    ("get", f"/api/jobs/{_OID}", {}),
+    ("get", f"/api/jobs/{_OID}/candidates", {}),
+    ("post", "/api/jobs", {"json": {"title": "x", "description": "y"}}),
+    ("get", "/api/dashboard/summary", {}),
+    ("get", f"/api/companies/{_OID}", {}),
+    # Phase-C3: endpoints that previously had no auth dependency at all.
+    ("post", f"/api/interview-questions/{_OID}", {}),
+    (
+        "post",
+        f"/api/interview-questions/{_OID}/follow-up",
+        {"json": {"candidate_response": "hi"}},
+    ),
+    (
+        "post",
+        f"/api/interview-questions/{_OID}/similar",
+        {"json": {"original_question": "q", "category": "technical"}},
+    ),
+    (
+        "post",
+        "/api/interviews/generate-plan",
+        {"json": {"job_id": _OID, "cand_id": _OID}},
+    ),
 ]
 
 

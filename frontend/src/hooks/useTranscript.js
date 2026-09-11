@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { authedFetch } from "../lib/api.js";
+import { api } from "../lib/api.js";
 import { formatTimer } from "../utils/time.js";
 
 export function useTranscript(id, { serverData, candidateName, userId, isCompleted, startTimeRef, timerRef, generateFollowUpRef }) {
@@ -63,16 +63,12 @@ export function useTranscript(id, { serverData, candidateName, userId, isComplet
   useEffect(() => {
     const interval = setInterval(() => {
       if (!isCompleted && transcriptRef.current.length) {
-        authedFetch(`/api/interviews/${id}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
+        api
+          .updateInterview(id, {
             intv_transcript: transcriptRef.current,
             intv_duration_seconds: timerRef.current,
-          }),
-        }).then((r) => {
-          if (!r.ok) console.error("Autosave failed:", r.status);
-        });
+          })
+          .catch((err) => console.error("Autosave failed:", err?.status ?? err));
       }
     }, 30000);
     return () => clearInterval(interval);
@@ -134,11 +130,7 @@ export function useTranscript(id, { serverData, candidateName, userId, isComplet
       const updated = prev.map((e) => (e.id === entryId ? { ...e, comment: text || undefined } : e));
       localStorage.setItem(`transcript-${id}`, JSON.stringify(updated));
       if (isCompleted) {
-        authedFetch(`/api/interviews/${id}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ intv_transcript: updated }),
-        });
+        api.updateInterview(id, { intv_transcript: updated }).catch(() => {});
       }
       return updated;
     });

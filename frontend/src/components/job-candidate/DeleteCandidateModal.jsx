@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { authedFetch } from '../../lib/api.js'
+import { api } from '../../lib/api.js'
 import { modal, button } from '../../styles/layout'
 
 /**
@@ -27,14 +27,9 @@ export default function DeleteCandidateModal({ candidate, jobId, onClose, onDele
     setDeleting(true)
     setError(null)
     try {
-      const res = await authedFetch(`/api/jobs/${jobId}/candidates/${candidate.id}`, {
-        method: 'DELETE',
-      })
-      // 204 No Content is the success case; anything else is an error we surface.
-      if (!res.ok && res.status !== 204) {
-        const data = await res.json().catch(() => null)
-        throw new Error(data?.detail || 'Failed to remove candidate.')
-      }
+      // 204 No Content is the success case; api.request() returns null for it
+      // and throws ApiError on anything else, which we surface below.
+      await api.deleteJobCandidate(jobId, candidate.id)
       onDeleted(candidate.id)
     } catch (err) {
       setError(err.message || 'Failed to remove candidate.')

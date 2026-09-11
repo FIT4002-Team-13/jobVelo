@@ -58,6 +58,15 @@ export async function downloadFileWithAuth(fileUrl, filename) {
   setTimeout(() => URL.revokeObjectURL(blobUrl), 10_000)
 }
 
+// Build a query string from a params object, dropping undefined/null/'' values.
+// Returns '' or '?a=1&b=2' so call sites can do `/path${qs(params)}`.
+function qs(params = {}) {
+  const s = new URLSearchParams(
+    Object.entries(params).filter(([, v]) => v !== undefined && v !== null && v !== '')
+  ).toString()
+  return s ? `?${s}` : ''
+}
+
 // Auto-detects JSON vs FormData bodies:
 // - plain object → JSON encoded with Content-Type: application/json
 // - FormData     → sent raw (browser sets the multipart boundary header)
@@ -121,27 +130,39 @@ export const api = {
 
   // ---------- jobs -------------------------------------------------------
   // List jobs, optionally scoped to a company.
-  listJobs: (params = {}) => {
-    const qs = new URLSearchParams(
-      Object.entries(params).filter(([, v]) => v !== undefined && v !== null && v !== '')
-    ).toString()
-    return request(`/jobs${qs ? `?${qs}` : ''}`, { auth: true })
-  },
+  listJobs: (params = {}) => request(`/jobs${qs(params)}`, { auth: true }),
+  getJob:   (jobId)       => request(`/jobs/${encodeURIComponent(jobId)}`, { auth: true }),
 
   // Create/update/delete a job posting.
   createJob: (payload)         => request('/jobs',      { method: 'POST', body: payload, auth: true }),
   updateJob: (jobId, payload)  => request(`/jobs/${jobId}`, { method: 'PUT', body: payload, auth: true }),
   deleteJob: (jobId)           => request(`/jobs/${jobId}`, { method: 'DELETE', auth: true }),
 
+  // Enriched candidate rows for one job (name + interview status + score +
+  // interviewer pre-joined server-side).
+  getJobCandidates: (jobId) =>
+    request(`/jobs/${encodeURIComponent(jobId)}/candidates`, { auth: true }),
+  // Unlink a candidate from a job (204).
+  deleteJobCandidate: (jobId, jobcandId) =>
+    request(`/jobs/${encodeURIComponent(jobId)}/candidates/${encodeURIComponent(jobcandId)}`, {
+      method: 'DELETE',
+      auth: true,
+    }),
+
   // ---------- job-candidate links ---------------------------------------
   // Flat enumeration with job_title + cand_full_name pre-joined, used by
   // the CV Analyser picker. Each row also carries `has_analysis`.
-  listJobCandidates: (params = {}) => {
-    const qs = new URLSearchParams(
-      Object.entries(params).filter(([, v]) => v !== undefined && v !== null && v !== '')
-    ).toString()
-    return request(`/job-candidates${qs ? `?${qs}` : ''}`, { auth: true })
-  },
+  listJobCandidates: (params = {}) => request(`/job-candidates${qs(params)}`, { auth: true }),
+  // Every job link for one candidate.
+  getJobCandidatesByCandidate: (candId) =>
+    request(`/job-candidates/by-candidate/${encodeURIComponent(candId)}`, { auth: true }),
+  // Persist an edited/reordered interview plan (array of plan_sections).
+  updateJobCandidatePlan: (jobcandId, planSections) =>
+    request(`/job-candidates/${encodeURIComponent(jobcandId)}/plan`, {
+      method: 'PATCH',
+      body: { plan_sections: planSections },
+      auth: true,
+    }),
 
   // ---------- CV analysis ----------------------------------------------
   // POST is multipart now: { jobcand_id, cv?, cover_letter? }. The CV is
@@ -155,7 +176,16 @@ export const api = {
   deleteCvAnalysis: (analysisId) =>
     request(`/cv-analysis/${encodeURIComponent(analysisId)}`, { method: 'DELETE', auth: true }),
 
-  // ---------- candidate documents ---------------------------------------
+  // ---------- candidates ----------------------------------------------
+  getCandidate:    (candId)          => request(`/candidates/${encodeURIComponent(candId)}`, { auth: true }),
+  updateCandidate: (candId, patch)   => request(`/candidates/${encodeURIComponent(candId)}`, { method: 'PATCH', body: patch, auth: true }),
+  // Create a candidate and link it to a job in one call. Returns
+  // { candidate, job_candidate }.
+  createCandidateForJob: (payload)   => request('/candidates/create-for-job', { method: 'POST', body: payload, auth: true }),
+  // Aggregate view for the candidate-detail screen: candidate + job +
+  // job_candidate + interview + interviewer + cv_analysis in one response.
+  getCandidateDetail: (candId, jobId) =>
+    request(`/candidates/${encodeURIComponent(candId)}/detail${qs({ job_id: jobId })}`, { auth: true }),
   // Standalone cover-letter upload (multipart: { cover_letter }). Used when
   // a cover letter is added WITHOUT a new CV - a CV upload goes through
   // analyseCv, which stores the cover letter as part of the analysis.
@@ -170,31 +200,44 @@ export const api = {
   // List teammates, optionally filtered by comp_id / role. Used by the
   // AddCandidate modal's interviewer combobox:
   //   api.listUsers({ comp_id, role: 'interviewer' })
-  listUsers: (params = {}) => {
-    const qs = new URLSearchParams(
-      Object.entries(params).filter(([, v]) => v !== undefined && v !== null && v !== '')
-    ).toString()
-    return request(`/users${qs ? `?${qs}` : ''}`, { auth: true })
-  },
+  listUsers: (params = {}) => request(`/users${qs(params)}`, { auth: true }),
+  // Convenience wrapper - the interviewer combobox only ever wants this slice.
+  listInterviewers: () => request(`/users${qs({ role: 'interviewer' })}`, { auth: true }),
+  // Single teammate by id (company-scoped server-side).
+  getUser: (userId) => request(`/users/${encodeURIComponent(userId)}`, { auth: true }),
 
   // ---------- interviews ---------------------------------------------------
   // Company-wide interviews list, optionally filtered (e.g. by cand_id/job_id).
-  listInterviews: (params = {}) => {
-    const qs = new URLSearchParams(
-      Object.entries(params).filter(([, v]) => v !== undefined && v !== null && v !== '')
-    ).toString()
-    return request(`/interviews${qs ? `?${qs}` : ''}`, { auth: true })
-  },
+  listInterviews: (params = {}) => request(`/interviews${qs(params)}`, { auth: true }),
+  getInterview:   (id)          => request(`/interviews/${encodeURIComponent(id)}`, { auth: true }),
+  // Aggregate view for the interview screen: interview + job + candidate +
+  // job_candidate + cv_analysis + interviewer in one response.
+  getInterviewContext: (id) =>
+    request(`/interviews/${encodeURIComponent(id)}/context`, { auth: true }),
+  createInterview: (payload)   => request('/interviews', { method: 'POST', body: payload, auth: true }),
+  updateInterview: (id, patch) => request(`/interviews/${encodeURIComponent(id)}`, { method: 'PATCH', body: patch, auth: true }),
+  // Finalise an interview. Body carries the transcript plus the client-side
+  // duration and any bias incidents surfaced during the session.
+  completeInterview: (id, payload) =>
+    request(`/interviews/${encodeURIComponent(id)}/complete`, { method: 'POST', body: payload, auth: true }),
+  // AI interview-section plan. payload: { job_id, cand_id, total_minutes? }.
+  generatePlan: (payload) => request('/interviews/generate-plan', { method: 'POST', body: payload, auth: true }),
+
+  // ---------- interview questions ---------------------------------------
+  generateQuestions:        (jobId)       => request(`/interview-questions/${encodeURIComponent(jobId)}`, { method: 'POST', auth: true }),
+  generateFollowUpQuestions: (jobId, body) => request(`/interview-questions/${encodeURIComponent(jobId)}/follow-up`, { method: 'POST', body, auth: true }),
+  generateSimilarQuestions:  (jobId, body) => request(`/interview-questions/${encodeURIComponent(jobId)}/similar`, { method: 'POST', body, auth: true }),
+
+  // ---------- interview-users -----------------------------------------
+  getInterviewUsersByInterview: (intvId) =>
+    request(`/interview-users/by-interview/${encodeURIComponent(intvId)}`, { auth: true }),
 
   // ---------- applications ------------------------------------------------
   // Flat application rows (candidate + job + status pre-joined), scoped
-  // server-side to the given user_id.
-  listApplications: (params = {}) => {
-    const qs = new URLSearchParams(
-      Object.entries(params).filter(([, v]) => v !== undefined && v !== null && v !== '')
-    ).toString()
-    return request(`/applications${qs ? `?${qs}` : ''}`, { auth: true })
-  },
+  // server-side to the caller.
+  listApplications: (params = {}) => request(`/applications${qs(params)}`, { auth: true }),
+  updateApplication: (applicationId, patch) =>
+    request(`/applications/${encodeURIComponent(applicationId)}`, { method: 'PATCH', body: patch, auth: true }),
 
   // ---------- dashboard ----------------------------------------------------
   getDashboardSummary: () => request('/dashboard/summary', { auth: true }),
@@ -203,43 +246,4 @@ export const api = {
   getCompany:    (comp_id)          => request(`/companies/${comp_id}`,  { auth: true }),
   updateCompany: (comp_id, payload) => request(`/companies/${comp_id}`,  { method: 'PUT', body: payload, auth: true }),
   updateCompanyLogo: (comp_id, formData) => request(`/companies/${comp_id}/logo`, { method: 'PATCH', body: formData, auth: true }),
-
-  //--cv-analysis------------------------------------------------------------------------------------
-  completeInterview: (interviewId, transcript) => request(`/interviews/${encodeURIComponent(interviewId)}/complete`, {method: 'POST', body: { transcript }, auth: true}),
-
-}
-
-//--get-transcript----------------------------------------------------------------------------------
-export async function openFileWithAuth(fileUrl) {
-  const newTab = window.open('', '_blank')
-
-  if (!newTab) {
-    throw new ApiError('Please allow pop-ups to view the PDF.')
-  }
-
-  try {
-    const response = await authedFetch(fileUrl)
-
-    if (!response.ok) {
-      const data = await response.json().catch(() => null)
-
-      throw new ApiError(
-        data?.detail || `Failed to open PDF (${response.status})`,
-        {
-          status: response.status,
-          detail: data?.detail,
-        }
-      )
-    }
-
-    const blob = await response.blob()
-    const blobUrl = URL.createObjectURL(blob)
-
-    newTab.location.href = blobUrl
-
-    setTimeout(() => {URL.revokeObjectURL(blobUrl)}, 300000)
-    } catch (error) {
-      newTab.close()
-      throw error
-    }
 }

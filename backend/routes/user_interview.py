@@ -8,24 +8,12 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from database import get_db
 from dependencies import get_current_comp_id
 from models.user_interview import InterviewUserCreate, InterviewUserOut
+from routes._scoping import interview_in_company
 
 router = APIRouter(prefix="/api/interview-users", tags=["interview_users"])
 
-
-async def _interview_in_company(db, intv_id: str | None, comp_id: ObjectId) -> bool:
-    """Tenant guard: walk link -> interview -> job -> comp_id."""
-    if not intv_id or not ObjectId.is_valid(intv_id):
-        return False
-    interview = await db.interviews.find_one({"_id": ObjectId(intv_id)}, {"job_id": 1})
-    job_id = (interview or {}).get("job_id")
-    if not job_id or not ObjectId.is_valid(job_id):
-        return False
-    return (
-        await db.jobs.find_one(
-            {"_id": ObjectId(job_id), "comp_id": comp_id}, {"_id": 1}
-        )
-        is not None
-    )
+# Tenant guard lives in routes/_scoping.py now.
+_interview_in_company = interview_in_company
 
 
 def interview_user_helper(interview_user: dict) -> InterviewUserOut:

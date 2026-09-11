@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { modal, form, flex, button } from '../../styles/layout'
 import { useAuth } from '../../lib/AuthContext.jsx'
-import { api, authedFetch } from '../../lib/api.js'
+import { api } from '../../lib/api.js'
 import { isEmail, isPhone, isFullName, isFutureDateTime } from '../../lib/validators.js'
 import InterviewerCombobox from './InterviewerCombobox.jsx'
 import FileDropzone from './FileDropzone.jsx'
@@ -34,9 +34,7 @@ export default function AddCandidateForm({ jobs = [], fixedJobId = null, onClose
     async function loadInterviewers() {
       if (!user?.comp_id) return
       try {
-        const res = await authedFetch(`/api/users?role=interviewer`)
-        if (!res.ok) throw new Error()
-        const data = await res.json()
+        const data = await api.listInterviewers()
         setInterviewers(Array.isArray(data) ? data : [])
       } catch {
         setInterviewers([])
@@ -79,10 +77,9 @@ export default function AddCandidateForm({ jobs = [], fixedJobId = null, onClose
     setSubmitting(true)
 
     try {
-      const res = await authedFetch(`/api/candidates/create-for-job`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      let saved
+      try {
+        saved = await api.createCandidateForJob({
           cand_full_name: formState.name.trim(),
           cand_email: formState.email.trim().toLowerCase(),
           cand_phone: formState.phone.trim() || null,
@@ -94,20 +91,15 @@ export default function AddCandidateForm({ jobs = [], fixedJobId = null, onClose
           job_id: formState.job_id,
           interviewer_user_id: formState.interviewer_user_id || null,
           scheduled_at: formState.scheduled_at || null,
-        }),
-      })
-
-      if (!res.ok) {
-        const data = await res.json().catch(() => null)
-        const detail = data?.detail
-        const message =
-          typeof detail === 'string' ? detail
-          : Array.isArray(detail) ? detail.map((d) => `${d.loc?.slice(1).join('.')}: ${d.msg}`).join(' • ')
-          : 'Failed to add candidate.'
-        throw new Error(message)
+        })
+      } catch (err) {
+        const detail = err?.detail
+        throw new Error(
+          Array.isArray(detail)
+            ? detail.map((d) => `${d.loc?.slice(1).join('.')}: ${d.msg}`).join(' • ')
+            : err?.message || 'Failed to add candidate.'
+        )
       }
-
-      const saved = await res.json()
 
       // Candidate added with a CV → hand it to the analyser right away
       // (the cover letter rides along). The POST returns as soon as the

@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { flex, button } from "../styles/layout";
 import { useAuth } from "../lib/AuthContext.jsx";
-import { authedFetch } from "../lib/api.js";
+import { api } from "../lib/api.js";
 import { useToast } from "../components/common/ToastContext.jsx";
 
 import { TranscriptPanel } from "../components/interview/InterviewTranscriptPanel.jsx";
@@ -159,19 +159,7 @@ export default function InterviewPage() {
     if (beginningRef.current) return;
     beginningRef.current = true;
     try {
-      const res = await authedFetch(`/api/interviews/${id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ intv_status: "in_progress" }),
-      });
-      if (!res.ok) {
-        const data = await res.json().catch(() => null);
-        throw new Error(
-          typeof data?.detail === "string"
-            ? data.detail
-            : "Failed to start the interview."
-        );
-      }
+      await api.updateInterview(id, { intv_status: "in_progress" });
       setIntvStatus("in_progress");
     } catch (err) {
       toast.error(err.message || "Failed to start the interview.");
@@ -187,22 +175,11 @@ export default function InterviewPage() {
       const finalEntries = transcript.filter(
         (e) => !String(e.id).startsWith("partial-")
       );
-      const res = await authedFetch(`/api/interviews/${id}/complete`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          transcript: finalEntries,
-          duration_seconds: timer,
-          bias_incidents: biasIncidentsRef.current,
-        }),
+      const data = await api.completeInterview(id, {
+        transcript: finalEntries,
+        duration_seconds: timer,
+        bias_incidents: biasIncidentsRef.current,
       });
-      const data = await res.json().catch(() => null);
-      if (!res.ok) {
-        const detail = data?.detail;
-        throw new Error(
-          typeof detail === "string" ? detail : "Report generation failed."
-        );
-      }
       if (isScreenSharing) void stopScreenShare();
       setIsCompleted(true);
       localStorage.removeItem(`transcript-${id}`);

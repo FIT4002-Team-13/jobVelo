@@ -10,6 +10,7 @@ import Pagination from '../components/common/Pagination'
 import { page } from '../styles/layout'
 import { useAsync } from '../hooks/useAsync.js'
 import { useTableControls } from '../hooks/useTableControls.js'
+import { useAuth } from '../lib/AuthContext.jsx'
 
 // Filter options for the dashboard's two panels, with an "All" entry
 // prepended. Kept in sync with the filter on JobDetailPage so the UX is
@@ -49,21 +50,20 @@ const PERSONAL_CARDS = [
 
 const PAGE_SIZE = 5
 
-// Step 1: who am I? Need userid before /api/applications can scope to "my
-// candidates" - matches the /candidates page filter. Step 2: parallel fetch
-// the rest; each is independently best-effort (defaults on failure) so one
-// flaky endpoint doesn't blank the whole dashboard.
-async function loadDashboardData() {
-  const me = await api.me()
-
-  // Candidates panel reads from /api/applications?user_id=<me> instead of
+// `userId` comes from AuthContext (already resolved by the time a logged-in
+// user can reach this page - see useAuth() below) rather than an api.me()
+// call here, so this is a single parallel wave, not two sequential ones.
+// Each call is independently best-effort (defaults on failure) so one flaky
+// endpoint doesn't blank the whole dashboard.
+async function loadDashboardData(userId) {
+  // Candidates panel reads from /api/applications?user_id=<id> instead of
   // /api/candidates so it shows the SAME rows as the /candidates page (one
   // per application where the current user is the interviewer, scoped to
   // the company server-side).
   const [summary, jobsData, apps, interviews] = await Promise.all([
     api.getDashboardSummary().catch(() => null),
     api.listJobs().catch(() => []),
-    api.listApplications({ user_id: me.userid }).catch(() => []),
+    api.listApplications({ user_id: userId }).catch(() => []),
     api.listInterviews().catch(() => []),
   ])
 
@@ -102,7 +102,7 @@ async function loadDashboardData() {
       }))
     : []
 
-  return { me, summary, jobs, candidates, completedByJob, allInterviews }
+  return { summary, jobs, candidates, completedByJob, allInterviews }
 }
 
 // ── Sub-components ───────────────────────────────────────────────────────────
@@ -154,8 +154,12 @@ export default function DashboardPage() {
   // toLocaleDateString return dd/mm/yyy, replace keeps the slashes as is but ensures it's always in the same format regardless of user locale.
   const today = new Date().toLocaleDateString('en-AU').replace(/\//g, '/')
 
-  const { data, loading, error } = useAsync(loadDashboardData, [])
-  const me              = data?.me ?? null
+  const { user } = useAuth()
+  const userId = user?.userid ?? null
+  const { data, loading, error } = useAsync(
+    userId ? () => loadDashboardData(userId) : null,
+    [userId]
+  )
   const summary         = data?.summary ?? null
   const jobs             = data?.jobs ?? []
   const candidates       = data?.candidates ?? []
@@ -194,7 +198,7 @@ export default function DashboardPage() {
   // Company-wide totals for the admin's summary cards - all derived from
   // data the dashboard already fetches, so no extra requests. Deltas count
   // what landed inside the current calendar month.
-  const isAdmin = me?.role === 'admin'
+  const isAdmin = user?.role === 'admin'
   const _now = new Date()
   const _monthStart = new Date(_now.getFullYear(), _now.getMonth(), 1)
   const _nextMonthStart = new Date(_now.getFullYear(), _now.getMonth() + 1, 1)
@@ -263,29 +267,42 @@ export default function DashboardPage() {
     },
   ]
 
+  // The sidebar (and header, below) render immediately from the already-
+  // resolved AuthContext user - only the data-dependent content underneath
+  // waits on the dashboard's own fetch, so navigating here never blanks the
+  // whole page the way a full-page loading/error return used to.
   if (loading) return (
-    <div className={page.loading}>
-      <p className="text-sm text-neutral-400">Loading...</p>
+    <div className={page.shell}>
+      <Sidebar user={user ?? undefined} />
+      <main className={page.main}>
+        <div className={page.loading}>
+          <p className="text-sm text-neutral-400">Loading...</p>
+        </div>
+      </main>
     </div>
   )
 
   if (error) return (
-    <div className={page.loading}>
-      <p className="text-sm text-coral-500">{error}</p>
+    <div className={page.shell}>
+      <Sidebar user={user ?? undefined} />
+      <main className={page.main}>
+        <div className={page.loading}>
+          <p className="text-sm text-coral-500">{error}</p>
+        </div>
+      </main>
     </div>
   )
 
   return (
     <div className={page.shell}>
-      {/* If me hasn't loaded, pass undefined to Sidebar to show skeleton instead of user info */}
-      <Sidebar user={me ?? undefined} />
+      <Sidebar user={user ?? undefined} />
 
       <main className={page.main}>
 
         {/* Header */}
         <div className="mb-6">
           <h1 className="text-4xl font-extrabold tracking-tight text-neutral-800">
-            Hello, <em className="italic">{me?.full_name}</em>
+            Hello, <em className="italic">{user?.full_name}</em>
           </h1>
           <p className="mt-1 text-sm font-medium text-primary-500">{today}</p>
         </div>

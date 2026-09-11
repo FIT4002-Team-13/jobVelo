@@ -14,12 +14,19 @@ export default function Sidebar({ user: userProp }) {
   const { user: ctxUser, logout } = useAuth();
   const user = userProp ?? ctxUser;
 
-  // Properly clear the JWT + auth state, then bounce to the landing page.
-  // Without logout() the token would stay in localStorage and the user
-  // would silently re-authenticate on the next visit.
+  // Bounce to the landing page FIRST, then clear the JWT + auth state.
+  // Order matters: if logout() ran first, `user` would flip to null while
+  // we're still on this protected route, and RequireAuth's declarative
+  // <Navigate to="/login" state={{ from: location }}> would race the
+  // navigate() below - sometimes winning and leaving this page's path
+  // stashed as the post-login redirect target. The next login (possibly a
+  // different account entirely) would then get bounced back to a page it
+  // has no access to instead of home. Navigating away first means the
+  // protected route unmounts before `user` changes, so that redirect never
+  // fires.
   const handleLogout = () => {
-    logout();
     navigate('/', { replace: true });
+    logout();
   };
 
   // Prefer the new full_name field; fall back to legacy `name` (mock user)

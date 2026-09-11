@@ -12,9 +12,10 @@ from fastapi import APIRouter, Depends, HTTPException, Response, status
 
 from database import get_db
 from dependencies import get_current_comp_id
+from models.job_candidate import JobCandidateRowOut
 from routes.jobs import delete_cv_analyses_for_links
 
-router = APIRouter(prefix="/api/jobs", tags=["jobs"])
+router = APIRouter(prefix="/api/jobs", tags=["job candidates"])
 
 
 def _validate_oid(value: str, what: str = "job") -> ObjectId:
@@ -23,18 +24,18 @@ def _validate_oid(value: str, what: str = "job") -> ObjectId:
     return ObjectId(value)
 
 
-@router.get("/{job_id}/candidates")
+@router.get("/{job_id}/candidates", response_model=list[JobCandidateRowOut])
 async def list_candidates_for_job(
     job_id: str,
     comp_id: ObjectId = Depends(get_current_comp_id),
-    db=Depends(get_db),
-):
+) -> list[JobCandidateRowOut]:
     """Joined view: every candidate linked to this job, flattened with
     interview-style fields (name / status / score / scheduled_at /
     interviewer) so the table can render directly.
 
     Tenant guard: 404s if the job belongs to a different company.
     """
+    db = get_db()
     oid = _validate_oid(job_id)
     if not await db.jobs.find_one({"_id": oid, "comp_id": comp_id}, {"_id": 1}):
         raise HTTPException(status_code=404, detail="Job not found")
@@ -55,9 +56,16 @@ async def list_candidates_for_job(
     )
     cands_by_id = {str(c["_id"]): c for c in cand_docs}
 
-    # Bulk-fetch interviews for this job, keyed by cand_id.
+    # Bulk-fetch interviews for this job, keyed by cand_id. `completed_by_cand`
+    # is a second index so the per-row "has a completed interview?" check
+    # doesn't need its own query.
     interviews = await db.interviews.find({"job_id": job_id}).to_list(length=500)
     interview_by_cand = {i.get("cand_id"): i for i in interviews}
+    completed_by_cand = {
+        i.get("cand_id"): i
+        for i in interviews
+        if i.get("intv_status") == "completed"
+    }
 
     # Bulk-fetch interview_user links for those interviews.
     interview_ids = [str(i["_id"]) for i in interviews]
@@ -85,13 +93,7 @@ async def list_candidates_for_job(
         cand_id = link.get("cand_id")
         c = cands_by_id.get(cand_id, {})
 
-        interview_docs = await db.interviews.find(
-            {"job_id": job_id, "cand_id": cand_id}
-        ).to_list(length=20)
-        completed_interview = next(
-            (item for item in interview_docs if item.get("intv_status") == "completed"),
-            None,
-        )
+        completed_interview = completed_by_cand.get(cand_id)
 
         # Resolve interviewer name from the interview chain only. The legacy
         # `job_candidates.interviewer` field is intentionally ignored — old rows
@@ -120,31 +122,31 @@ async def list_candidates_for_job(
         avg = round(sum(scores) / len(scores), 1) if scores else None
 
         out.append(
-            {
-                "id": str(link["_id"]),
-                "cand_id": str(c["_id"]) if c.get("_id") else cand_id,
-                "job_id": job_id,
-                "name": c.get("cand_full_name") or link.get("name", ""),
-                "email": c.get("cand_email"),
-                "phone": c.get("cand_phone"),
-                "cv_url": c.get("cand_cv_url"),
-                "cover_letter_url": c.get("cand_cover_letter_url"),
-                "status": (
+            JobCandidateRowOut(
+                id=str(link["_id"]),
+                cand_id=str(c["_id"]) if c.get("_id") else cand_id,
+                job_id=job_id,
+                name=c.get("cand_full_name") or link.get("name", ""),
+                email=c.get("cand_email"),
+                phone=c.get("cand_phone"),
+                cv_url=c.get("cand_cv_url"),
+                cover_letter_url=c.get("cand_cover_letter_url"),
+                status=(
                     (interview.get("intv_status") or "not_scheduled")
                     .replace("_", " ")
                     .upper()
                     if interview
                     else "NOT SCHEDULED"
                 ),
-                "scheduled_at": scheduled_at,
-                "interviewer": interviewer_name,
-                "ratings": ratings or None,
-                "score": avg,
-                "intv_completed": completed_interview is not None,
-                "intv_id": str(completed_interview["_id"])
+                scheduled_at=scheduled_at,
+                interviewer=interviewer_name,
+                ratings=ratings or None,
+                score=avg,
+                intv_completed=completed_interview is not None,
+                intv_id=str(completed_interview["_id"])
                 if completed_interview
                 else None,
-            }
+            )
         )
     return out
 
@@ -158,7 +160,6 @@ async def remove_candidate_from_job(
     job_id: str,
     jobcand_id: str,
     comp_id: ObjectId = Depends(get_current_comp_id),
-    db=Depends(get_db),
 ):
     """Remove a single candidate-job link.
 
@@ -167,6 +168,7 @@ async def remove_candidate_from_job(
     interviews + interview_users for this (cand_id, job_id) pair — otherwise
     an orphan interview would leave a phantom avatar on the job card.
     """
+    db = get_db()
     if not ObjectId.is_valid(jobcand_id):
         raise HTTPException(status_code=400, detail="Invalid jobcand_id")
 
