@@ -278,15 +278,32 @@ export function useTranscript(id, { serverData, candidateName, userId, isComplet
         const itemKey = detectedSpeakerKey(item);
 
         if (itemKey === key) {
-          return {...item, speaker: person?.name || `Speaker ${item.speaker_id + 1}`, participant_id: person?.id ?? null, speaker_role: person?.role ?? null};
+          const fallback = Number.isInteger(item.speaker_id) ? `Speaker ${item.speaker_id + 1}` : "Speaker";
+          return {...item, speaker: person?.name || fallback, participant_id: person?.id ?? null, speaker_role: person?.role ?? null};
         }
         if (itemKey && demotedKeys.has(itemKey)) {
-          return { ...item, speaker: `Speaker ${item.speaker_id + 1}`, participant_id: null, speaker_role: null};
+          const fallback = Number.isInteger(item.speaker_id) ? `Speaker ${item.speaker_id + 1}` : "Speaker";
+          return { ...item, speaker: fallback, participant_id: null, speaker_role: null};
         }
 
         return item;
       });
 
+      localStorage.setItem(`transcript-${id}`, JSON.stringify(updated));
+      return updated;
+    });
+  }
+
+  function assignSpeakerForEntry(entry, person) {
+    if (!entry?.id) return;
+
+    setTranscript((prev) => {
+      const updated = prev.map((item) => {
+        if (item.id !== entry.id) return item;
+        
+        const fallback = Number.isInteger(item.speaker_id) ? `Speaker ${item.speaker_id + 1}` : "Speaker";
+        return {...item, speaker: person?.name || fallback, participant_id: person?.id ?? null, speaker_role: person?.role ?? null};
+      });
       localStorage.setItem(`transcript-${id}`, JSON.stringify(updated));
       return updated;
     });
@@ -312,5 +329,6 @@ export function useTranscript(id, { serverData, candidateName, userId, isComplet
     jumpToTranscriptEntry,
     speakerAssignments,
     assignSpeaker,
+    assignSpeakerForEntry,
   };
 }

@@ -5,6 +5,8 @@ export default function SpeakerAssignmentPopup({entry, interviewerLabel, candida
   const [customName, setCustomName] = useState(
     entry.speaker_role === "other" ? entry.speaker || "" : ""
   );
+
+  const [line, setLine] = useState("all");
   const popupRef = useRef(null);
 
   // Close the popup when the user clicks anywhere outside it. Same pattern
@@ -33,7 +35,7 @@ export default function SpeakerAssignmentPopup({entry, interviewerLabel, candida
     },
   ];
 
-  function chooseSpeaker(person) {onAssign(entry, person); onClose()}
+  function chooseSpeaker(person) {onAssign(entry, person, line); onClose()}
 
   function submitCustom(event) {
     event.preventDefault();
@@ -43,7 +45,7 @@ export default function SpeakerAssignmentPopup({entry, interviewerLabel, candida
       id: `custom:${trimmed.toLowerCase()}`,
       name: trimmed,
       role: "other",
-    });
+    }, line);
     onClose();
   }
 
@@ -54,10 +56,14 @@ export default function SpeakerAssignmentPopup({entry, interviewerLabel, candida
           Choose speaker
         </span>
 
-        <button type="button" onClick={onClose} aria-label="Close speaker menu" className="text-neutral-400 hover:text-neutral-700">
-          ×
-        </button>
       </div>
+
+      <label className="mt-2 flex items-start gap-2 cursor-pointer select-none rounded-md px-1 py-1 hover:bg-neutral-50">
+        <input type="checkbox" checked={line === "all"} onChange={(e) => setLine(e.target.checked ? "all" : "one")} className="mt-0.5 h-4 w-4 rounded border-neutral-300 accent-primary-500 focus:ring-primary-500"/>
+        <span className="text-xs text-neutral-600">
+          Apply to <span className="font-semibold">all lines</span> by this voice
+        </span>
+      </label>
 
       <div className="mt-3 space-y-1">
         {choices.map(person => (
