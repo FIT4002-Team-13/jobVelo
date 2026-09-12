@@ -116,6 +116,7 @@ function CvViewButton({ cvAnalysis, cvUrl, onViewAnalysis, onAnalyse, analysing 
 export default function CandidateInfoCard({
   candidate, job, interview, onStartInterview, interviewer,
   onEdit, cvAnalysis, onViewCvAnalysis, onAnalyseCv, analysingCv,
+  showDocumentLinks = true, showRole = true, showMeetingDate = true, title = null,
 }) {
   const { user } = useAuth()
   const status = (interview?.intv_status ?? 'not_scheduled').replace(/_/g, ' ').toUpperCase()
@@ -128,7 +129,7 @@ export default function CandidateInfoCard({
       <div className={flex.rowBetween}>
         <div className="mb-3">
           <h2 className="text-2xl font-bold text-neutral-800">
-            {candidate?.cand_full_name || '--'}
+            {title || candidate?.cand_full_name || '--'}
           </h2>
           <p className={`text-sm text-neutral-400 mt-0.5 ${flex.row} gap-1`}>
             <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -178,18 +179,22 @@ export default function CandidateInfoCard({
       </div>
 
       <div className="mt-1 grid grid-cols-[3fr_4fr] gap-x-16 gap-y-5">
-        <div>
-          <p className="mb-1 text-sm font-bold uppercase tracking-wide text-neutral-800">ROLE</p>
-          <p className="inline-flex rounded-pill bg-primary-100 px-4 py-0.5 text-sm font-semibold text-primary-500">
-            {job?.title || '--'}
-          </p>
-        </div>
-        <div>
-          <p className="mb-1 text-sm font-bold uppercase tracking-wide text-neutral-800">DATE</p>
-          <p className="text-sm font-medium text-neutral-400">
-            {formatDateTime(interview?.intv_date_time)}
-          </p>
-        </div>
+        {showRole && (
+          <div>
+            <p className="mb-1 text-sm font-bold uppercase tracking-wide text-neutral-800">ROLE</p>
+            <p className="inline-flex rounded-pill bg-primary-100 px-4 py-0.5 text-sm font-semibold text-primary-500">
+              {job?.title || '--'}
+            </p>
+          </div>
+        )}
+        {showMeetingDate && (
+          <div>
+            <p className="mb-1 text-sm font-bold uppercase tracking-wide text-neutral-800">DATE</p>
+            <p className="text-sm font-medium text-neutral-400">
+              {formatDateTime(interview?.intv_date_time)}
+            </p>
+          </div>
+        )}
         <div>
           <p className="mb-1 text-sm font-bold uppercase tracking-wide text-neutral-800">EMAIL</p>
           <p className="text-md font-medium text-neutral-400">
@@ -206,7 +211,7 @@ export default function CandidateInfoCard({
 
       <div className="mt-6 h-px w-[48%] bg-neutral-200" />
 
-      <div className="mt-6 grid grid-cols-3 gap-x-10">
+      <div className={`mt-6 grid gap-x-10 ${showDocumentLinks ? 'grid-cols-3' : 'grid-cols-1'}`}>
         <div>
           <p className="mb-2 text-sm font-bold uppercase tracking-wide text-neutral-800">INTERVIEWER</p>
           <div className="flex items-center gap-2">
@@ -219,35 +224,39 @@ export default function CandidateInfoCard({
           </div>
         </div>
 
-        <div>
-          <p className="mb-2 text-xs font-bold uppercase tracking-wide text-neutral-800">CV / RESUME</p>
-          <CvViewButton
-            cvAnalysis={cvAnalysis}
-            cvUrl={candidate?.cand_cv_url}
-            onViewAnalysis={onViewCvAnalysis}
-            onAnalyse={onAnalyseCv}
-            analysing={analysingCv}
-          />
-        </div>
+        {showDocumentLinks && (
+          <>
+            <div>
+              <p className="mb-2 text-xs font-bold uppercase tracking-wide text-neutral-800">CV / RESUME</p>
+              <CvViewButton
+                cvAnalysis={cvAnalysis}
+                cvUrl={candidate?.cand_cv_url}
+                onViewAnalysis={onViewCvAnalysis}
+                onAnalyse={onAnalyseCv}
+                analysing={analysingCv}
+              />
+            </div>
 
-        <div>
-          <p className="mb-2 text-xs font-bold uppercase tracking-wide text-neutral-800">COVER LETTER</p>
-          <a
-            href={candidate?.cand_cover_letter_url || '#'}
-            target="_blank"
-            rel="noreferrer"
-            className={`inline-flex min-w-[98px] justify-center rounded-xl px-4 py-0.5 text-sm font-semibold transition-colors ${
-              candidate?.cand_cover_letter_url
-                ? 'bg-primary-500 text-white hover:bg-primary-600'
-                : 'cursor-not-allowed bg-neutral-300 text-neutral-500'
-            }`}
-            onClick={(e) => {
-              if (!candidate?.cand_cover_letter_url) e.preventDefault()
-            }}
-          >
-            View
-          </a>
-        </div>
+            <div>
+              <p className="mb-2 text-xs font-bold uppercase tracking-wide text-neutral-800">COVER LETTER</p>
+              <a
+                href={candidate?.cand_cover_letter_url || '#'}
+                target="_blank"
+                rel="noreferrer"
+                className={`inline-flex min-w-[98px] justify-center rounded-xl px-4 py-0.5 text-sm font-semibold transition-colors ${
+                  candidate?.cand_cover_letter_url
+                    ? 'bg-primary-500 text-white hover:bg-primary-600'
+                    : 'cursor-not-allowed bg-neutral-300 text-neutral-500'
+                }`}
+                onClick={(e) => {
+                  if (!candidate?.cand_cover_letter_url) e.preventDefault()
+                }}
+              >
+                View
+              </a>
+            </div>
+          </>
+        )}
       </div>
     </section>
   )

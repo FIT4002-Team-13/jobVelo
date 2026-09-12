@@ -163,7 +163,15 @@ export default function ApplicationsPage() {
     }
   }
 
-  function openCandidate(row) {
+  // Interviews are created eagerly (at add-time or scheduling), so almost
+  // every row already has one - go straight there. The candidate/job route
+  // is only a fallback for the rare row with no interview yet, where it
+  // handles the "not scheduled" bootstrap itself.
+  function openCandidate(row, view) {
+    if (row?.intv_id) {
+      navigate(`/interview/${row.intv_id}${view ? `?view=${view}` : ''}`)
+      return
+    }
     if (!row?.cand_id || !row?.job_id) return
     navigate(`/candidates/${row.cand_id}/${row.job_id}`)
   }
@@ -311,7 +319,7 @@ export default function ApplicationsPage() {
                         {row.cv_analysis_status === 'completed' ? (
                           <button
                             type="button"
-                            onClick={() => navigate(`/cv-analysis/${row.application_id}`)}
+                            onClick={() => openCandidate(row, 'cv')}
                             className="text-primary-500 font-semibold hover:underline"
                           >
                             View
@@ -373,14 +381,13 @@ export default function ApplicationsPage() {
 
                       <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                         {row.cover_letter_url ? (
-                          <a
-                            href={row.cover_letter_url}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="text-primary-500 hover:underline"
+                          <button
+                            type="button"
+                            onClick={() => openCandidate(row, 'cover-letter')}
+                            className="text-primary-500 font-semibold hover:underline"
                           >
-                            PDF
-                          </a>
+                            View
+                          </button>
                         ) : (
                           '--'
                         )}
@@ -395,29 +402,10 @@ export default function ApplicationsPage() {
                       </td>
 
                       <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
-                        {/* Same icon trio as the JobDetailPage candidates
-                            table (view / edit / delete), same order and
-                            styling, so the two tables read identically. */}
+                        {/* The view/eye icon is gone - clicking the row
+                            already opens the candidate page, so it was
+                            redundant. */}
                         <div className="flex items-center gap-2">
-                          <button
-                            type="button"
-                            title="View candidate details"
-                            aria-label="View candidate details"
-                            onClick={() => openCandidate(row)}
-                            className="flex h-7 w-7 items-center justify-center rounded-lg text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-neutral-600"
-                          >
-                            <svg
-                              width="14"
-                              height="14"
-                              viewBox="0 0 24 24"
-                              fill="none"
-                              stroke="currentColor"
-                              strokeWidth="2"
-                            >
-                              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
-                              <circle cx="12" cy="12" r="3" />
-                            </svg>
-                          </button>
                           {/* Editing is locked once the interview is finished -
                               mirrors the backend guard that keeps completed/
                               cancelled interviews immutable. */}

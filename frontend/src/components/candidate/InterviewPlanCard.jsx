@@ -98,7 +98,7 @@ export default function InterviewPlanCard({ jobId, candId, jobCand }) {
   const fieldClass = 'w-full rounded-lg border border-neutral-200 bg-white px-2 py-1 text-xs text-neutral-800 focus:outline-none focus:ring-1 focus:ring-primary-400'
 
   return (
-    <section className={`${card.base} ${flex.col} gap-4 mb-6`}>
+    <section className={`${card.base} ${flex.col} gap-4`}>
       <div className={flex.rowBetween}>
         <div>
           <h2 className="text-lg font-bold text-neutral-800">Interview Plan</h2>

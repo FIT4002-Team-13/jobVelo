@@ -1,16 +1,15 @@
 import { useState, useRef, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { flex, button } from "../styles/layout";
+import Sidebar from "../components/common/Sidebar";
 import { useAuth } from "../lib/AuthContext.jsx";
 import { authedFetch } from "../lib/api.js";
-import { useToast } from "../components/common/ToastContext.jsx";
 
 import { TranscriptPanel } from "../components/interview/InterviewTranscriptPanel.jsx";
 import { SuggestedQuestionDeck } from "../components/interview/InterviewQuestionDeck.jsx";
 import { InterviewSectionTimeline } from "../components/interview/InterviewSectionTimers.jsx";
 import { InterviewReportModal } from "../components/interview/InterviewReportModal.jsx";
-import InterviewPrepPage from "./InterviewPrepPage.jsx";
-import InterviewPostInterviewPage from "./InterviewPostInterviewPage.jsx";
+import RecordingSetupModal from "../components/interview/RecordingSetupModal.jsx";
 
 import { useInterviewData } from "../hooks/useInterviewData.js";
 import { useBias } from "../hooks/useBias.js";
@@ -20,46 +19,52 @@ import { useInterviewQuestions } from "../hooks/useInterviewQuestions.js";
 import { useAudioCapture } from "../hooks/useAudioCapture.js";
 import { formatTimer, parseTimestamp } from "../utils/time.js";
 
+// The live recording workspace - reached only via "Begin Interview" on the
+// candidate page's Prep tab, once the interview is already marked
+// in_progress server-side. Fully separate from CandidatePage so the debrief
+// tabs never have to coexist with the recording UI in the same tree.
 export default function InterviewPage() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const toast = useToast();
   const { user } = useAuth();
 
   const timerRef = useRef(0);
   const startTimeRef = useRef(Date.now());
   const generateFollowUpRef = useRef(null);
-  const beginningRef = useRef(false);
   const [reportState, setReportState] = useState({ phase: "idle" });
 
   const {
     serverData,
     candidateName,
     candidateRole,
-    cvUrl,
     jobId,
-    candId,
-    cvAnalysis,
     isCompleted,
     setIsCompleted,
     intvStatus,
-    setIntvStatus,
-    intvDateTime,
   } = useInterviewData(id);
+
+  // null while the fetch is still in flight - kept distinct from the other
+  // phases so the redirect guard below can't fire before we actually know
+  // the interview's status.
+  const phase = !serverData
+    ? null
+    : isCompleted
+    ? "debrief"
+    : intvStatus === "scheduled" || intvStatus === "not_scheduled"
+    ? "prep"
+    : "live";
+
+  // This page only makes sense while the interview is actually in progress -
+  // if it hasn't been begun yet, or has already finished, send the user to
+  // the tabbed candidate page instead.
+  useEffect(() => {
+    if (phase && phase !== "live") {
+      navigate(`/interview/${id}`, { replace: true });
+    }
+  }, [phase, id, navigate]);
 
   const { biasWarnings, biasIncidentsRef, addBiasWarning, dismissBiasWarning } =
     useBias(timerRef);
-
-  const {
-    sections,
-    sectionStates,
-    sectionsScrollRef,
-    sectionCardRefs,
-    startSection,
-    pauseSection,
-    resumeSection,
-    doneSection,
-  } = useInterviewSections(id, { serverData, timerRef, intvStatus });
 
   const {
     transcript,
@@ -112,6 +117,7 @@ export default function InterviewPage() {
     timer,
     status: audioStatus,
     videoRef,
+    startMicOnly,
     stopScreenShare,
     toggleScreenShare,
     togglePause,
@@ -128,6 +134,17 @@ export default function InterviewPage() {
     startTimeRef,
     intvStatus,
   });
+
+  const {
+    sections,
+    sectionStates,
+    sectionsScrollRef,
+    sectionCardRefs,
+    startSection,
+    pauseSection,
+    resumeSection,
+    doneSection,
+  } = useInterviewSections(id, { serverData, timerRef, intvStatus, isMicActive });
 
   // Real identities behind the "Interviewer"/"Candidate" speaker labels the
   // transcript hooks stamp onto each entry - used so the transcript panel
@@ -155,31 +172,6 @@ export default function InterviewPage() {
 
     setHighlightedEntryIdx(targetIdx);
     setTimeout(() => setHighlightedEntryIdx(null), 2000);
-  }
-
-  async function beginInterview() {
-    if (beginningRef.current) return;
-    beginningRef.current = true;
-    try {
-      const res = await authedFetch(`/api/interviews/${id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ intv_status: "in_progress" }),
-      });
-      if (!res.ok) {
-        const data = await res.json().catch(() => null);
-        throw new Error(
-          typeof data?.detail === "string"
-            ? data.detail
-            : "Failed to start the interview."
-        );
-      }
-      setIntvStatus("in_progress");
-    } catch (err) {
-      toast.error(err.message || "Failed to start the interview.");
-    } finally {
-      beginningRef.current = false;
-    }
   }
 
   async function completeInterview() {
@@ -217,63 +209,54 @@ export default function InterviewPage() {
     }
   }
 
-  const phase = isCompleted
-    ? "debrief"
-    : intvStatus === "scheduled" || intvStatus === "not_scheduled"
-    ? "prep"
-    : "live";
+  function closeReportModal() {
+    const wasReady = reportState.phase === "ready";
+    setReportState({ phase: "idle" });
+    if (wasReady) navigate(`/interview/${id}`);
+  }
 
   return (
-    <div className="h-screen flex flex-col bg-neutral-50 font-sans overflow-hidden">
-      <header className="bg-neutral-0 border-b border-neutral-200 px-10 py-4 shrink-0">
-        <div className={flex.rowBetween}>
-          <div className={`${flex.row} gap-16`}>
-            <div className={flex.col}>
-              <span className="text-xs font-bold text-neutral-400 uppercase tracking-widest mb-0.5">
-                Candidate
-              </span>
-              <span className="text-2xl font-bold text-neutral-800">
-                {candidateName || "—"}
-              </span>
-              <span className="text-sm text-neutral-400">
-                {candidateRole || "—"}
-              </span>
+    <div className="flex h-screen bg-neutral-50 font-sans">
+      <Sidebar />
+      <div className="flex-1 flex flex-col overflow-hidden">
+        <header className="bg-neutral-0 border-b border-neutral-200 px-10 py-4 shrink-0">
+          <div className={flex.rowBetween}>
+            <div className={`${flex.row} gap-16`}>
+              <div className={flex.col}>
+                <span className="text-xs font-bold text-neutral-400 uppercase tracking-widest mb-0.5">
+                  Candidate
+                </span>
+                <span className="text-2xl font-bold text-neutral-800">
+                  {candidateName || "—"}
+                </span>
+                <span className="text-sm text-neutral-400">
+                  {candidateRole || "—"}
+                </span>
+              </div>
+              <div className={flex.col}>
+                <span className="text-xs font-bold text-neutral-400 uppercase tracking-widest mb-0.5">
+                  Interviewer
+                </span>
+                <span className="text-2xl font-bold text-neutral-800">
+                  {user?.full_name || "—"}
+                </span>
+                <span className="text-sm text-neutral-400">
+                  {user?.role || "—"}
+                </span>
+              </div>
             </div>
-            <div className={flex.col}>
-              <span className="text-xs font-bold text-neutral-400 uppercase tracking-widest mb-0.5">
-                Interviewer
-              </span>
-              <span className="text-2xl font-bold text-neutral-800">
-                {user?.full_name || "—"}
-              </span>
-              <span className="text-sm text-neutral-400">
-                {user?.role || "—"}
-              </span>
-            </div>
-          </div>
 
-          <div className={`${flex.row} gap-4 items-center`}>
-            <button
-              className={button.primary}
-              onClick={() => cvUrl && window.open(cvUrl, "_blank")}
-              disabled={!cvUrl}
-            >
-              View Resume
-            </button>
-            {phase !== "prep" && (
+            <div className={`${flex.row} gap-4 items-center`}>
               <button
                 className={`${button.outline} ${
                   isScreenSharing
                     ? "bg-sky-100 text-sky-800 hover:bg-sky-200"
                     : ""
-                } ${isCompleted ? "opacity-60 cursor-not-allowed" : ""}`}
-                onClick={() => !isCompleted && void toggleScreenShare()}
-                disabled={isCompleted}
+                }`}
+                onClick={() => void toggleScreenShare()}
               >
                 {isScreenSharing ? "Stop screen share" : "Share screen"}
               </button>
-            )}
-            {phase !== "prep" && (
               <div
                 className={`${flex.row} gap-2 items-center text-neutral-700 font-semibold text-xl`}
               >
@@ -286,76 +269,23 @@ export default function InterviewPage() {
                   }`}
                 />
               </div>
-            )}
+            </div>
           </div>
-        </div>
-        {phase !== "prep" && audioStatus && (
-          <p
-            className={`mt-2 text-right text-xs font-medium ${
-              /denied|error|unable|no (microphone|computer audio|screen)|cancelled/i.test(
-                audioStatus
-              )
-                ? "text-coral-500"
-                : "text-neutral-400"
-            }`}
-          >
-            {audioStatus}
-          </p>
-        )}
-      </header>
+          {audioStatus && (
+            <p
+              className={`mt-2 text-right text-xs font-medium ${
+                /denied|error|unable|no (microphone|computer audio|screen)|cancelled/i.test(
+                  audioStatus
+                )
+                  ? "text-coral-500"
+                  : "text-neutral-400"
+              }`}
+            >
+              {audioStatus}
+            </p>
+          )}
+        </header>
 
-      {phase === "prep" ? (
-        <InterviewPrepPage
-          analysis={cvAnalysis}
-          scheduledLabel={
-            intvDateTime
-              ? new Date(intvDateTime).toLocaleString("en-AU", {
-                  weekday: "short",
-                  day: "numeric",
-                  month: "short",
-                  hour: "numeric",
-                  minute: "2-digit",
-                  hour12: true,
-                })
-              : null
-          }
-          onBegin={beginInterview}
-          onViewFullAnalysis={
-            cvAnalysis?.jobcand_id
-              ? () => navigate(`/cv-analysis/${cvAnalysis.jobcand_id}`)
-              : null
-          }
-          isMicActive={isMicActive}
-          isScreenSharing={isScreenSharing}
-          audioStatus={audioStatus}
-          onSetupRecording={() => void toggleScreenShare()}
-          onStopRecording={() => void stopScreenShare()}
-        />
-      ) : phase === "debrief" ? (
-        <InterviewPostInterviewPage
-          transcript={transcript}
-          transcriptEntryRefs={transcriptEntryRefs}
-          highlightedEntryIdx={highlightedEntryIdx}
-          highlightedEntryId={highlightedEntryId}
-          onNoteChange={handleNoteChange}
-          onViewReport={() =>
-            reportState.data
-              ? setReportState({ phase: "ready", data: reportState.data })
-              : completeInterview()
-          }
-          onBack={() =>
-            navigate(
-              candId && jobId
-                ? `/candidates/${candId}/${jobId}`
-                : `/jobs/${jobId}`,
-              { replace: true }
-            )
-          }
-          interviewerLabel={interviewerLabel}
-          candId={candId}
-          jobId={jobId}
-        />
-      ) : (
         <div
           className={`flex-1 ${flex.row} gap-6 p-6 overflow-hidden items-stretch`}
         >
@@ -444,6 +374,14 @@ export default function InterviewPage() {
             </div>
           </div>
         </div>
+      </div>
+
+      {serverData && !isMicActive && !isCompleted && (
+        <RecordingSetupModal
+          isMicActive={isMicActive}
+          audioStatus={audioStatus}
+          onSetupRecording={() => void startMicOnly()}
+        />
       )}
 
       {reportState.phase !== "idle" && (
@@ -452,15 +390,8 @@ export default function InterviewPage() {
           candidateName={candidateName}
           candidateRole={candidateRole}
           interviewerName={user?.full_name}
-          onClose={() => setReportState({ phase: "idle" })}
-          onDone={() =>
-            navigate(
-              candId && jobId
-                ? `/candidates/${candId}/${jobId}`
-                : `/jobs/${jobId}`,
-              { replace: true }
-            )
-          }
+          onClose={closeReportModal}
+          onDone={closeReportModal}
           onRetry={() => completeInterview()}
         />
       )}

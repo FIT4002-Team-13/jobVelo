@@ -654,3 +654,41 @@ async def upload_cover_letter(
 
     updated = await db.candidates.find_one({"_id": candidate["_id"]})
     return candidate_helper(updated)
+
+
+@router.delete(
+    "/{cand_id}/cover-letter",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Delete the candidate's standalone cover letter.",
+)
+async def delete_cover_letter(
+    cand_id: str,
+    comp_id: ObjectId = Depends(get_current_comp_id),
+):
+    from fastapi.responses import Response
+
+    db = get_db()
+
+    if not ObjectId.is_valid(cand_id):
+        raise HTTPException(status_code=400, detail="Invalid candidate id.")
+
+    candidate = await db.candidates.find_one(
+        {"_id": ObjectId(cand_id), "comp_id": comp_id}
+    )
+    if not candidate:
+        raise HTTPException(status_code=404, detail="Candidate not found.")
+
+    old_url = candidate.get("cand_cover_letter_url") or ""
+    if old_url.startswith("/api/files/candidate_docs/"):
+        await delete_upload(old_url.removeprefix("/api/files/"))
+
+    await db.candidates.update_one(
+        {"_id": candidate["_id"]},
+        {
+            "$set": {
+                "cand_cover_letter_url": None,
+                "cand_updated_at": datetime.now(timezone.utc),
+            }
+        },
+    )
+    return Response(status_code=204)

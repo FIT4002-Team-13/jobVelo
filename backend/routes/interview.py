@@ -692,6 +692,9 @@ async def complete_interview(
             intv_id=intv_id,
             intv_status="completed",
             scores=scores,
+            ratings=CandidateRatings.model_validate(stored_ratings)
+            if stored_ratings
+            else None,
             candidate_report=InterviewFeedback(**interview["intv_candidate_report"]),
             interviewer_report=InterviewFeedback(
                 **interview["intv_interviewer_report"]
@@ -797,6 +800,7 @@ async def complete_interview(
         intv_id=intv_id,
         intv_status="completed",
         scores=_scores_from_ratings(ratings),
+        ratings=ratings,
         candidate_report=candidate_report,
         interviewer_report=interviewer_report,
         bias_incidents=bias_incidents,
