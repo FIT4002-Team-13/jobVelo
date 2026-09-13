@@ -49,6 +49,15 @@ export default function CandidatePage() {
   const [prefetchedReport, setPrefetchedReport] = useState(null);
   const [showStartWarning, setShowStartWarning] = useState(false);
   const [showEditMode, setShowEditMode] = useState(false);
+  const [profileVisible, setProfileVisible] = useState(true);
+
+  function switchProfileView(toEdit) {
+    setProfileVisible(false);
+    setTimeout(() => {
+      setShowEditMode(toEdit);
+      setProfileVisible(true);
+    }, 150);
+  }
 
   const {
     serverData,
@@ -422,45 +431,47 @@ export default function CandidatePage() {
     {showProfile && (
       <div
         className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-6"
-        onClick={(e) => { if (e.target === e.currentTarget) { setShowProfile(false); setShowEditMode(false); } }}
+        onClick={(e) => { if (e.target === e.currentTarget) { setShowProfile(false); setShowEditMode(false); setProfileVisible(true); } }}
       >
         <div className="relative w-full max-w-2xl">
-          {showEditMode ? (
-            <EditCandidateForm
-              noOverlay
-              jobs={job ? [job] : []}
-              initialData={{
-                cand_id: candId,
-                application_id: jobCand?.jobcand_id,
-                candidate_name: candidate?.cand_full_name,
-                email: candidate?.cand_email,
-                phone: candidate?.cand_phone,
-                job_id: jobId,
-                interviewer: "",
-                interviewer_user_id: "",
-                interview_datetime: intvDateTime ?? null,
-                cv_url: cvUrl,
-                cover_letter_url: coverLetterUrl,
-              }}
-              onClose={() => setShowEditMode(false)}
-              onSaved={() => { setShowProfile(false); setShowEditMode(false); }}
-            />
-          ) : (
-            <CandidateInfoCard
-              candidate={candidate}
-              job={job}
-              interview={mergedInterview}
-              jobCand={jobCand}
-              interviewer={interviewerLabel}
-              onStartInterview={phase === "prep" ? () => { setShowProfile(false); beginInterview(); } : null}
-              onEdit={() => setShowEditMode(true)}
-              cvAnalysis={cvAnalysis}
-              onViewCvAnalysis={null}
-              onAnalyseCv={null}
-              analysingCv={false}
-              showDocumentLinks={false}
-            />
-          )}
+          <div className={`transition-opacity duration-150 ${profileVisible ? "opacity-100" : "opacity-0"}`}>
+            {showEditMode ? (
+              <EditCandidateForm
+                noOverlay
+                jobs={job ? [job] : []}
+                initialData={{
+                  cand_id: candId,
+                  application_id: jobCand?.jobcand_id,
+                  candidate_name: candidate?.cand_full_name,
+                  email: candidate?.cand_email,
+                  phone: candidate?.cand_phone,
+                  job_id: jobId,
+                  interviewer: "",
+                  interviewer_user_id: "",
+                  interview_datetime: intvDateTime ?? null,
+                  cv_url: cvUrl,
+                  cover_letter_url: coverLetterUrl,
+                }}
+                onClose={() => switchProfileView(false)}
+                onSaved={() => switchProfileView(false)}
+              />
+            ) : (
+              <CandidateInfoCard
+                candidate={candidate}
+                job={job}
+                interview={mergedInterview}
+                jobCand={jobCand}
+                interviewer={interviewerLabel}
+                onStartInterview={phase === "prep" ? () => { setShowProfile(false); beginInterview(); } : null}
+                onEdit={() => switchProfileView(true)}
+                cvAnalysis={cvAnalysis}
+                onViewCvAnalysis={null}
+                onAnalyseCv={null}
+                analysingCv={false}
+                showDocumentLinks={false}
+              />
+            )}
+          </div>
         </div>
       </div>
     )}
