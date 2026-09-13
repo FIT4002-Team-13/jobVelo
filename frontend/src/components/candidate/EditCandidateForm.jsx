@@ -17,6 +17,7 @@ export default function EditCandidateForm({
   initialData,
   onClose,
   onSaved,
+  noOverlay = false,
 }) {
   const { user } = useAuth()
 
@@ -185,9 +186,8 @@ export default function EditCandidateForm({
     }
   }
 
-  return (
-    <div className={modal.overlay}>
-      <div className={`${modal.panel} scrollbar-primary max-w-2xl max-h-[90vh] overflow-y-auto transition-[padding] ${interviewerOpen ? 'pb-52' : ''}`}>
+  const panel = (
+    <div className={`${modal.panel} scrollbar-primary max-w-2xl max-h-[90vh] overflow-y-auto transition-[padding] ${interviewerOpen ? 'pb-52' : ''}`}>
         <button
           type="button"
           onClick={onClose}
@@ -327,6 +327,7 @@ export default function EditCandidateForm({
           </div>
         </form>
       </div>
-    </div>
   )
+
+  return noOverlay ? panel : <div className={modal.overlay}>{panel}</div>
 }

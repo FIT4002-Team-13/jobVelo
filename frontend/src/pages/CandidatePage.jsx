@@ -12,6 +12,7 @@ import { parseTimestamp } from "../utils/time.js";
 import StartInterviewModal from "../components/job-candidate/StartInterviewModal.jsx";
 
 import CandidateInfoCard from "../components/candidate/CandidateInfoCard.jsx";
+import EditCandidateForm from "../components/candidate/EditCandidateForm.jsx";
 import CvTab from "../components/candidate/tabs/CvTab.jsx";
 import CoverLetterTab from "../components/candidate/tabs/CoverLetterTab.jsx";
 import InterviewPrepTab from "../components/candidate/tabs/InterviewPrepTab.jsx";
@@ -47,6 +48,7 @@ export default function CandidatePage() {
   const [clUploading, setClUploading] = useState(false);
   const [prefetchedReport, setPrefetchedReport] = useState(null);
   const [showStartWarning, setShowStartWarning] = useState(false);
+  const [showEditMode, setShowEditMode] = useState(false);
 
   const {
     serverData,
@@ -288,7 +290,16 @@ export default function CandidatePage() {
       <Sidebar />
       <div className="flex-1 flex flex-col overflow-hidden">
         <header className="bg-neutral-0 border-b border-neutral-200 px-10 py-4 shrink-0">
-          <div className={`${flex.row} gap-16`}>
+          <div className={`${flex.row} gap-16 items-center`}>
+            <button
+              onClick={() => navigate(-1)}
+              className={`${flex.row} gap-2 rounded-lg border border-neutral-200 bg-neutral-0 px-3 py-1.5 text-sm font-semibold text-neutral-600 transition-colors hover:border-primary-200 hover:bg-primary-500/10 hover:text-primary-600 shrink-0`}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/>
+              </svg>
+              Back to Jobs
+            </button>
             <div className={flex.col}>
               <span className="text-xs font-bold text-neutral-400 uppercase tracking-widest mb-0.5">
                 Candidate
@@ -411,23 +422,45 @@ export default function CandidatePage() {
     {showProfile && (
       <div
         className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-6"
-        onClick={(e) => { if (e.target === e.currentTarget) setShowProfile(false); }}
+        onClick={(e) => { if (e.target === e.currentTarget) { setShowProfile(false); setShowEditMode(false); } }}
       >
-        <div className="relative w-full max-w-xl">
-          <CandidateInfoCard
-            candidate={candidate}
-            job={job}
-            interview={mergedInterview}
-            jobCand={jobCand}
-            interviewer={interviewerLabel}
-            onStartInterview={phase === "prep" ? () => { setShowProfile(false); beginInterview(); } : null}
-            onEdit={null}
-            cvAnalysis={cvAnalysis}
-            onViewCvAnalysis={null}
-            onAnalyseCv={null}
-            analysingCv={false}
-            showDocumentLinks={false}
-          />
+        <div className="relative w-full max-w-2xl">
+          {showEditMode ? (
+            <EditCandidateForm
+              noOverlay
+              jobs={job ? [job] : []}
+              initialData={{
+                cand_id: candId,
+                application_id: jobCand?.jobcand_id,
+                candidate_name: candidate?.cand_full_name,
+                email: candidate?.cand_email,
+                phone: candidate?.cand_phone,
+                job_id: jobId,
+                interviewer: "",
+                interviewer_user_id: "",
+                interview_datetime: intvDateTime ?? null,
+                cv_url: cvUrl,
+                cover_letter_url: coverLetterUrl,
+              }}
+              onClose={() => setShowEditMode(false)}
+              onSaved={() => { setShowProfile(false); setShowEditMode(false); }}
+            />
+          ) : (
+            <CandidateInfoCard
+              candidate={candidate}
+              job={job}
+              interview={mergedInterview}
+              jobCand={jobCand}
+              interviewer={interviewerLabel}
+              onStartInterview={phase === "prep" ? () => { setShowProfile(false); beginInterview(); } : null}
+              onEdit={() => setShowEditMode(true)}
+              cvAnalysis={cvAnalysis}
+              onViewCvAnalysis={null}
+              onAnalyseCv={null}
+              analysingCv={false}
+              showDocumentLinks={false}
+            />
+          )}
         </div>
       </div>
     )}
