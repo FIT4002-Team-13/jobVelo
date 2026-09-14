@@ -34,6 +34,7 @@ export default function CandidateDetailPage() {
   const [showScoreEvidence, setShowScoreEvidence] = useState(false)
   const [refreshKey, setRefreshKey] = useState(0)
   const [cvAnalysis, setCvAnalysis] = useState(null)
+  const [cvAnalysisLoaded, setCvAnalysisLoaded] = useState(false)
   const [analysingCv, setAnalysingCv] = useState(false)
 
   // Analyse the candidate's already-stored CV against THIS job - no
@@ -59,15 +60,31 @@ export default function CandidateDetailPage() {
   // processing, so the "View" button flips from spinner to available the
   // moment the background analysis lands. A 404 just means no CV has been
   // uploaded yet.
+  //
+  // `cvAnalysisLoaded` tracks whether this fetch has resolved at least once.
+  // Until it has, `cvAnalysis` is still `null` even though the rest of the
+  // page (candidate, cvUrl) has already loaded - without this flag,
+  // CvViewButton would briefly treat "null + cvUrl present" as "no analysis
+  // yet" and flash the "Analyse CV" button before flipping to "View" the
+  // moment this fetch lands.
   useEffect(() => {
     const jobcandId = jobCand?.jobcand_id
     if (!jobcandId) {
+      // jobCand hasn't loaded yet (or this candidate genuinely has none).
+      // Stay in the "not loaded" state rather than marking it loaded=true -
+      // the page's own `loading` gate keeps CvViewButton unmounted during
+      // the pre-load window anyway, and if we flipped this true here it
+      // would go stale the instant jobCand actually loads (this effect
+      // re-runs, but only *after* that render has already committed and
+      // shown the wrong stale-loaded state to CvViewButton for one frame).
       setCvAnalysis(null)
+      setCvAnalysisLoaded(false)
       return undefined
     }
 
     let cancelled = false
     let timer = null
+    setCvAnalysisLoaded(false)
 
     async function fetchAnalysis() {
       try {
@@ -79,6 +96,8 @@ export default function CandidateDetailPage() {
         }
       } catch {
         if (!cancelled) setCvAnalysis(null)
+      } finally {
+        if (!cancelled) setCvAnalysisLoaded(true)
       }
     }
 
@@ -222,6 +241,7 @@ export default function CandidateDetailPage() {
               }}
               onEdit={() => setShowEditModal(true)}
               cvAnalysis={cvAnalysis}
+              cvAnalysisLoaded={cvAnalysisLoaded}
               onViewCvAnalysis={() => {
                 if (!jobCand?.jobcand_id) return
                 navigate(`/cv-analysis/${jobCand.jobcand_id}`, {

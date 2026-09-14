@@ -4,9 +4,22 @@ import { CANDIDATE_STATUS_STYLES, FALLBACK_STATUS_CLASS } from '../../utils/stat
 import { formatDateTime, formatMediumDate } from '../../utils/format.js'
 import { initials as getInitials } from '../../utils/avatar.js'
 
-function CvViewButton({ cvAnalysis, cvUrl, onViewAnalysis, onAnalyse, analysing }) {
+function CvViewButton({ cvAnalysis, cvAnalysisLoaded, cvUrl, onViewAnalysis, onAnalyse, analysing }) {
   const base =
     'inline-flex min-w-[98px] items-center justify-center gap-1.5 rounded-xl px-4 py-0.5 text-sm font-semibold transition-colors'
+
+  // The analysis fetch hasn't resolved yet - render a neutral placeholder
+  // instead of guessing. Without this, a candidate with a completed
+  // analysis briefly falls through to the "cvUrl present, no analysis"
+  // branch below and flashes "Analyse CV" before flipping to "View" the
+  // moment the real status lands.
+  if (!cvAnalysisLoaded) {
+    return (
+      <span className={`${base} cursor-wait bg-neutral-100 text-neutral-400`}>
+        --
+      </span>
+    )
+  }
 
   if (cvAnalysis?.status === 'processing') {
     return (
@@ -115,7 +128,7 @@ function CvViewButton({ cvAnalysis, cvUrl, onViewAnalysis, onAnalyse, analysing 
 
 export default function CandidateInfoCard({
   candidate, job, interview, onStartInterview, interviewer,
-  onEdit, cvAnalysis, onViewCvAnalysis, onAnalyseCv, analysingCv,
+  onEdit, cvAnalysis, cvAnalysisLoaded, onViewCvAnalysis, onAnalyseCv, analysingCv,
 }) {
   const { user } = useAuth()
   const status = (interview?.intv_status ?? 'not_scheduled').replace(/_/g, ' ').toUpperCase()
@@ -223,6 +236,7 @@ export default function CandidateInfoCard({
           <p className="mb-2 text-xs font-bold uppercase tracking-wide text-neutral-800">CV / RESUME</p>
           <CvViewButton
             cvAnalysis={cvAnalysis}
+            cvAnalysisLoaded={cvAnalysisLoaded}
             cvUrl={candidate?.cand_cv_url}
             onViewAnalysis={onViewCvAnalysis}
             onAnalyse={onAnalyseCv}
