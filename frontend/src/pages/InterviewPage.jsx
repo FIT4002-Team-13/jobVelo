@@ -17,6 +17,7 @@ import { useInterviewSections } from "../hooks/useInterviewSections.js";
 import { useTranscript } from "../hooks/useTranscript.js";
 import { useInterviewQuestions } from "../hooks/useInterviewQuestions.js";
 import { useAudioCapture } from "../hooks/useAudioCapture.js";
+import { useLiveHighlights } from "../hooks/useLiveHighlights.js";
 import { formatTimer, parseTimestamp } from "../utils/time.js";
 
 // The live recording workspace - reached only via "Begin Interview" on the
@@ -109,6 +110,8 @@ export default function InterviewPage() {
     generateMoreLike,
     ignoreQuestion,
   } = useInterviewQuestions(jobId, { isCompleted, intvStatus, transcriptRef });
+
+  const keyHighlights = useLiveHighlights({ transcriptRef, isCompleted });
 
   useEffect(() => {
     generateFollowUpRef.current = generateFollowUpQuestions;
@@ -307,6 +310,7 @@ export default function InterviewPage() {
         >
           <TranscriptPanel
             transcript={transcript}
+            keyHighlights={keyHighlights}
             transcriptVisible={transcriptVisible}
             setTranscriptVisible={setTranscriptVisible}
             hasNewTranscriptUpdates={hasNewTranscriptUpdates}

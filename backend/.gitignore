@@ -14,3 +14,7 @@ __pycache__/
 # Keep the directory itself so a fresh clone has somewhere to write to.
 uploads/*
 !uploads/.gitkeep
+
+# Live-highlight debug dump (US18) - disposable, local-only inspection of
+# what the AI is marking as important during a live interview.
+highlighted_transcript_testing.json

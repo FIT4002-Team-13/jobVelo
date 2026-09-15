@@ -189,6 +189,12 @@ export const api = {
     return request(`/interviews${qs ? `?${qs}` : ''}`, { auth: true })
   },
 
+  // Extracts the most important phrases from the recent live transcript
+  // (US18) - polled periodically while an interview is in progress.
+  // Returns [{ text, importance }].
+  extractHighlights: (payload) =>
+    request('/interviews/highlights', { method: 'POST', body: payload, auth: true }),
+
   // ---------- applications ------------------------------------------------
   // Flat application rows (candidate + job + status pre-joined), scoped
   // server-side to the given user_id.

@@ -3,10 +3,11 @@ from __future__ import annotations
 import json
 import logging
 from datetime import datetime, timezone
+from typing import Any
 
 from bson import ObjectId
 from fastapi import APIRouter, Depends, HTTPException, Response, status
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, Field, ValidationError
 
 from database import get_db
 from dependencies import get_current_comp_id, get_current_user, require_role
@@ -27,6 +28,7 @@ from models.job_candidate import (
     SkillRating,
 )
 from services.openai_service import (
+    extract_highlights,
     generate_interview_plan,
     generate_interview_reports,
     rate_candidate_skills,
@@ -107,6 +109,22 @@ async def generate_plan(payload: PlanRequest) -> list[dict]:
         )
 
     return sections
+
+
+class HighlightsRequest(BaseModel):
+    # Kept loose (plain dicts) rather than TranscriptEntry - this runs against
+    # the frontend's in-memory live transcript, which includes not-yet-saved
+    # partial entries. extract_highlights tolerates any speaker/text shape.
+    transcript: list[dict[str, Any]] = Field(default_factory=list)
+    limit: int = Field(default=5, ge=1, le=10)
+
+
+@router.post(
+    "/highlights",
+    summary="Extract the most important phrases from the recent live transcript (US18).",
+)
+async def get_transcript_highlights(payload: HighlightsRequest) -> list[dict[str, Any]]:
+    return await extract_highlights(payload.transcript, limit=payload.limit)
 
 
 _VALID_STATUSES = {
