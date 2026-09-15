@@ -861,6 +861,7 @@ async def _report_pdf_response(intv_id: str, kind: str, user: dict) -> Response:
         duration_seconds=interview.get("intv_duration_seconds"),
         status=interview.get("intv_status"),
         scores=scores,
+        skill_evidence=ratings if kind == "candidate" else None,
         transcript=interview.get("intv_transcript") or [],
         bias_incidents=interview.get("intv_bias_incidents") or [],
     )
