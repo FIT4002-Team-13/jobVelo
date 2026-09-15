@@ -65,3 +65,25 @@ async def test_blank_transcript_is_ignored():
     session, events = _session()
     await session._handle_result("   ", True, True)
     assert events == []
+
+
+@pytest.mark.asyncio
+async def test_blank_speech_final_flushes_buffered_sentence():
+    # Deepgram can send an empty transcript with speech_final=True purely to
+    # mark "speaker went silent" - a finished sentence that was still
+    # buffered (no earlier speech_final) must flush right there, not wait
+    # for this speaker's next utterance and get stitched onto it.
+    session, events = _session()
+
+    await session._handle_result("How are you", True, False)
+    await session._handle_result("today?", True, False)
+    await session._handle_result("", True, True)
+
+    finals = [text for text, is_final in events if is_final]
+    assert finals == ["How are you today?"]
+
+    # A later, unrelated utterance from the same session starts its own
+    # fresh buffer rather than continuing the flushed one.
+    await session._handle_result("I'm great, let's start.", True, True)
+    finals = [text for text, is_final in events if is_final]
+    assert finals == ["How are you today?", "I'm great, let's start."]

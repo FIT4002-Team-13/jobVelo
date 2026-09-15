@@ -67,6 +67,20 @@ class DeepgramSession:
         """
         text = transcript.strip()
         if not text:
+            # Deepgram also sends an *empty* final with speech_final=True
+            # purely to mark end-of-utterance after silence - no new words,
+            # just "the speaker stopped." That still has to flush whatever's
+            # buffered: otherwise a fully finished sentence (e.g. the
+            # interviewer's question) sits in the buffer through the other
+            # speaker's entire turn on their own connection, and only gets
+            # flushed - stitched onto it - when this speaker's mic picks up
+            # new speech later, producing one merged line spanning both
+            # turns instead of two separate ones.
+            if is_final and speech_final and self._buffer:
+                sentence = _join(self._buffer)
+                self._buffer = []
+                if sentence:
+                    await self._on_transcript(sentence, True)
             return
 
         if not is_final:
