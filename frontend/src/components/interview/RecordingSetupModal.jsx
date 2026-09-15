@@ -1,6 +1,13 @@
 import { flex, button, modal } from "../../styles/layout";
 
-export default function RecordingSetupModal({ isMicActive, audioStatus, onSetupRecording }) {
+export default function RecordingSetupModal({
+  isMicActive,
+  isScreenSharing,
+  audioStatus,
+  onSetupRecording,
+  onToggleScreenShare,
+  onReady,
+}) {
   return (
     <div className={modal.overlay}>
       <div className={`${modal.panel} max-w-sm`}>
@@ -25,9 +32,30 @@ export default function RecordingSetupModal({ isMicActive, audioStatus, onSetupR
               disabled={isMicActive}
               className={`${button.outline} !py-1 !px-3 text-xs ${isMicActive ? "opacity-50 cursor-not-allowed" : ""}`}
             >
-              {isMicActive ? "Ready" : "Set up recording"}
+              {isMicActive ? "Active" : "Set up recording"}
             </button>
           </div>
+
+          {onToggleScreenShare && (
+            <div className={`${flex.row} items-center gap-3 w-full rounded-xl border border-neutral-200 px-4 py-3`}>
+              <span
+                className={`w-2 h-2 rounded-pill shrink-0 transition-colors ${
+                  isScreenSharing ? "bg-mint-500" : "bg-neutral-300"
+                }`}
+              />
+              <span className="flex-1 text-left text-sm text-neutral-700">
+                {isScreenSharing ? "Screen shared" : "Screen share (optional)"}
+              </span>
+              <button
+                type="button"
+                onClick={() => void onToggleScreenShare()}
+                disabled={isScreenSharing}
+                className={`${button.outline} !py-1 !px-3 text-xs ${isScreenSharing ? "opacity-50 cursor-not-allowed" : ""}`}
+              >
+                {isScreenSharing ? "Active" : "Share screen"}
+              </button>
+            </div>
+          )}
 
           {audioStatus && (
             <p
@@ -39,6 +67,17 @@ export default function RecordingSetupModal({ isMicActive, audioStatus, onSetupR
             >
               {audioStatus}
             </p>
+          )}
+
+          {onReady && (
+            <button
+              type="button"
+              onClick={onReady}
+              disabled={!isMicActive}
+              className={`${button.primary} w-full ${!isMicActive ? "opacity-50 cursor-not-allowed" : ""}`}
+            >
+              Ready
+            </button>
           )}
         </div>
       </div>
