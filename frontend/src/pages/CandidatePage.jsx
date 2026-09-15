@@ -449,8 +449,6 @@ export default function CandidatePage() {
                   interviewer: "",
                   interviewer_user_id: "",
                   interview_datetime: intvDateTime ?? null,
-                  cv_url: cvUrl,
-                  cover_letter_url: coverLetterUrl,
                 }}
                 onClose={() => switchProfileView(false)}
                 onSaved={() => switchProfileView(false)}

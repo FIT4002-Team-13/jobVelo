@@ -364,8 +364,6 @@ export default function CandidateDetailPage() {
             interviewer: interviewerName === '--' ? '' : interviewerName,
             interviewer_user_id: interviewerUserId,
             interview_datetime: interview?.intv_date_time ?? null,
-            cv_url: candidate?.cand_cv_url,
-            cover_letter_url: candidate?.cand_cover_letter_url,
           }}
           onClose={() => setShowEditModal(false)}
           onSaved={() => {
