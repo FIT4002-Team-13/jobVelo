@@ -12,6 +12,7 @@ them out without coupling to internal state.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import re
@@ -72,6 +73,16 @@ def _persist_highlight_debug(
     This intentionally writes to the project root and appends every run so the
     most recent AI decisions can be inspected during development. The file is
     disposable and meant to be deleted once the feature is stable.
+
+    Synchronous and grows with the file's existing size (reads + re-writes
+    the whole array each call) - always call this via `asyncio.to_thread`,
+    never directly from an async def. This app's asyncio event loop also
+    drives the live Deepgram transcription websocket (routes/realtime.py);
+    calling this inline blocked that loop for the duration of the write,
+    which got worse as the debug file grew over an interview, and was
+    observed corrupting the live transcript's sentence assembly (delayed
+    audio forwarding desyncs Deepgram's own endpointing/speech_final
+    timing - see deepgram_service.py).
     """
     debug_path = (
         Path(__file__).resolve().parent.parent / "highlighted_transcript_testing.json"
@@ -1073,7 +1084,7 @@ async def extract_highlights(
 
     if not settings.openai_api_key:
         fallback = _fallback_highlights(entries, limit=limit)
-        _persist_highlight_debug(transcript, fallback, limit)
+        await asyncio.to_thread(_persist_highlight_debug, transcript, fallback, limit)
         return fallback
 
     recent_entries = entries[-20:]
@@ -1147,11 +1158,13 @@ async def extract_highlights(
         highlights = payload.get("highlights") or []
         cleaned = _dedupe_highlights(highlights[:limit], limit=limit)
         if cleaned:
-            _persist_highlight_debug(transcript, cleaned, limit)
+            await asyncio.to_thread(
+                _persist_highlight_debug, transcript, cleaned, limit
+            )
             return cleaned
     except Exception:
         logger.exception("Failed to generate interview highlights")
 
     fallback = _fallback_highlights(entries, limit=limit)
-    _persist_highlight_debug(transcript, fallback, limit)
+    await asyncio.to_thread(_persist_highlight_debug, transcript, fallback, limit)
     return fallback

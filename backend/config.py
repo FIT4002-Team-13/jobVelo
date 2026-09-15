@@ -22,8 +22,12 @@ class Settings(BaseSettings):
     # at every short pause; we buffer those and only flush a full sentence when
     # Deepgram reports speech_final, which it does after this much silence.
     # Higher = fewer, more complete sentences (better follow-up prompts) at the
-    # cost of a little latency before a line lands.
-    deepgram_endpointing_ms: int = 400
+    # cost of a little latency before a line lands. 400ms was too aggressive -
+    # a normal mid-question breath or thinking pause easily exceeds it, so a
+    # single continuous question was getting speech_final'd (and therefore
+    # flushed as multiple separate transcript lines) at every such pause even
+    # though only one speaker was talking the whole time.
+    deepgram_endpointing_ms: int = 1200
 
     # OpenAI — split into two models so realtime question generation can use
     # a fast/cheap model while end-of-interview summary/score uses a stronger one.

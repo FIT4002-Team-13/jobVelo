@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { flex } from "../../styles/layout";
 import { initials, avatarColor, speakerColor } from "../../utils/avatar.js";
 import SpeakerAssignmentPopup from "./SpeakerAssignmentPopup.jsx";
@@ -53,7 +53,18 @@ const IMPORTANCE_CLASS = {
 };
 
 function HighlightedResponse({ text, keyHighlights }) {
-  const segments = splitTextHighlights(text, keyHighlights);
+  // TranscriptPanel re-renders on every transcript update - many times a
+  // second while someone is actively speaking (each interim caption tick).
+  // Without memoizing here, EVERY visible entry was re-running the
+  // indexOf/sort/merge matching above on EVERY one of those renders, not
+  // just the ~1-in-45s renders where keyHighlights actually changed. That
+  // main-thread cost competed with useAudioCapture's ScriptProcessorNode
+  // (which processes mic audio on the same main thread) for CPU time,
+  // delaying audio forwarding and corrupting Deepgram's own silence-based
+  // speech_final timing - observed as sentences getting split mid-utterance.
+  // Gating on [text, keyHighlights] means this only recomputes when this
+  // entry's own text changes or a new highlight batch actually arrives.
+  const segments = useMemo(() => splitTextHighlights(text, keyHighlights), [text, keyHighlights]);
   return (
     <>
       {segments.map((seg, i) =>
