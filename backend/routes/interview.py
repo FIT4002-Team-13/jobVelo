@@ -363,6 +363,14 @@ def _has_non_interviewer_speech(
         text = (e.get("text") or "").strip()
         if not text:
             continue
+
+        role = (e.get("speaker_role") or "").strip().casefold()
+
+        if role:
+            if role == "candidate":
+                return True
+            continue
+
         speaker = (e.get("speaker") or "").strip()
         if speaker and speaker.casefold() not in interviewer_names:
             return True
