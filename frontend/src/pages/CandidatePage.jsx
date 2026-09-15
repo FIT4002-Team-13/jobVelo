@@ -225,6 +225,13 @@ export default function CandidatePage() {
     );
   }
 
+  function handleDownloadTranscript() {
+    if (!id) return;
+    downloadFileWithAuth(`/api/interviews/${id}/transcript-pdf`).catch((err) =>
+      toast.error(err.message || "Failed to download the transcript.")
+    );
+  }
+
   async function handleCvUpload(file) {
     if (!jobCand?.jobcand_id) return;
     setCvUploading(true);
@@ -390,6 +397,7 @@ export default function CandidatePage() {
               interview={mergedInterview}
               onNoteChange={handleNoteChange}
               onDownloadReport={handleDownloadReport}
+              onDownloadTranscript={handleDownloadTranscript}
             />
           )}
 
