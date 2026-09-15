@@ -18,6 +18,20 @@ export function useInterviewData(id) {
   const [intvStatus, setIntvStatus] = useState(null);
   const [intvDateTime, setIntvDateTime] = useState(null);
 
+  // Pull the candidate record into local state. Shared by the initial load and
+  // by refreshCandidate() so an in-page edit reflects without a hard reload.
+  function loadCandidate(cid) {
+    return authedFetch(`/api/candidates/${cid}`)
+      .then((r) => r.json())
+      .then((cand) => {
+        if (cand.cand_full_name) setCandidateName(cand.cand_full_name);
+        if (cand.cand_cv_url) setCvUrl(cand.cand_cv_url);
+        if (cand.cand_cover_letter_url) setCoverLetterUrl(cand.cand_cover_letter_url);
+        setCandidate(cand);
+      })
+      .catch(() => {});
+  }
+
   useEffect(() => {
     authedFetch(`/api/interviews/${id}`)
       .then((r) => r.json())
@@ -41,15 +55,7 @@ export function useInterviewData(id) {
 
         if (data.cand_id) {
           setCandId(data.cand_id);
-          authedFetch(`/api/candidates/${data.cand_id}`)
-            .then((r) => r.json())
-            .then((cand) => {
-              if (cand.cand_full_name) setCandidateName(cand.cand_full_name);
-              if (cand.cand_cv_url) setCvUrl(cand.cand_cv_url);
-              if (cand.cand_cover_letter_url) setCoverLetterUrl(cand.cand_cover_letter_url);
-              setCandidate(cand);
-            })
-            .catch(() => {});
+          loadCandidate(data.cand_id);
         }
 
         if (data.cand_id && data.job_id) {
@@ -98,6 +104,7 @@ export function useInterviewData(id) {
     setCandidateName,
     candidateRole,
     candidate,
+    refreshCandidate: () => (candId ? loadCandidate(candId) : Promise.resolve()),
     job,
     cvUrl,
     setCvUrl,

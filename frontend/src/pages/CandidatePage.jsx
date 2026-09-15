@@ -64,6 +64,7 @@ export default function CandidatePage() {
     candidateName,
     candidateRole,
     candidate,
+    refreshCandidate,
     job,
     cvUrl,
     setCvUrl,
@@ -109,7 +110,9 @@ export default function CandidatePage() {
       }
       requestedViewRef.current = null;
     } else {
-      setCenterView("transcript");
+      // Pre-interview lands on CV (review the person first); post-interview
+      // lands on the transcript/report (the deliverable).
+      setCenterView(phase === "prep" ? "cv" : "transcript");
     }
   }, [phase]);
 
@@ -299,16 +302,16 @@ export default function CandidatePage() {
       <Sidebar />
       <div className="flex-1 flex flex-col overflow-hidden">
         <header className="bg-neutral-0 border-b border-neutral-200 px-10 py-4 shrink-0">
+          <button
+            onClick={() => navigate(-1)}
+            className={`${flex.row} gap-2 mb-3 w-fit rounded-lg border border-neutral-200 bg-neutral-0 px-3 py-1.5 text-sm font-semibold text-neutral-600 transition-colors hover:border-primary-200 hover:bg-primary-500/10 hover:text-primary-600`}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/>
+            </svg>
+            Back
+          </button>
           <div className={`${flex.row} gap-16 items-center`}>
-            <button
-              onClick={() => navigate(-1)}
-              className={`${flex.row} gap-2 rounded-lg border border-neutral-200 bg-neutral-0 px-3 py-1.5 text-sm font-semibold text-neutral-600 transition-colors hover:border-primary-200 hover:bg-primary-500/10 hover:text-primary-600 shrink-0`}
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/>
-              </svg>
-              Back to Jobs
-            </button>
             <div className={flex.col}>
               <span className="text-xs font-bold text-neutral-400 uppercase tracking-widest mb-0.5">
                 Candidate
@@ -334,11 +337,20 @@ export default function CandidatePage() {
           </div>
 
           <div className="mt-3 pt-3 border-t border-neutral-100 flex items-center gap-2">
-            {[
-              { id: "transcript", label: phase === "debrief" ? "Transcript" : "Prep" },
-              { id: "cv", label: "CV" },
-              { id: "cover-letter", label: "Cover Letter" },
-            ].map((v) => (
+            {(phase === "debrief"
+              ? [
+                  { id: "transcript", label: "Transcript" },
+                  { id: "cv", label: "CV" },
+                  { id: "cover-letter", label: "Cover Letter" },
+                ]
+              : [
+                  // Pre-interview: review the source (CV + detail), then the
+                  // cover letter, then prep-and-begin - left-to-right funnel.
+                  { id: "cv", label: "CV" },
+                  { id: "cover-letter", label: "Cover Letter" },
+                  { id: "transcript", label: "Prep" },
+                ]
+            ).map((v) => (
               <button
                 key={v.id}
                 onClick={() => setCenterView(v.id)}
@@ -351,12 +363,6 @@ export default function CandidatePage() {
                 {v.label}
               </button>
             ))}
-            <button
-              onClick={() => setShowProfile(true)}
-              className="ml-auto rounded-xl bg-primary-700 px-4 py-1 text-sm font-semibold text-white transition-colors hover:bg-primary-800"
-            >
-              Profile
-            </button>
           </div>
         </header>
 
@@ -400,6 +406,8 @@ export default function CandidatePage() {
               onUpload={handleCvUpload}
               onDelete={cvUrl || cvAnalysis ? handleCvDelete : null}
               cvAnalysis={cvAnalysis}
+              candidate={candidate}
+              onEdit={() => { setShowEditMode(true); setShowProfile(true); }}
             />
           )}
 
@@ -419,6 +427,7 @@ export default function CandidatePage() {
         <StartInterviewModal
           candidate={{ name: candidateName, scheduled_at: intvDateTime }}
           jobTitle={candidateRole}
+          noPlan={!(Array.isArray(jobCand?.plan_sections) && jobCand.plan_sections.length > 0)}
           onClose={() => setShowStartWarning(false)}
           onConfirm={() => {
             setShowStartWarning(false);
@@ -452,8 +461,8 @@ export default function CandidatePage() {
                   cv_url: cvUrl,
                   cover_letter_url: coverLetterUrl,
                 }}
-                onClose={() => switchProfileView(false)}
-                onSaved={() => switchProfileView(false)}
+                onClose={() => { setShowProfile(false); setShowEditMode(false); setProfileVisible(true); }}
+                onSaved={() => { refreshCandidate(); setShowProfile(false); setShowEditMode(false); setProfileVisible(true); }}
               />
             ) : (
               <CandidateInfoCard
