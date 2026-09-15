@@ -107,7 +107,7 @@ function DownloadMenu({ onDownloadReport, onDownloadTranscript }) {
         </svg>
       </button>
       {open && (
-        <div className="absolute right-0 top-full mt-2 z-20 min-w-[220px] overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-lg">
+        <div className="absolute right-0 top-full mt-2 z-20 min-w-[230px] overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-lg">
           {items.map((item, i) => (
             <button
               key={item.label}
