@@ -113,13 +113,22 @@ export function useAudioCapture({
         const data = JSON.parse(event.data);
 
         if (data.type === "diarized_transcript") {
-          console.log("Detected speakers:", data);
-
-          if (!data.is_final || !Array.isArray(data.groups)) return;
+          if (!Array.isArray(data.groups)) return;
 
           // These must match "mic" and "screen" in useTranscript.js
           const source = role === "interviewer" ? "mic" : "screen";
-          const sourceLabel = source === "mic" ? "Mic" : "Shared audio";
+          const sourceLabel = source === "mic" ? "Mic" : "Rendering";
+
+          if (!data.is_final) {
+            
+            const previewText = data.groups.map((g) => g.text).filter(Boolean).join(" ");
+            
+            if (previewText.trim()) {
+              appendTranscript(previewText, false, `${sourceLabel} · …`, partialRef);
+            }
+
+            return;
+          }
 
           for (const group of data.groups) {
             if (typeof group.text !== "string" || !group.text.trim()) {

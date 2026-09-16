@@ -12,7 +12,12 @@ touching the route.
 from __future__ import annotations
 
 import logging
+import time
 from collections.abc import Awaitable, Callable
+
+DIARIZATION_MAX_GROUP_SECONDS = 12.0
+DIARIZATION_HARD_CAP_SECONDS = 30.0
+SENTENCE_TERMINATORS = (".", "?", "!")
 
 from deepgram import (
     DeepgramClient,
@@ -87,6 +92,8 @@ class DeepgramSession:
 
         # Finalized-but-not-yet-flushed fragments of the current utterance.
         self._buffer: list[str] = []
+        self._diarization_buffer: list[dict] = []
+        self._diarization_started_at: float = 0.0
 
     async def _handle_result(
         self, transcript: str, is_final: bool, speech_final: bool
@@ -130,6 +137,69 @@ class DeepgramSession:
         else:
             await self._on_transcript(_join(self._buffer), False)
 
+    async def _handle_diarization(self, groups: list[dict], is_final: bool, speech_final: bool) -> None:
+        if not is_final:
+            return
+
+        now = time.monotonic()
+
+        if self._diarization_buffer and self._diarization_started_at:
+            age = now - self._diarization_started_at
+
+            past_soft = age > DIARIZATION_MAX_GROUP_SECONDS
+            past_hard = age > DIARIZATION_HARD_CAP_SECONDS
+
+            tail = self._diarization_buffer[-1]["text"].rstrip()
+            ends_sentence = tail.endswith(SENTENCE_TERMINATORS)
+
+            if past_hard or (past_soft and ends_sentence):
+                aged_groups = self._diarization_buffer
+                self._diarization_buffer = []
+                self._diarization_started_at = 0.0
+
+                if aged_groups and self._on_diarization is not None:
+                    await self._on_diarization(aged_groups, True)
+
+        closed_groups: list[dict] = []
+        added = False
+        for group in groups:
+            text = (group.get("text") or "").strip()
+            speaker_id = group.get("speaker_id")
+
+            if not text:
+                continue
+
+            if (self._diarization_buffer and self._diarization_buffer[-1]["speaker_id"] == speaker_id):
+                self._diarization_buffer[-1]["text"] = _join([self._diarization_buffer[-1]["text"], text])
+
+            else:
+                # New speaker 
+                if self._diarization_buffer:
+                    closed_groups.extend(self._diarization_buffer)
+                    self._diarization_buffer = []
+
+                self._diarization_buffer.append({"speaker_id": speaker_id, "text": text})
+                self._diarization_started_at = now
+
+            added = True
+
+        if self._diarization_buffer and not self._diarization_started_at:
+            self._diarization_started_at = now
+
+        if closed_groups and self._on_diarization is not None:
+            await self._on_diarization(closed_groups, True)
+
+        if speech_final:
+            completed_groups = self._diarization_buffer
+            self._diarization_buffer = []
+            self._diarization_started_at = 0.0
+
+            if completed_groups and self._on_diarization is not None:
+                await self._on_diarization(completed_groups, True)
+
+        elif added and self._diarization_buffer and self._on_diarization is not None:
+            await self._on_diarization([g.copy() for g in self._diarization_buffer], False)
+
     async def open(self) -> None:
         if not settings.deepgram_api_key:
             raise RuntimeError("DEEPGRAM_API_KEY not configured")
@@ -145,21 +215,22 @@ class DeepgramSession:
         async def _on_message(_self, result, **_kwargs):
             try:
                 alt = result.channel.alternatives[0]
-                if getattr(result, "is_final", False):
+                is_final = bool(getattr(result, "is_final", False))
+                speech_final = bool(getattr(result, "speech_final", False))
+
+                if is_final: 
                     groups = group_speaker_words(alt.words or [])
 
-                    print(
-                        "DIARISATION",
-                        f"connection={id(self)}",
-                        groups,
-                    )
-                    if groups and self._on_diarization is not None:
-                        await self._on_diarization(groups, True)
-                await self._handle_result(
-                    alt.transcript or "",
-                    bool(getattr(result, "is_final", False)),
-                    bool(getattr(result, "speech_final", False)),
-                )
+                else:
+                    groups = []
+
+                if groups:
+                    print("DIARISATION", f"connection={id(self)}", groups)
+
+                await self._handle_diarization(groups, is_final, speech_final)
+
+                await self._handle_result(alt.transcript or "", is_final, speech_final)
+
             except Exception:
                 logger.exception("Failed to handle DG transcript")
 
@@ -206,6 +277,13 @@ class DeepgramSession:
                 except Exception:
                     logger.exception("Failed to flush final DG transcript")
         try:
+            if self._diarization_buffer:
+                try:
+                    await self._handle_diarization([], True, True)
+
+                except Exception:
+                    logger.exception("Failed to flush final diarised transcript")
+                    
             await self._connection.finish()
         finally:
             self._connection = None
