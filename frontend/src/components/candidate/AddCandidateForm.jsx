@@ -27,6 +27,11 @@ export default function AddCandidateForm({ jobs = [], fixedJobId = null, onClose
   const [interviewers, setInterviewers] = useState([])
   const [interviewerOpen, setInterviewerOpen] = useState(false)
 
+  // Every candidate already in the company, so a matching email can surface the
+  // existing profile (and reuse its CV) instead of forcing a fresh entry.
+  const [companyCandidates, setCompanyCandidates] = useState([])
+  const [existing, setExisting] = useState(null)
+
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
 
@@ -44,6 +49,46 @@ export default function AddCandidateForm({ jobs = [], fixedJobId = null, onClose
     }
     loadInterviewers()
   }, [user?.comp_id])
+
+  useEffect(() => {
+    async function loadCandidates() {
+      if (!user?.comp_id) return
+      try {
+        const res = await authedFetch(`/api/candidates`)
+        if (!res.ok) throw new Error()
+        const data = await res.json()
+        setCompanyCandidates(Array.isArray(data) ? data : [])
+      } catch {
+        setCompanyCandidates([])
+      }
+    }
+    loadCandidates()
+  }, [user?.comp_id])
+
+  // Match the typed email against existing candidates (email is unique per
+  // company, so it's the reliable key). Clears when the email is blank/invalid.
+  useEffect(() => {
+    const email = formState.email.trim().toLowerCase()
+    if (!email || !isEmail(formState.email)) {
+      setExisting(null)
+      return
+    }
+    const match = companyCandidates.find(
+      (c) => (c.cand_email || '').toLowerCase() === email
+    )
+    setExisting(match || null)
+  }, [formState.email, companyCandidates])
+
+  // When a match appears, pre-fill ONLY the fields the user left empty - never
+  // clobber something they've already typed.
+  useEffect(() => {
+    if (!existing) return
+    setFormState((prev) => ({
+      ...prev,
+      name: prev.name.trim() ? prev.name : existing.cand_full_name || '',
+      phone: prev.phone.trim() ? prev.phone : existing.cand_phone || '',
+    }))
+  }, [existing])
 
   function setField(key, value) {
     setFormState((prev) => ({ ...prev, [key]: value }))
@@ -118,11 +163,23 @@ export default function AddCandidateForm({ jobs = [], fixedJobId = null, onClose
       // re-uploaded from the Edit form.
       const jobcandId = saved.job_candidate?.jobcand_id
       const candId = saved.candidate?.cand_id
+      // An existing candidate matched by email/id already has a CV on file.
+      const existingCvUrl = saved.candidate?.cand_cv_url
       try {
         if (cvFile && jobcandId) {
           const fd = new FormData()
           fd.append('jobcand_id', jobcandId)
           fd.append('cv', cvFile)
+          if (coverLetterFile) fd.append('cover_letter', coverLetterFile)
+          await api.analyseCv(fd)
+        } else if (!cvFile && jobcandId && existingCvUrl) {
+          // Existing candidate added to another job with no new upload: reuse
+          // their stored CV for THIS job's analysis instead of requiring a
+          // re-upload. The backend reads the stored CV (and cover letter) when
+          // analyseCv is called with only a jobcand_id; a freshly attached
+          // cover letter rides along and takes precedence.
+          const fd = new FormData()
+          fd.append('jobcand_id', jobcandId)
           if (coverLetterFile) fd.append('cover_letter', coverLetterFile)
           await api.analyseCv(fd)
         } else if (coverLetterFile && candId) {
@@ -175,6 +232,26 @@ export default function AddCandidateForm({ jobs = [], fixedJobId = null, onClose
               placeholder="eg. johndoe123@gmail.com"
               className={form.input}
             />
+            {existing && (
+              <div className="mt-2 rounded-lg border border-primary-100 bg-primary-50 px-3 py-2 text-xs text-primary-700">
+                <p className="font-semibold">Existing candidate — details pre-filled.</p>
+                <p className="mt-0.5 text-primary-600">
+                  {existing.cand_cv_url
+                    ? 'Their CV is on file and will be reused for this job’s analysis — no re-upload needed.'
+                    : 'No CV on file yet — upload one below to run an analysis.'}
+                </p>
+                {existing.cand_cv_url && (
+                  <a
+                    href={existing.cand_cv_url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="mt-1 inline-block font-semibold text-primary-600 underline hover:text-primary-700"
+                  >
+                    View current CV →
+                  </a>
+                )}
+              </div>
+            )}
           </div>
 
           {fixedJobId ? (
