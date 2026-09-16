@@ -1,4 +1,4 @@
-import { SortMenu, FilterMenu, makeSorter } from './TableControls'
+import { SortMenu, FilterMenu, makeSorter, SORT_OPTIONS } from './TableControls'
 import { flex, card, badge } from '../../styles/layout'
 import { CANDIDATE_STATUS_STYLES, FALLBACK_STATUS_CLASS } from '../../utils/status.js'
 import { formatScore, formatDateTime } from '../../utils/format.js'
@@ -24,14 +24,27 @@ export default function CandidatesTable({
   // menu itself is disabled on that tab (see the "Rankings are sorted by
   // score" placeholder below).
   const table = useTableControls(candidates, {
-    matchesSearch: (c, needle) => (c.name ?? '').toLowerCase().includes(needle),
+    // Search matches the candidate name OR the assigned interviewer, so a
+    // recruiter can pull up "everyone Jamie is interviewing" from one box.
+    matchesSearch: (c, needle) =>
+      (c.name ?? '').toLowerCase().includes(needle) ||
+      (c.interviewer ?? '').toLowerCase().includes(needle),
     matchesFilter: (c, filters) => filters.length === 0 || filters.includes(c.status),
-    compare: (a, b, sortKey) =>
-      tab === 'RANKINGS'
-        ? (b.score ?? -Infinity) - (a.score ?? -Infinity)
-        : (makeSorter(sortKey, { nameField: 'name', dateField: 'scheduled_at' }) ?? (() => 0))(a, b),
+    compare: (a, b, sortKey) => {
+      if (tab === 'RANKINGS') return (b.score ?? -Infinity) - (a.score ?? -Infinity)
+      if (sortKey === 'interviewer_asc') return (a.interviewer ?? '').localeCompare(b.interviewer ?? '')
+      if (sortKey === 'interviewer_desc') return (b.interviewer ?? '').localeCompare(a.interviewer ?? '')
+      return (makeSorter(sortKey, { nameField: 'name', dateField: 'scheduled_at' }) ?? (() => 0))(a, b)
+    },
   })
   const { search, setSearch, sortKey, setSortKey, filters: statusFilters, setFilters: setStatusFilters, sorted } = table
+
+  // Schedules can also sort by interviewer, on top of the shared date/name keys.
+  const scheduleSortOptions = [
+    ...SORT_OPTIONS,
+    { value: 'interviewer_asc', label: 'Interviewer A - Z' },
+    { value: 'interviewer_desc', label: 'Interviewer Z - A' },
+  ]
 
   return (
     <div>
@@ -55,15 +68,15 @@ export default function CandidatesTable({
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Candidate Name"
-              className="outline-none border-none bg-transparent text-sm text-neutral-600 placeholder:text-neutral-400 w-32"
+              placeholder="Name or interviewer"
+              className="outline-none border-none bg-transparent text-sm text-neutral-600 placeholder:text-neutral-400 w-40"
             />
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-neutral-400">
               <circle cx="11" cy="11" r="8" /><path d="m21 21-4.35-4.35" />
             </svg>
           </div>
           {tab === 'SCHEDULES' ? (
-            <SortMenu value={sortKey} onChange={setSortKey} />
+            <SortMenu value={sortKey} onChange={setSortKey} options={scheduleSortOptions} />
           ) : (
             <span className={`${flex.row} gap-1 text-xs font-medium text-neutral-300 cursor-not-allowed`} title="Rankings are sorted by score">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">

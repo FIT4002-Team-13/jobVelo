@@ -50,6 +50,19 @@ export default function CandidatePage() {
   const [showStartWarning, setShowStartWarning] = useState(false);
   const [showEditMode, setShowEditMode] = useState(false);
   const [profileVisible, setProfileVisible] = useState(true);
+  // The interviewer's company name, shown under their name in the header
+  // (replacing the redundant "interviewer" role line).
+  const [companyName, setCompanyName] = useState("");
+
+  useEffect(() => {
+    if (!user?.comp_id) return;
+    let cancelled = false;
+    api
+      .getCompany(user.comp_id)
+      .then((c) => { if (!cancelled) setCompanyName(c?.comp_name || ""); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [user?.comp_id]);
 
   function switchProfileView(toEdit) {
     setProfileVisible(false);
@@ -338,7 +351,7 @@ export default function CandidatePage() {
                 {user?.full_name || "—"}
               </span>
               <span className="text-sm text-neutral-400">
-                {user?.role || "—"}
+                {companyName || "—"}
               </span>
             </div>
           </div>

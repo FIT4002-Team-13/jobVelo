@@ -20,6 +20,7 @@ schema enforcement still happens - just one hop later.
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone
 from typing import Any
 
 from google import genai
@@ -100,6 +101,15 @@ Rules:
 - Each `detail`: cite evidence from the documents - not generic advice.
 - `inconsistencies`: ONLY include real CV/cover-letter contradictions or
   unexplained gaps - DO NOT pad with stylistic notes.
+- DATES: interpret every date on the CV relative to "Today's date" given in
+  the header above. Dates in the current year or any earlier year are normal
+  and expected - NEVER flag a CV date as an inconsistency just for being
+  recent, for being in the current year, or for sitting near today's date.
+  Ongoing or upcoming study, internships and projects dated in the current
+  year (or a graduation date slightly in the future) are completely normal.
+  Only treat a date as a real inconsistency when it is genuinely impossible -
+  e.g. an end date that falls before its own start date, or a date many years
+  beyond today's date - and say plainly why it is impossible.
 - `interview_questions`: 4-6 items covering at least two categories.
   Every question must be grounded - either in the CV (ask about a
   specific past role / project / claim) or in the JD (ask about a
@@ -165,6 +175,7 @@ async def analyse_cv(
         else "JOB DESCRIPTION: (not provided - score against position_title only)"
     )
     header = (
+        f"Today's date: {datetime.now(timezone.utc).date().isoformat()}\n"
         f"Target position: {position_title}\n"
         f"Documents attached: {len(parts)}\n"
         f"{jd_block}\n\n"
