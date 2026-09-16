@@ -8,6 +8,11 @@ import { normaliseQuestion } from "../components/interview/InterviewQuestionDeck
 // automatically except beyond a generous cap so the deck can't grow forever.
 const POOL_CAP = 12;
 
+// Keep at least this many suggestions on hand. If the interviewer ignores their
+// way below the floor, we quietly regenerate from the job description so the
+// deck never sits empty waiting for the candidate to speak again.
+const MIN_POOL = 3;
+
 // Spread a list of {category,...} across categories round-robin so the topic
 // mix is interleaved rather than grouped.
 function interleaveByCategory(list) {
@@ -43,6 +48,7 @@ export function useInterviewQuestions(
   const poolRef = useRef([]);
   const initialRequestedRef = useRef(null);
   const reactiveGeneratingRef = useRef(false);
+  const topUpGeneratingRef = useRef(false);
 
   useEffect(() => {
     poolRef.current = pool;
@@ -56,6 +62,53 @@ export function useInterviewQuestions(
       poolRef.current = next;
       return next;
     });
+  }
+
+  // Append top-up questions to the BACK of the pool - they're generic JD
+  // refills, so they sit below any live follow-ups the interviewer hasn't
+  // handled yet.
+  function appendToPool(items) {
+    if (!items.length) return;
+    setPool((current) => {
+      const next = [...current, ...items].slice(0, POOL_CAP);
+      poolRef.current = next;
+      return next;
+    });
+  }
+
+  // Refill from the job description when the pool has been drained below the
+  // floor. Single-flight, in-progress-only, and deduped against what's already
+  // showing so we don't repeat a question the interviewer just saw.
+  async function topUpPool() {
+    if (!jobId || isCompleted || intvStatus !== "in_progress") return;
+    if (topUpGeneratingRef.current || poolRef.current.length >= MIN_POOL) return;
+
+    topUpGeneratingRef.current = true;
+    try {
+      const response = await authedFetch(`/api/interview-questions/${jobId}`, {
+        method: "POST",
+        headers: { Accept: "application/json" },
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.detail || "Question generation failed");
+
+      const seen = new Set(
+        poolRef.current.map((q) => q.text?.trim().toLowerCase())
+      );
+      const fresh = interleaveByCategory(data.questions)
+        .map((q, i) => normaliseQuestion(q, i))
+        .filter((q) => {
+          const key = q.text?.trim().toLowerCase();
+          if (!key || seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
+      appendToPool(fresh);
+    } catch (error) {
+      console.error("Question pool top-up failed", error);
+    } finally {
+      topUpGeneratingRef.current = false;
+    }
   }
 
   // Seed the pool once when the interview goes live. Prefer the candidate's
@@ -190,14 +243,15 @@ export function useInterviewQuestions(
     }
   }
 
-  // Asked or ignored -> drop it from the pool. Fresh questions arrive via the
-  // triggers above (follow-ups, more-like-this), so there's no forced top-up.
+  // Asked or ignored -> drop it from the pool. Live follow-ups and
+  // more-like-this still push fresh questions in; on top of that, once removal
+  // takes the pool below the floor we regenerate from the JD so the deck never
+  // empties out mid-interview.
   function ignoreQuestion(question) {
-    setPool((current) => {
-      const next = current.filter((q) => q.id !== question.id);
-      poolRef.current = next;
-      return next;
-    });
+    const next = poolRef.current.filter((q) => q.id !== question.id);
+    poolRef.current = next;
+    setPool(next);
+    if (next.length < MIN_POOL) topUpPool();
   }
 
   return {
