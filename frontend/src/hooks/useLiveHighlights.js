@@ -12,6 +12,43 @@ const DEBOUNCE_MS = 2500;
 // Only the recent tail matters for "what did they just say that's
 // important" - keeps the prompt small and cheap on a long interview.
 const MAX_RECENT_ENTRIES = 20;
+// Ceiling on how many highlights we keep accumulating over the whole
+// interview - oldest drop off first once the interview runs long enough to
+// hit this, so memory/render cost stays bounded.
+const MAX_TOTAL_HIGHLIGHTS = 40;
+
+// Collapses whitespace/punctuation/case so re-picking the "same" phrase in
+// a later call (worded identically or nearly so) is recognised as a repeat
+// rather than added again - mirrors the backend's own canonicalisation.
+function canonicalize(text) {
+  return text
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+// Each poll only re-extracts from the recent tail of the transcript, and an
+// LLM call isn't guaranteed to re-pick the exact same phrases from mostly
+// the same window twice - so REPLACING the highlight list on every call
+// made older lines' highlights flicker or vanish once they aged out of that
+// window, even though nothing was wrong with them. Merging instead makes a
+// highlight, once shown, stick for the rest of the interview (bounded by
+// MAX_TOTAL_HIGHLIGHTS).
+function mergeHighlights(previous, incoming) {
+  const merged = [...previous];
+  const seen = new Set(previous.map((h) => canonicalize(h.text)));
+
+  for (const h of incoming) {
+    const key = canonicalize(h?.text || "");
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    merged.push(h);
+  }
+
+  return merged.length > MAX_TOTAL_HIGHLIGHTS
+    ? merged.slice(merged.length - MAX_TOTAL_HIGHLIGHTS)
+    : merged;
+}
 
 // Watches the live transcript and, once it's been quiet (no new finalized
 // line) for DEBOUNCE_MS, asks the backend to pick out the most important
@@ -54,7 +91,9 @@ export function useLiveHighlights({ transcript, isCompleted }) {
       inFlightRef.current = true;
       try {
         const result = await api.extractHighlights({ transcript: entries, limit: 5 });
-        setHighlights(Array.isArray(result) ? result : []);
+        if (Array.isArray(result) && result.length > 0) {
+          setHighlights((prev) => mergeHighlights(prev, result));
+        }
       } catch {
         // Highlighting is a nice-to-have - never surface an error over a
         // live interview, just keep whatever highlights we last had.
