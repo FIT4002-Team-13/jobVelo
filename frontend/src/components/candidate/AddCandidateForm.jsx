@@ -56,8 +56,6 @@ export default function AddCandidateForm({ jobs = [], fixedJobId = null, onClose
     loadInterviewers()
   }, [user?.comp_id, user?.role]);
 
-  console.log('ADD CANDIDATE FORM MOUNTED')
-
   function setField(key, value) {
     setFormState((prev) => ({ ...prev, [key]: value }))
   }
@@ -248,7 +246,7 @@ export default function AddCandidateForm({ jobs = [], fixedJobId = null, onClose
             />
           </div>
 
-          {user?.role === "recruiter" && (
+            {(user?.role === 'recruiter' || user?.role === 'admin') && (            
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className={form.label}>Interviewer</label>
