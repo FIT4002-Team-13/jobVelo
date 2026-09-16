@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { flex } from "../../../styles/layout";
 import { SECTION_COLORS } from "../../../utils/constants.js";
 import { formatTimer, parseTimestamp } from "../../../utils/time.js";
+import { splitTextHighlights, IMPORTANCE_CLASS } from "../../../utils/transcriptHighlights.js";
 import ReportSections from "../../interview/ReportSections.jsx";
 
 const SCORE_COLORS = {
@@ -60,6 +61,30 @@ function HighlightedText({ text, query }) {
           </mark>
         ) : (
           part
+        )
+      )}
+    </>
+  );
+}
+
+// Composes the AI key-point highlights (US18, persistent - amber) with the
+// transcript search-query highlighting (transient - yellow) so both can
+// apply at once without fighting over the same spans: split by AI
+// highlights first, then run the query match independently inside each
+// resulting segment.
+function KeyHighlightedText({ text, query, keyHighlights }) {
+  // Keyed on [text, keyHighlights] (not `query`) so typing in the search
+  // box doesn't re-run the AI-highlight matching on every keystroke.
+  const segments = useMemo(() => splitTextHighlights(text, keyHighlights), [text, keyHighlights]);
+  return (
+    <>
+      {segments.map((seg, i) =>
+        seg.importance ? (
+          <mark key={i} title="Key point" className={IMPORTANCE_CLASS[seg.importance] || IMPORTANCE_CLASS[3]}>
+            <HighlightedText text={seg.text} query={query} />
+          </mark>
+        ) : (
+          <HighlightedText key={i} text={seg.text} query={query} />
         )
       )}
     </>
@@ -126,7 +151,7 @@ function DownloadMenu({ onDownloadReport, onDownloadTranscript }) {
   );
 }
 
-function TranscriptRow({ entry, query, highlighted, isInterviewer, onClick, entryRef, onNoteChange }) {
+function TranscriptRow({ entry, query, highlighted, isInterviewer, onClick, entryRef, onNoteChange, keyHighlights }) {
   const [editing, setEditing] = useState(false);
   const hasNote = !!entry.comment;
 
@@ -150,7 +175,7 @@ function TranscriptRow({ entry, query, highlighted, isInterviewer, onClick, entr
         <div className={`${flex.col} gap-0.5 flex-1 min-w-0`}>
           <span className="text-xs text-neutral-400">{entry.timestamp}</span>
           <span className="text-sm text-neutral-700 leading-snug">
-            <HighlightedText text={entry.text} query={query} />
+            <KeyHighlightedText text={entry.text} query={query} keyHighlights={keyHighlights} />
           </span>
         </div>
         <button
@@ -229,6 +254,8 @@ export default function TranscriptAnalysisTab({
   const [search, setSearch] = useState("");
   const [localHighlightId, setLocalHighlightId] = useState(null);
   const [activeTab, setActiveTab] = useState("candidate");
+
+  const keyHighlights = interview?.intv_highlights;
 
   const startedSections = Array.isArray(sections)
     ? sections.map((s, i) => ({ ...s, _idx: i })).filter((s) => s.start_at != null)
@@ -416,6 +443,7 @@ export default function TranscriptAnalysisTab({
                   onClick={query ? () => handleFilteredEntryClick(entry) : undefined}
                   entryRef={(el) => (transcriptEntryRefs.current[i] = el)}
                   onNoteChange={onNoteChange}
+                  keyHighlights={keyHighlights}
                 />
               ))
             )}

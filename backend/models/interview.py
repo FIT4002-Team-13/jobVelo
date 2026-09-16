@@ -21,6 +21,17 @@ class TranscriptEntry(BaseModel):
     comment: str | None = None
 
 
+class TranscriptHighlight(BaseModel):
+    """One AI-picked key phrase from the live transcript (US18).
+
+    `text` is an exact substring of some TranscriptEntry.text, matched and
+    marked in place by the frontend rather than stored against a specific
+    entry id - see services/openai_service.extract_highlights."""
+
+    text: str = Field(..., max_length=500)
+    importance: int = Field(default=3, ge=1, le=5)
+
+
 class EvidenceRef(BaseModel):
     """One timestamped transcript quote backing a feedback point (US28).
 
@@ -183,6 +194,9 @@ class InterviewUpdate(BaseModel):
     intv_candidate_report: InterviewFeedback | None = None
     intv_interviewer_report: InterviewFeedback | None = None
     intv_sections: list[dict] | None = None
+    # Live key-point highlights (US18), periodically saved from the running
+    # interview so the debrief transcript can show the same marks.
+    intv_highlights: list[TranscriptHighlight] | None = None
 
 
 class InterviewOut(BaseModel):
@@ -205,5 +219,8 @@ class InterviewOut(BaseModel):
     # Bias questions flagged live during the interview (empty for interviews
     # that predate the feature or had none). Surfaced on the persisted report.
     intv_bias_incidents: list[BiasIncident] = Field(default_factory=list)
+    # Live key-point highlights (US18) - empty for interviews that predate
+    # the feature or where nothing got highlighted.
+    intv_highlights: list[TranscriptHighlight] = Field(default_factory=list)
     intv_created_at: datetime
     intv_updated_at: datetime

@@ -1106,7 +1106,7 @@ async def extract_highlights(
                         "You are an interview analysis assistant helping an interviewer identify "
                         "only the most important parts of a candidate's response in real time.\n\n"
                         "You extract key moments from a live interview transcript. "
-                        "Return concise phrases the interviewer should notice, with a 1-5 importance score. "
+                        "Return concise phrases the interviewer should notice, with a 1-3 importance score. "
                         "A highlight must be genuinely useful to an interviewer making a hiring "
                         "assessment. Prioritise information that provides concrete evidence about "
                         "the candidate's suitability for the role.\n\n"

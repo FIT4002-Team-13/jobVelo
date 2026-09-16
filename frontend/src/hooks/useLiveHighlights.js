@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { api } from "../lib/api.js";
+import { api, authedFetch } from "../lib/api.js";
 
 // Wait this long after the LATEST finalized transcript line before asking
 // for highlights (US18). Chosen deliberately over a fixed interval: firing
@@ -55,15 +55,36 @@ function mergeHighlights(previous, incoming) {
 // phrases said so far. Returns [{ text, importance }] - `text` is an exact
 // substring of some transcript entry's `text`, ready to be matched and
 // highlighted in place (see InterviewTranscriptPanel).
-export function useLiveHighlights({ transcript, isCompleted }) {
+//
+// Also persists the accumulated list onto the interview record (best-effort,
+// fire-and-forget) so the same highlights show up later on the post-
+// interview debrief transcript (TranscriptAnalysisTab) - not just live.
+// `initialHighlights` seeds state from that saved list when reopening an
+// interview already in progress, so a page refresh doesn't lose them.
+export function useLiveHighlights({ id, transcript, isCompleted, initialHighlights }) {
   const [highlights, setHighlights] = useState([]);
+  const highlightsRef = useRef([]);
   const timerRef = useRef(null);
   const inFlightRef = useRef(false);
+  const seededRef = useRef(false);
   // The id of the latest finalized entry we've already scheduled/fired a
   // call for - lets a partial-only transcript update (which changes the
   // `transcript` array reference but adds no new final line) pass through
   // without resetting the debounce clock for no reason.
   const lastFinalIdRef = useRef(null);
+
+  useEffect(() => {
+    highlightsRef.current = highlights;
+  }, [highlights]);
+
+  // `initialHighlights` only arrives once the interview record has finished
+  // loading (a render or two after mount), so it can't be the useState
+  // initializer - seed it in as soon as it shows up, once.
+  useEffect(() => {
+    if (seededRef.current || !Array.isArray(initialHighlights) || initialHighlights.length === 0) return;
+    seededRef.current = true;
+    setHighlights(initialHighlights);
+  }, [initialHighlights]);
 
   useEffect(() => {
     if (isCompleted) {
@@ -92,7 +113,19 @@ export function useLiveHighlights({ transcript, isCompleted }) {
       try {
         const result = await api.extractHighlights({ transcript: entries, limit: 5 });
         if (Array.isArray(result) && result.length > 0) {
-          setHighlights((prev) => mergeHighlights(prev, result));
+          const merged = mergeHighlights(highlightsRef.current, result);
+          setHighlights(merged);
+
+          // Best-effort persistence so the debrief transcript can show the
+          // same highlights later - never blocks/surfaces an error over the
+          // live interview if it fails.
+          if (id) {
+            authedFetch(`/api/interviews/${id}`, {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ intv_highlights: merged }),
+            }).catch(() => {});
+          }
         }
       } catch {
         // Highlighting is a nice-to-have - never surface an error over a
@@ -103,7 +136,7 @@ export function useLiveHighlights({ transcript, isCompleted }) {
     }, DEBOUNCE_MS);
 
     return () => clearTimeout(timerRef.current);
-  }, [transcript, isCompleted]);
+  }, [id, transcript, isCompleted]);
 
   return highlights;
 }

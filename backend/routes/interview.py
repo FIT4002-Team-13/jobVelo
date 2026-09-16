@@ -22,6 +22,7 @@ from models.interview import (
     InterviewScores,
     InterviewUpdate,
     TranscriptEntry,
+    TranscriptHighlight,
 )
 from models.job_candidate import (
     CandidateRatings,
@@ -187,6 +188,20 @@ def _safe_bias_incidents(raw) -> list[BiasIncident]:
     return out
 
 
+def _safe_highlights(raw) -> list[TranscriptHighlight]:
+    """Validate stored highlights one-by-one, skipping malformed entries
+    (e.g. legacy interviews with no such field) rather than failing the read."""
+    if not isinstance(raw, list):
+        return []
+    out: list[TranscriptHighlight] = []
+    for entry in raw:
+        try:
+            out.append(TranscriptHighlight(**entry))
+        except Exception:
+            continue
+    return out
+
+
 def _safe_transcript(raw) -> list[TranscriptEntry] | None:
     """Validate transcript entries one-by-one, skipping any malformed entry
     (missing id/speaker/timestamp/text) rather than failing the whole list."""
@@ -234,6 +249,7 @@ def interview_helper(interview: dict) -> InterviewOut:
         intv_interviewer_report=_safe_report(interview.get("intv_interviewer_report")),
         intv_sections=interview.get("intv_sections"),
         intv_bias_incidents=_safe_bias_incidents(interview.get("intv_bias_incidents")),
+        intv_highlights=_safe_highlights(interview.get("intv_highlights")),
         intv_created_at=created,
         intv_updated_at=updated,
     )

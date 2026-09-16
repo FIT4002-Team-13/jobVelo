@@ -111,7 +111,12 @@ export default function InterviewPage() {
     ignoreQuestion,
   } = useInterviewQuestions(jobId, { isCompleted, intvStatus, transcriptRef });
 
-  const keyHighlights = useLiveHighlights({ transcript, isCompleted });
+  const keyHighlights = useLiveHighlights({
+    id,
+    transcript,
+    isCompleted,
+    initialHighlights: serverData?.intv_highlights,
+  });
 
   useEffect(() => {
     generateFollowUpRef.current = generateFollowUpQuestions;
