@@ -166,6 +166,9 @@ export const api = {
       auth: true,
     }),
 
+  deleteCandidateCoverLetter: (candId) =>
+    request(`/candidates/${encodeURIComponent(candId)}/cover-letter`, { method: 'DELETE', auth: true }),
+
   // ---------- users ------------------------------------------------------
   // List teammates, optionally filtered by comp_id / role. Used by the
   // AddCandidate modal's interviewer combobox:

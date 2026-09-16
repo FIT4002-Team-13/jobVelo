@@ -136,6 +136,11 @@ export default function CandidateDetailPage() {
 
         const selectedInterview = allInterviews[0] ?? null
 
+        if (selectedInterview?.intv_id) {
+          navigate(`/interview/${selectedInterview.intv_id}`, { replace: true })
+          return
+        }
+
         setCandidate(candData)
         setJobCand(selectedJobCand)
         setInterview(selectedInterview)
@@ -194,7 +199,11 @@ export default function CandidateDetailPage() {
           (i) => i.intv_status === 'in_progress' || i.intv_status === 'scheduled'
         )
         if (resumable) {
-          navigate(`/interview/${resumable.intv_id}`)
+          navigate(
+            resumable.intv_status === 'in_progress'
+              ? `/interview/${resumable.intv_id}/live`
+              : `/interview/${resumable.intv_id}`
+          )
           return
         }
       }
@@ -213,7 +222,7 @@ export default function CandidateDetailPage() {
       if (!res.ok) {
         throw new Error(interviewRecord?.detail || 'Failed to start interview.')
       }
-      navigate(`/interview/${interviewRecord.intv_id}`)
+      navigate(`/interview/${interviewRecord.intv_id}/live`)
     } catch (err) {
       console.error('Failed to start interview', err)
       alert(err.message || 'Failed to start interview.')
@@ -274,7 +283,7 @@ export default function CandidateDetailPage() {
               assignedInterviewerId={interviewerUserId}
               onStartInterview={() => {
                 if (interview?.intv_status === 'in_progress') {
-                  navigate(`/interview/${interview.intv_id}`)
+                  navigate(`/interview/${interview.intv_id}/live`)
                   return
                 }
                 setStartTarget({
@@ -302,7 +311,7 @@ export default function CandidateDetailPage() {
               onViewTranscription={() => {
                 if (!interview?.intv_id) return
 
-                navigate(`/interview/${interview.intv_id}`)
+                navigate(`/interview/${interview.intv_id}?view=transcript`)
               }}
             />
           </div>
@@ -356,8 +365,6 @@ export default function CandidateDetailPage() {
             interviewer: interviewerName === '--' ? '' : interviewerName,
             interviewer_user_id: interviewerUserId,
             interview_datetime: interview?.intv_date_time ?? null,
-            cv_url: candidate?.cand_cv_url,
-            cover_letter_url: candidate?.cand_cover_letter_url,
           }}
           onClose={() => setShowEditModal(false)}
           onSaved={() => {

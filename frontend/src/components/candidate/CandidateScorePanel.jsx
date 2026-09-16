@@ -2,7 +2,9 @@ import { card, flex } from '../../styles/layout'
 import ScoreBar from '../common/ScoreBar.jsx'
 import { formatScore } from '../../utils/format.js'
 
-export default function CandidateScorePanel({ jobCand, interview, onViewEvidence, onViewTranscription }) {
+export default function CandidateScorePanel({
+  jobCand, interview, onViewEvidence, onViewTranscription, showActions = true,
+}) {
   const ratings = jobCand?.ratings
   const hasInterviewRatings = Boolean(ratings)
   const interviewScores = hasInterviewRatings
@@ -26,7 +28,7 @@ export default function CandidateScorePanel({ jobCand, interview, onViewEvidence
 
   return (
     <div className={`${card.base} ${flex.col} h-full justify-between`}>
-      <h2 className="text-lg font-bold text-neutral-800">Scores</h2>
+      <h2 className="text-lg font-bold text-neutral-800">Interview Rating</h2>
 
       <div
         className={`mx-auto mt-1 flex h-[90px] w-[170px] flex-col items-center justify-center rounded-xl ${
@@ -56,30 +58,35 @@ export default function CandidateScorePanel({ jobCand, interview, onViewEvidence
         <p className="text-sm font-medium text-neutral-800">RANK</p>
         <p className="text-sm font-semibold text-neutral-800">{rank}</p>
       </div>
-      <button
-        type="button"
-        onClick={onViewEvidence}
-        disabled={!hasInterviewRatings}
-        className={`mt-4 w-full rounded-[18px] px-4 py-1.5 text-sm font-semibold transition-colors ${
-          hasInterviewRatings
-            ? 'bg-primary-500 text-white hover:bg-primary-600'
-            : 'cursor-not-allowed bg-neutral-300 text-neutral-500'
-        }`}
-      >
-        View Score and Evidence
-      </button>
-      <button
-        type="button"
-        onClick={onViewTranscription}
-        disabled={!hasTranscript}
-        className={`mt-4 w-full rounded-[18px] px-4 py-1.5 text-sm font-semibold text-white transition-colors ${
-          hasTranscript
-            ? 'bg-primary-500 hover:bg-primary-600'
-            : 'cursor-not-allowed bg-neutral-400'
-        }`}
-      >
-        View Transcription
-      </button>
+
+      {showActions && (
+        <>
+          <button
+            type="button"
+            onClick={onViewEvidence}
+            disabled={!hasInterviewRatings}
+            className={`mt-4 w-full rounded-[18px] px-4 py-1.5 text-sm font-semibold transition-colors ${
+              hasInterviewRatings
+                ? 'bg-primary-500 text-white hover:bg-primary-600'
+                : 'cursor-not-allowed bg-neutral-300 text-neutral-500'
+            }`}
+          >
+            View Score and Evidence
+          </button>
+          <button
+            type="button"
+            onClick={onViewTranscription}
+            disabled={!hasTranscript}
+            className={`mt-4 w-full rounded-[18px] px-4 py-1.5 text-sm font-semibold text-white transition-colors ${
+              hasTranscript
+                ? 'bg-primary-500 hover:bg-primary-600'
+                : 'cursor-not-allowed bg-neutral-400'
+            }`}
+          >
+            View Transcription
+          </button>
+        </>
+      )}
     </div>
   )
 }

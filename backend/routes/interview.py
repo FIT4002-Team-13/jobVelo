@@ -733,6 +733,9 @@ async def complete_interview(
             intv_id=intv_id,
             intv_status="completed",
             scores=scores,
+            ratings=CandidateRatings.model_validate(stored_ratings)
+            if stored_ratings
+            else None,
             candidate_report=InterviewFeedback(**interview["intv_candidate_report"]),
             interviewer_report=InterviewFeedback(
                 **interview["intv_interviewer_report"]
@@ -838,6 +841,7 @@ async def complete_interview(
         intv_id=intv_id,
         intv_status="completed",
         scores=_scores_from_ratings(ratings),
+        ratings=ratings,
         candidate_report=candidate_report,
         interviewer_report=interviewer_report,
         bias_incidents=bias_incidents,
@@ -906,6 +910,7 @@ async def _report_pdf_response(intv_id: str, kind: str, user: dict) -> Response:
         duration_seconds=interview.get("intv_duration_seconds"),
         status=interview.get("intv_status"),
         scores=scores,
+        skill_evidence=ratings if kind == "candidate" else None,
         transcript=interview.get("intv_transcript") or [],
         bias_incidents=interview.get("intv_bias_incidents") or [],
     )
