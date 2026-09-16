@@ -124,7 +124,7 @@ export default function CandidatesTable({
                 )
                 const isRanked = typeof c.score === 'number' && Number.isFinite(c.score)
                 const canStart =
-                  c.status === 'SCHEDULED' &&
+                  (c.status === 'SCHEDULED' || c.status === 'IN PROGRESS') &&
                   (isInterviewer || isHiringManager) &&
                   c.interviewer_user_id === user?.userid
                 const hasCompletedInterview = Boolean(c.intv_completed)
@@ -159,7 +159,7 @@ export default function CandidatesTable({
                           <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor">
                             <polygon points="5 3 19 12 5 21 5 3" />
                           </svg>
-                          Start Interview
+                            {c.status === 'IN PROGRESS' ? 'Resume Interview' : 'Start Interview'}
                         </button>
                       ) : null}
                       <span className="mx-1 w-px self-stretch bg-neutral-200" aria-hidden />

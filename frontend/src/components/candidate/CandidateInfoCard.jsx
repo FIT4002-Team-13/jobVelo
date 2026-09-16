@@ -119,7 +119,9 @@ export default function CandidateInfoCard({
 }) {
   const { user } = useAuth()
   const status = (interview?.intv_status ?? 'not_scheduled').replace(/_/g, ' ').toUpperCase()
-  const canStartInterview = status === 'SCHEDULED' && (user?.role === 'interviewer' || user?.role === 'hiring_manager')
+  const canStartInterview =
+    (status === 'SCHEDULED' || status === 'IN PROGRESS') &&
+    (user?.role === 'interviewer' || user?.role === 'hiring_manager')  
   const startLabel = status === 'IN PROGRESS' ? 'Resume Interview' : 'Start Interview'
   const statusClass = CANDIDATE_STATUS_STYLES[status] ?? FALLBACK_STATUS_CLASS
   const canManageCandidates =
