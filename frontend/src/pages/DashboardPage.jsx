@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom'
 import { Briefcase, Users, CalendarCheck2, CalendarClock, CalendarDays } from 'lucide-react'
 import Sidebar from '../components/common/Sidebar'
-import { api, authedFetch } from '../lib/api.js'
+import { api } from '../lib/api.js'
 import { JOB_STATUS_STYLES, CANDIDATE_STATUS_STYLES, FALLBACK_STATUS_CLASS } from '../utils/status.js'
 import { JOB_STATUS_OPTIONS as BASE_JOB_STATUS_OPTIONS, CANDIDATE_FILTER_OPTIONS as BASE_CANDIDATE_FILTER_OPTIONS, withAllOption } from '../utils/constants'
 import { SortMenu, FilterMenu } from '../components/job-candidate/TableControls'
