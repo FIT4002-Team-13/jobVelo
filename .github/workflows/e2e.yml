@@ -1,0 +1,33 @@
+name: E2E Tests
+on:
+  schedule:
+    - cron: '0 0 * * 1' #Every Monday at 9am UTC
+  workflow_dispatch: #Also allow manual runs
+  push:
+    branches:
+      - features/x/automated-testing
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install deps
+        run: npm ci
+        working-directory: frontend
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps
+        working-directory: frontend
+      - name: Run e2e tests
+        run: npx playwright test
+        working-directory: frontend
+      - name: Upload report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-report
+          path: frontend/playwright-report/
+          retention-days: 30

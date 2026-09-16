@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import Sidebar from '../components/common/Sidebar'
 import AddCandidateForm from '../components/candidate/AddCandidateForm'
@@ -8,85 +8,14 @@ import { SortMenu, FilterMenu } from '../components/job-candidate/TableControls'
 import { page, card, button, badge } from '../styles/layout'
 import { useAuth } from '../lib/AuthContext.jsx'
 import { useToast } from '../components/common/ToastContext.jsx'
-import { api, authedFetch } from '../lib/api.js'
+import { api } from '../lib/api.js'
+import { formatScore, formatShortDate, getAverageScore } from '../utils/format.js'
+import { initials as getInitials, avatarColor } from '../utils/avatar.js'
+import { CANDIDATE_STATUS_STYLES, FALLBACK_STATUS_CLASS } from '../utils/status.js'
+import { CANDIDATE_FILTER_OPTIONS, withAllOption } from '../utils/constants.js'
+import { useAsync } from '../hooks/useAsync.js'
+import { useTableControls } from '../hooks/useTableControls.js'
 
-function getInitials(name = '') {
-  const safeName = typeof name === 'string' ? name.trim() : ''
-  const initials = safeName
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0].toUpperCase())
-    .join('')
-
-  return initials || '--'
-}
-
-function avatarColor(name = '') {
-  const colors = ['bg-primary-500', 'bg-sky-500', 'bg-mint-500', 'bg-coral-500']
-  const safeName = typeof name === 'string' ? name : ''
-  let hash = 0
-  for (const c of safeName) hash = (hash * 31 + c.charCodeAt(0)) & 0xffffffff
-  return colors[Math.abs(hash) % colors.length]
-}
-
-// Unified palette - mirrors JobDetailPage / DashboardPage / CandidateDetailPage
-// so the same status reads identically across the app. Key change: SCHEDULED
-// now flips to primary blue (was grey) so it's visually distinct from
-// NOT SCHEDULED, which stays grey.
-function statusClass(status) {
-  switch (status) {
-    case 'NOT SCHEDULED':
-      return 'bg-neutral-100 text-neutral-500'
-    case 'SCHEDULED':
-      return 'bg-primary-100 text-primary-600'
-    case 'IN PROGRESS':
-      return 'bg-amber-100 text-amber-700'
-    case 'COMPLETED':
-    case 'EVALUATED':
-      return 'bg-mint-100 text-mint-700'
-    case 'CANCELLED':
-      return 'bg-coral-100 text-coral-700'
-    case 'HIRED':
-      return 'bg-mint-500 text-white'
-    case 'REJECTED':
-      return 'bg-coral-100 text-coral-700'
-    default:
-      return 'bg-neutral-100 text-neutral-500'
-  }
-}
-
-function formatScore(score) {
-  if (score == null) return '--'
-  return Number(score).toFixed(1)
-}
-
-function getCandidateScore(ratings) {
-  if (!ratings) return null
-
-  const scores = [
-    ratings.communication?.score,
-    ratings.technical_skills?.score,
-    ratings.problem_solving?.score,
-  ].filter(
-    (score) =>
-      typeof score === 'number' &&
-      Number.isFinite(score)
-  )
-
-  if (scores.length === 0) return null
-
-  const average = scores.reduce((total, score) => total + score, 0) / scores.length
-
-  return Math.round(average * 10) / 10
-}
-
-function formatShortDate(iso) {
-  if (!iso) return '--'
-  const d = new Date(iso)
-  if (Number.isNaN(d.getTime())) return '--'
-  return d.toLocaleDateString('en-AU', { month: 'short', day: 'numeric' })
-}
 
 const SORT_OPTIONS = [
   { value: 'date', label: 'Date' },
@@ -96,35 +25,49 @@ const SORT_OPTIONS = [
 ]
 
 // Kept in sync with the dashboard candidates panel + JobDetailPage candidate
-// filter so the same statuses are filterable wherever the user looks. The
-// values mirror what the rows can actually hold (the interview status,
-// upper-cased) - listing a status the data can never produce just gives the
-// user a filter that silently matches nothing.
-const FILTER_OPTIONS = [
-  { value: '',              label: 'All'           },
-  { value: 'NOT SCHEDULED', label: 'Not Scheduled' },
-  { value: 'SCHEDULED',     label: 'Scheduled'     },
-  { value: 'IN PROGRESS',     label: 'In Progress' },
-  { value: 'COMPLETED',     label: 'Completed'     },
-]
+// filter so the same statuses are filterable wherever the user looks.
+const FILTER_OPTIONS = withAllOption(CANDIDATE_FILTER_OPTIONS)
 
 // Previously had a bespoke OptionsPopup component here - replaced by the
 // shared SortMenu / FilterMenu from TableControls so this page reads
 // identically to the dashboard and Jobs/JobDetail pages.
+
+async function loadApplicationsData(userId) {
+  const [jobsData, rowsData] = await Promise.all([
+    api.listJobs(),
+    api.listApplications({ user_id: userId }),
+  ])
+  return {
+    jobs: Array.isArray(jobsData) ? jobsData : [],
+    rows: Array.isArray(rowsData) ? rowsData : [],
+  }
+}
+
+// Candidate-name relevance: exact match, then "starts with", then
+// substring position - so typing a few letters surfaces the closest name
+// match first regardless of the active sort.
+function relevance(row, needle) {
+  const name = (row.candidate_name || '').toLowerCase()
+  if (name === needle) return 0
+  if (name.startsWith(needle + ' ')) return 1
+  const idx = name.indexOf(needle)
+  if (idx === -1) return Number.MAX_SAFE_INTEGER
+  return 10 + idx
+}
 
 export default function ApplicationsPage() {
   const { user } = useAuth()
   const navigate = useNavigate()
   const toast = useToast()
 
-  const [rows, setRows] = useState([])
-  const [jobs, setJobs] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState('')
-  const [search, setSearch] = useState('')
-
-  const [sortValue, setSortValue] = useState('date')
-  const [filterValue, setFilterValue] = useState('')
+  // `fn` is null until the auth context resolves a userid, so the page
+  // keeps showing its loading state instead of firing an unscoped request.
+  const { data, setData, loading, error } = useAsync(
+    user?.userid ? () => loadApplicationsData(user.userid) : null,
+    [user?.userid]
+  )
+  const rows = data?.rows ?? []
+  const jobs = data?.jobs ?? []
 
   const [showAddModal, setShowAddModal] = useState(false)
   const [showEditModal, setShowEditModal] = useState(false)
@@ -134,13 +77,11 @@ export default function ApplicationsPage() {
   // application_id currently being analysed (click guard for the CV cell).
   const [analysingId, setAnalysingId] = useState(null)
 
-  async function loadApplications() {
-    const res = await authedFetch(
-      `/api/applications?user_id=${encodeURIComponent(user?.userid || '')}`
-    )
-    if (!res.ok) throw new Error('Failed to load applications.')
-    const data = await res.json()
-    setRows(Array.isArray(data) ? data : [])
+  // Lighter-weight than a full reload() - only re-fetches the rows (jobs
+  // rarely change as a side effect of a candidate action).
+  async function reloadRows() {
+    const rowsData = await api.listApplications({ user_id: user?.userid || '' })
+    setData((prev) => ({ ...prev, rows: Array.isArray(rowsData) ? rowsData : [] }))
   }
 
   // Analyse the candidate's already-stored CV against this job - no
@@ -155,14 +96,14 @@ export default function ApplicationsPage() {
       const fd = new FormData()
       fd.append('jobcand_id', jobcandId)
       await api.analyseCv(fd)
-      await loadApplications()
+      await reloadRows()
       const poll = async () => {
         try {
           const a = await api.getCvAnalysisByJobcand(jobcandId)
           if (a?.status === 'processing') {
             setTimeout(poll, 4000)
           } else {
-            await loadApplications()
+            await reloadRows()
             setAnalysingId(null)
           }
         } catch {
@@ -176,66 +117,19 @@ export default function ApplicationsPage() {
     }
   }
 
-  useEffect(() => {
-    async function load() {
-      try {
-        setLoading(true)
-        setError('')
-
-        const [jobsRes] = await Promise.all([
-          authedFetch('/api/jobs'),
-          loadApplications(),
-        ])
-
-        if (!jobsRes.ok) throw new Error('Failed to load jobs.')
-
-        const jobsData = await jobsRes.json()
-        setJobs(Array.isArray(jobsData) ? jobsData : [])
-      } catch (err) {
-        setError(err.message || 'Something went wrong.')
-      } finally {
-        setLoading(false)
-      }
-    }
-
-    if (user?.userid) {
-      load()
-    }
-  }, [user?.userid])
-
-  const filteredRows = useMemo(() => {
-    const needle = search.trim().toLowerCase()
-
-    let next = rows.filter((row) => {
-      const matchesSearch =
-        !needle ||
-        (row.candidate_name || '').toLowerCase().includes(needle) ||
-        (row.job_title || '').toLowerCase().includes(needle)
-
-      const matchesFilter =
-        !filterValue || row.status === filterValue
-
-      return matchesSearch && matchesFilter
-    })
-
-    function relevance(row) {
-      if (!needle) return 0
-      const name = (row.candidate_name || '').toLowerCase()
-      if (name === needle) return 0
-      if (name.startsWith(needle + ' ')) return 1
-      const idx = name.indexOf(needle)
-      if (idx === -1) return Number.MAX_SAFE_INTEGER
-      return 10 + idx
-    }
-
-    next = [...next].sort((a, b) => {
+  const table = useTableControls(rows, {
+    matchesSearch: (row, needle) =>
+      (row.candidate_name || '').toLowerCase().includes(needle) ||
+      (row.job_title || '').toLowerCase().includes(needle),
+    matchesFilter: (row, filters) => filters.length === 0 || filters.includes(row.status),
+    compare: (a, b, sortKey, needle) => {
       if (needle) {
-        const relDiff = relevance(a) - relevance(b)
+        const relDiff = relevance(a, needle) - relevance(b, needle)
         if (relDiff !== 0) return relDiff
       }
-      switch (sortValue) {
+      switch (sortKey) {
         case 'score':
-          return ((getCandidateScore(b.ratings) ?? -Infinity) - (getCandidateScore(a.ratings) ?? -Infinity))
+          return (getAverageScore(b.ratings) ?? -Infinity) - (getAverageScore(a.ratings) ?? -Infinity)
         case 'name_asc':
           return (a.candidate_name || '').localeCompare(b.candidate_name || '')
         case 'name_desc':
@@ -244,29 +138,28 @@ export default function ApplicationsPage() {
         default:
           return new Date(b.interview_datetime || 0) - new Date(a.interview_datetime || 0)
       }
-    })
-
-    return next
-  }, [rows, search, sortValue, filterValue])
+    },
+    defaultSortKey: 'date',
+  })
 
   async function handleAddSaved() {
     try {
-      await loadApplications()
+      await reloadRows()
       setShowAddModal(false)
       toast.success('Candidate added.')
     } catch (err) {
-      setError(err.message || 'Failed to refresh applications.')
+      toast.error(err.message || 'Failed to refresh applications.')
     }
   }
 
   async function handleEditSaved() {
     try {
-      await loadApplications()
+      await reloadRows()
       setShowEditModal(false)
       setSelectedRow(null)
       toast.success('Candidate updated.')
     } catch (err) {
-      setError(err.message || 'Failed to refresh applications.')
+      toast.error(err.message || 'Failed to refresh applications.')
     }
   }
 
@@ -307,8 +200,8 @@ export default function ApplicationsPage() {
         <div className="mb-5 flex items-center justify-end gap-3">
           <div className="flex items-center gap-2 rounded-xl border border-neutral-200 bg-neutral-0 px-3 py-1.5">
             <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              value={table.search}
+              onChange={(e) => table.setSearch(e.target.value)}
               placeholder="Candidate Name"
               className="w-32 border-none bg-transparent text-sm text-neutral-600 outline-none placeholder:text-neutral-400"
             />
@@ -321,19 +214,17 @@ export default function ApplicationsPage() {
           {/* Shared SortMenu - same compact dropdown used on Dashboard,
               JobsPage and JobDetailPage. */}
           <SortMenu
-            value={sortValue}
-            onChange={setSortValue}
+            value={table.sortKey}
+            onChange={table.setSortKey}
             options={SORT_OPTIONS}
           />
 
-          {/* Shared FilterMenu in single-select mode. We feed the current
-              filterValue as a single-item array (or wrap '' for the "All"
-              sentinel) and unwrap on change. Result: the dropdown lights
-              up "All" when nothing is filtering, exactly like the other
-              status filters across the app. */}
+          {/* Shared FilterMenu in single-select mode - "All" lights up
+              whenever filters is empty, exactly like the other status
+              filters across the app. */}
           <FilterMenu
-            values={[filterValue]}
-            onChange={(newValues) => setFilterValue(newValues[0] ?? '')}
+            values={table.filters}
+            onChange={table.setFilters}
             options={FILTER_OPTIONS}
             singleSelect
           />
@@ -343,7 +234,7 @@ export default function ApplicationsPage() {
         {!loading && error && <p className="text-sm text-coral-500">{error}</p>}
 
         {!loading && !error && (
-          filteredRows.length === 0
+          table.paged.length === 0
             ? <p className="text-sm text-neutral-400">No applications found.</p>
             : (
         <div className={`${card.base} overflow-hidden !p-0`}>
@@ -379,7 +270,7 @@ export default function ApplicationsPage() {
               </thead>
 
               <tbody>
-                {filteredRows.map((row) => (
+                {table.paged.map((row) => (
                     // Whole row navigates to the candidate page now. Action
                     // cells below (CV / CL links, Edit button) all carry
                     // stopPropagation so they keep their own click without
@@ -407,7 +298,7 @@ export default function ApplicationsPage() {
                       </td>
 
                       <td className="px-4 py-3">
-                        <span className={`${badge.sm} ${statusClass(row.status)}`}>
+                        <span className={`${badge.sm} ${CANDIDATE_STATUS_STYLES[row.status] ?? FALLBACK_STATUS_CLASS}`}>
                           {row.status}
                         </span>
                       </td>
@@ -496,7 +387,7 @@ export default function ApplicationsPage() {
                       </td>
 
                       <td className="px-4 py-3 font-semibold text-neutral-700">
-                        {formatScore(getCandidateScore(row.ratings))}
+                        {formatScore(getAverageScore(row.ratings))}
                       </td>
 
                       <td className="px-4 py-3 text-neutral-500 whitespace-nowrap">
@@ -630,7 +521,7 @@ export default function ApplicationsPage() {
           jobId={deleteTarget.job_id}
           onClose={() => setDeleteTarget(null)}
           onDeleted={(linkId) => {
-            setRows((prev) => prev.filter((r) => r.application_id !== linkId))
+            setData((prev) => ({ ...prev, rows: (prev?.rows ?? []).filter((r) => r.application_id !== linkId) }))
             setDeleteTarget(null)
             toast.success('Candidate removed from the job.')
           }}

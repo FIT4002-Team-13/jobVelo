@@ -1,3 +1,9 @@
+"""
+Deletes candidate documents missing an email or company id.
+
+Run from the backend/ directory: python -m scripts.delete_bad_candidates
+"""
+
 import asyncio
 import os
 
@@ -29,4 +35,5 @@ async def main():
     client.close()
 
 
-asyncio.run(main())
+if __name__ == "__main__":
+    asyncio.run(main())

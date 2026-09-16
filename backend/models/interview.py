@@ -44,7 +44,8 @@ class FeedbackPoint(BaseModel):
 
     point: str
     evidence: list[EvidenceRef] = Field(default_factory=list)
-    
+
+
 class BiasIncident(BaseModel):
     """One question the live bias checker flagged during the interview.
 
@@ -111,9 +112,7 @@ class InterviewFeedback(BaseModel):
     improvements: InterviewFeedbackSection = Field(
         default_factory=InterviewFeedbackSection
     )
-    requirements_mapping: list[RequirementMapping] = Field(
-        default_factory=list
-    )
+    requirements_mapping: list[RequirementMapping] = Field(default_factory=list)
 
 
 class InterviewScores(BaseModel):

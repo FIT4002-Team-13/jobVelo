@@ -30,7 +30,7 @@ from services.file_storage import delete_upload
 router = APIRouter(prefix="/api/jobs", tags=["jobs"])
 
 
-async def _delete_cv_analyses_for_links(db, jobcand_ids: list[str]) -> None:
+async def delete_cv_analyses_for_links(db, jobcand_ids: list[str]) -> None:
     """Cascade helper: remove the cv_analyses docs for these job-candidate
     links AND the PDF files they own. Best-effort on the files (the DB row
     is the source of truth), exact on the docs."""
@@ -43,18 +43,6 @@ async def _delete_cv_analyses_for_links(db, jobcand_ids: list[str]) -> None:
         await delete_upload(doc.get("cv_path"))
         await delete_upload(doc.get("cover_letter_path"))
     await db.cv_analyses.delete_many({"jobcand_id": {"$in": jobcand_ids}})
-
-
-def _comp_oid(comp_id: str) -> ObjectId:
-    """Validate + cast a string comp_id to an ObjectId.
-
-    Every collection stores `comp_id` as an ObjectId (matching auth.py +
-    invitations.py), so a string from the request body or query param must
-    be converted before insert/query, otherwise nothing matches.
-    """
-    if not ObjectId.is_valid(comp_id):
-        raise HTTPException(status_code=400, detail="Invalid comp_id")
-    return ObjectId(comp_id)
 
 
 # ---------- helpers ----------------------------------------------------------
@@ -90,35 +78,6 @@ def _validate_oid(job_id: str) -> ObjectId:
 
 
 # ---------- routes -----------------------------------------------------------
-
-
-# async def _job_stats(db, job_ids: list[str]) -> dict[str, dict]:
-#     """Per-job stats derived live from the job_candidates link table:
-#         { job_id_str: { count: N, interviewers: [unique names] } }
-
-#     Both fields are computed on read so the JobCard never drifts away
-#     from reality - e.g. when a candidate row is deleted (or the whole
-#     collection nuked), the count + avatar stack catch up immediately
-#     on the next request. No stored counter to keep in sync, no need
-#     for decrements on cascade-delete.
-#     """
-#     if not job_ids:
-#         return {}
-#     pipeline = [
-#         {"$match": {"job_id": {"$in": job_ids}}},
-#         {"$group": {
-#             "_id": "$job_id",
-#             "count": {"$sum": 1},
-#             "names": {"$addToSet": "$interviewer"},
-#         }},
-#     ]
-#     out: dict[str, dict] = {}
-#     async for row in db.job_candidates.aggregate(pipeline):
-#         out[row["_id"]] = {
-#             "count": row["count"],
-#             "interviewers": [n for n in row["names"] if n],   # drop None/""
-#         }
-#     return out
 
 
 async def _job_stats(db, job_ids: list[str]) -> dict[str, dict]:
@@ -394,240 +353,10 @@ async def delete_job(
 
     # Cascade: links, their CV analyses (+ files), interviews, interviewer links.
     await db.job_candidates.delete_many({"job_id": job_id})
-    await _delete_cv_analyses_for_links(db, link_ids)
+    await delete_cv_analyses_for_links(db, link_ids)
     if interview_ids:
         await db.interview_users.delete_many({"intv_id": {"$in": interview_ids}})
         await db.interviews.delete_many({"job_id": job_id})
-
-
-# ---------- Job ⇄ candidates view (compatibility for JobDetailPage) ----------
-#
-# These two endpoints expose a flat "candidate per job" shape that the
-# JobDetailPage was originally built against. Internally they go through
-# the proper candidates + job_candidates collections.
-#
-# The flat shape carries some fields that don't have a "real" home yet in
-# the new model (status, scheduled_at, interviewer). They're stashed on
-# the job_candidates link as extras until a dedicated interview entity
-# lands.
-
-
-@router.get("/{job_id}/candidates")
-async def list_candidates_for_job(
-    job_id: str,
-    db: AsyncIOMotorDatabase = Depends(get_db),
-    comp_id: ObjectId = Depends(get_current_comp_id),
-):
-    """Joined view: every candidate linked to this job, flattened with
-    interview-style fields (name / status / score / scheduled_at /
-    interviewer) so the table can render directly.
-
-    Tenant guard: 404s if the job belongs to a different company.
-    """
-    oid = _validate_oid(job_id)
-    if not await db.jobs.find_one({"_id": oid, "comp_id": comp_id}, {"_id": 1}):
-        raise HTTPException(status_code=404, detail="Job not found")
-
-    links = await db.job_candidates.find({"job_id": job_id}).to_list(length=500)
-    if not links:
-        return []
-
-    # Bulk fetch the candidates referenced by the links. Skip any invalid
-    # cand_ids defensively so one bad row can't fail the whole query.
-    cand_oids = [
-        ObjectId(lnk["cand_id"])
-        for lnk in links
-        if ObjectId.is_valid(lnk.get("cand_id", ""))
-    ]
-    cand_docs = await db.candidates.find({"_id": {"$in": cand_oids}}).to_list(
-        length=500
-    )
-    cands_by_id = {str(c["_id"]): c for c in cand_docs}
-
-    # Bulk-fetch interviews for this job, keyed by cand_id.
-    interviews = await db.interviews.find({"job_id": job_id}).to_list(length=500)
-    interview_by_cand = {i.get("cand_id"): i for i in interviews}
-
-    # Bulk-fetch interview_user links for those interviews.
-    interview_ids = [str(i["_id"]) for i in interviews]
-    intv_user_links = []
-    if interview_ids:
-        intv_user_links = await db.interview_users.find(
-            {"intv_id": {"$in": interview_ids}}
-        ).to_list(length=500)
-    user_id_by_intv = {
-        lnk["intv_id"]: lnk["user_id"] for lnk in intv_user_links if lnk.get("intv_id")
-    }
-
-    # Bulk-fetch users for those interviewers.
-    user_ids = list({uid for uid in user_id_by_intv.values() if ObjectId.is_valid(uid)})
-    users_by_id: dict = {}
-    if user_ids:
-        user_docs = await db.users.find(
-            {"_id": {"$in": [ObjectId(uid) for uid in user_ids]}},
-            {"password_hash": 0},
-        ).to_list(length=500)
-        users_by_id = {str(u["_id"]): u for u in user_docs}
-
-    out = []
-    for link in links:
-        c = cands_by_id.get(link.get("cand_id"), {})
-        interview_docs = await db.interviews.find(
-            {
-                "job_id": job_id,
-                "cand_id": link.get("cand_id"),
-            }
-        ).to_list(length=20)
-        completed_interview = next(
-            (item for item in interview_docs if item.get("intv_status") == "completed"),
-            None,
-        )
-        # Average of the three AI scores when available; otherwise fall back
-        # to a literal `score` field stashed on the link.
-        cand_id = link.get("cand_id")
-        c = cands_by_id.get(cand_id, {})
-
-        # Resolve interviewer name from the interview chain only. The legacy
-        # `job_candidates.interviewer` field is intentionally ignored — old
-        # rows can hold a stale name string from before the interview_users
-        # migration, which would surface a phantom interviewer on jobs that
-        # have none assigned.
-        interview = interview_by_cand.get(cand_id)
-        intv_id = str(interview["_id"]) if interview else None
-        user_id = user_id_by_intv.get(intv_id) if intv_id else None
-        user = users_by_id.get(user_id) if user_id else None
-        interviewer_name = (
-            (user.get("full_name") or user.get("username") or user.get("email"))
-            if user
-            else None
-        )
-
-        # scheduled_at from interview; fall back to stored field.
-        scheduled_at = (
-            interview.get("intv_date_time") if interview else link.get("scheduled_at")
-        )
-
-        ratings = link.get("ratings") or {}
-
-        scores = [
-            (ratings.get("communication") or {}).get("score"),
-            (ratings.get("technical_skills") or {}).get("score"),
-            (ratings.get("problem_solving") or {}).get("score"),
-        ]
-
-        scores = [score for score in scores if score is not None]
-
-        avg = round(sum(scores) / len(scores), 1) if scores else None
-
-        out.append(
-            {
-                "id": str(link["_id"]),
-                "cand_id": str(c["_id"]) if c.get("_id") else cand_id,
-                "job_id": job_id,
-                "name": c.get("cand_full_name") or link.get("name", ""),
-                "email": c.get("cand_email"),
-                "phone": c.get("cand_phone"),
-                # Document URLs ride along so the Edit Candidate modal (shared
-                # with the Applications page) can show the existing file names.
-                "cv_url": c.get("cand_cv_url"),
-                "cover_letter_url": c.get("cand_cover_letter_url"),
-                "status": (interview.get("intv_status") or "not_scheduled")
-                .replace("_", " ")
-                .upper()
-                if interview
-                else "NOT SCHEDULED",
-                "scheduled_at": scheduled_at,
-                "interviewer": interviewer_name,
-                "ratings": ratings or None,
-                "score": avg,
-                "intv_completed": completed_interview is not None,
-                "intv_id": str(completed_interview["_id"])
-                if completed_interview
-                else None,
-            }
-        )
-    return out
-
-
-@router.delete(
-    "/{job_id}/candidates/{jobcand_id}",
-    status_code=status.HTTP_204_NO_CONTENT,
-    response_class=Response,
-)
-async def remove_candidate_from_job(
-    job_id: str,
-    jobcand_id: str,
-    db: AsyncIOMotorDatabase = Depends(get_db),
-    comp_id: ObjectId = Depends(get_current_comp_id),
-):
-    """Remove a single candidate-job link.
-
-    The candidate document itself stays around because the same candidate
-    may be on multiple jobs (or could be reused later). But we DO cascade
-    into interviews + interview_users for this (cand_id, job_id) pair —
-    otherwise an orphan interview + interviewer link would leave a phantom
-    avatar on the job card after the candidate is gone.
-    """
-    if not ObjectId.is_valid(jobcand_id):
-        raise HTTPException(status_code=400, detail="Invalid jobcand_id")
-
-    # Tenant guard: confirm the job belongs to this company before touching
-    # anything beneath it.
-    oid = _validate_oid(job_id)
-    if not await db.jobs.find_one({"_id": oid, "comp_id": comp_id}, {"_id": 1}):
-        raise HTTPException(status_code=404, detail="Job not found")
-
-    # Read the link first so we know which candidate to cascade for.
-    link = await db.job_candidates.find_one(
-        {"_id": ObjectId(jobcand_id), "job_id": job_id}
-    )
-    if not link:
-        raise HTTPException(
-            status_code=404, detail="Candidate link not found on this job"
-        )
-
-    cand_id = link.get("cand_id")
-
-    # Scope by job_id too so an attacker can't delete a random link by id.
-    await db.job_candidates.delete_one({"_id": ObjectId(jobcand_id), "job_id": job_id})
-
-    # Cascade the link's CV analysis (+ its PDF files) - re-linking the same
-    # candidate later creates a NEW jobcand_id, so the old analysis would be
-    # unreachable forever.
-    await _delete_cv_analyses_for_links(db, [jobcand_id])
-
-    # Cascade: find and remove the interview(s) for this candidate/job, plus
-    # any interview_users links pointing at them.
-    if cand_id:
-        interviews = await db.interviews.find(
-            {"cand_id": cand_id, "job_id": job_id}
-        ).to_list(length=100)
-
-        if interviews:
-            intv_id_strs = [str(i["_id"]) for i in interviews]
-            await db.interview_users.delete_many({"intv_id": {"$in": intv_id_strs}})
-            await db.interviews.delete_many(
-                {"_id": {"$in": [i["_id"] for i in interviews]}}
-            )
-
-
-# class AddCandidateToJob(BaseModel):
-#     """Body for POST /api/jobs/{job_id}/candidates.
-
-#     Mirrors the real Candidate model's required fields (name + email) so the
-#     `candidates` collection ends up with proper data, plus optional contact
-#     + document URLs and the interview-style fields the modal collects.
-#     """
-
-#     name: str = Field(..., min_length=1, max_length=100)
-#     email: EmailStr
-#     phone: str | None = Field(default=None, max_length=30)
-#     cv_url: str | None = None
-#     cover_letter_url: str | None = None
-#     # Interview-side fields - stashed on the job_candidates link until a
-#     # dedicated interview entity exists.
-#     interviewer: str | None = Field(default=None, max_length=100)
-#     scheduled_at: str | None = None
 
 
 class AddCandidateToJob(BaseModel):

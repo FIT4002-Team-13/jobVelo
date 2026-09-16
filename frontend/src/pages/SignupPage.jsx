@@ -6,19 +6,11 @@ import AuthField from '../components/auth/AuthField.jsx'
 import { api, ApiError } from '../lib/api.js'
 import { checkPassword, isPasswordStrong } from '../lib/password.js'
 import { isEmail, isUsername, isFullName } from '../lib/validators.js'
+import { ROLE_LABELS } from '../utils/constants.js'
 
 // Invitation codes are generated server-side as INV-XXXX-XXXX (alphanumeric).
 // Catching obvious typos here saves a server round-trip on step 1.
 const CODE_RE = /^INV-[A-Z0-9]{4}-[A-Z0-9]{4}$/
-
-// Roles an invitation can carry, used purely to display a friendly label
-// for the role the admin picked when generating the code. The invitee no
-// longer chooses one themselves - the field is read-only on this form.
-const ROLE_LABELS = {
-  interviewer:    'Interviewer',
-  hiring_manager: 'Hiring Manager',
-  recruiter:      'Recruiter',
-}
 
 // Two-step signup for invited teammates:
 //   step 1 - enter invitation code, validate against backend

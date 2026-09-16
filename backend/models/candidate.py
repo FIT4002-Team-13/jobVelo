@@ -20,8 +20,11 @@ CandidateRollupStatus = Literal[
 
 
 class CandidateCreate(BaseModel):
-    """Base payload for creating a standalone candidate profile, used when the system only needs to create the candidate
-    record without immediately linking the candidate to a specific job. comp_id scopes the candidate to a single company."""
+    """Base payload for creating a standalone candidate profile.
+
+    Used when the system only needs to create the candidate record without immediately
+    linking the candidate to a specific job. comp_id scopes the candidate to a single company.
+    """
 
     cand_full_name: str = Field(..., min_length=1, max_length=100)
     cand_email: EmailStr
