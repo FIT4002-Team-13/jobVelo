@@ -283,7 +283,7 @@ export default function JobDetailPage() {
               {" / "}
               {job.candidates_total ?? 0} candidates
             </span>
-            {user?.role === "recruiter" && (
+            {(user?.role === "recruiter" || user?.role === "admin") && (
               <button
                 type="button"
                 onClick={() => setShowAddCandidate(true)}
