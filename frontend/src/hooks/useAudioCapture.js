@@ -19,6 +19,12 @@ export function useAudioCapture({
   const [isPaused, setIsPaused] = useState(false);
   const [timer, setTimer] = useState(0);
   const [status, setStatus] = useState("Ready to start recording");
+  // Mic/screen access can be granted well before the interviewer actually
+  // hits "Ready" on the Recording Setup modal (e.g. they set up screen share
+  // too) - the elapsed timer shouldn't run during that setup window, only
+  // once they confirm they're ready to begin.
+  const [isTimerArmed, setIsTimerArmed] = useState(false);
+  const [isMicMuted, setIsMicMuted] = useState(false);
 
   const wsRef = useRef(null);
   const wsDisplayRef = useRef(null);
@@ -40,7 +46,7 @@ export function useAudioCapture({
 
   useEffect(() => {
     const interval = setInterval(() => {
-      if ((isMicActive || isScreenSharing) && !isPaused && !isCompleted) {
+      if ((isMicActive || isScreenSharing) && isTimerArmed && !isPaused && !isCompleted) {
         const elapsedSeconds = Math.floor((Date.now() - startTimeRef.current) / 1000);
         setTimer(elapsedSeconds);
         timerRef.current = elapsedSeconds;
@@ -48,7 +54,7 @@ export function useAudioCapture({
       }
     }, 1000);
     return () => clearInterval(interval);
-  }, [isMicActive, isScreenSharing, isPaused, isCompleted]);
+  }, [isMicActive, isScreenSharing, isTimerArmed, isPaused, isCompleted]);
 
   useEffect(() => {
     if (!serverData || autoStartedRef.current) return;
@@ -77,10 +83,8 @@ export function useAudioCapture({
     setTimer(priorSeconds);
     // Anchor the timer to when the interview officially began.
     startTimeRef.current = Date.now() - priorSeconds * 1000;
-
-    // Allow audio to flow to the transcription WebSocket once the mic is
-    // armed via the Recording Setup modal.
-    transcriptionActiveRef.current = true;
+    // transcriptionActiveRef stays false until armTimer() runs (the
+    // Recording Setup modal's "Ready" button) - see armTimer below.
   }, [serverData, intvStatus]);
 
   useEffect(() => {
@@ -107,13 +111,42 @@ export function useAudioCapture({
     socket.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
-        if (data.type === "transcript" && typeof data.text === "string") {
-          appendTranscript(data.text, Boolean(data.is_final), speaker, partialRef);
-        } else if (data.type === "bias_warning" && typeof data.quote === "string") {
+
+        if (data.type === "diarized_transcript") {
+          console.log("Detected speakers:", data);
+
+          if (!data.is_final || !Array.isArray(data.groups)) return;
+
+          // These must match "mic" and "screen" in useTranscript.js
+          const source = role === "interviewer" ? "mic" : "screen";
+          const sourceLabel = source === "mic" ? "Mic" : "Shared audio";
+
+          for (const group of data.groups) {
+            if (typeof group.text !== "string" || !group.text.trim()) {
+              continue;
+            }
+
+            const detectedSpeaker = Number.isInteger(group.speaker_id)
+              ? `${sourceLabel} · Speaker ${group.speaker_id + 1}`
+              : `${sourceLabel} · Unknown speaker`;
+
+            appendTranscript(group.text, true, detectedSpeaker, partialRef,
+              {
+                source,
+                stream_id: data.stream_id,
+                speaker_id: group.speaker_id,
+              }
+            );
+          }
+
+          return;
+        }
+
+        if (data.type === "bias_warning" && typeof data.quote === "string") {
           addBiasWarning(data);
         }
       } catch (err) {
-        console.error("Failed to parse transcription event", err);
+        console.error("Failed to parse transcription event", err);  
       }
     };
     socket.onerror = () => setStatus("Connection error");
@@ -129,6 +162,7 @@ export function useAudioCapture({
 
       const micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
       micStreamRef.current = micStream;
+      setIsMicMuted(false);
 
       const audioContext = new (window.AudioContext || window.webkitAudioContext)();
       await audioContext.resume();
@@ -140,6 +174,7 @@ export function useAudioCapture({
 
       micProcessor.onaudioprocess = (event) => {
         if (isPausedRef.current || !transcriptionActiveRef.current) return;
+        if (!micStreamRef.current?.getAudioTracks().some((t) => t.enabled)) return;
         const inputBuffer = event.inputBuffer.getChannelData(0);
         if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
         wsRef.current.send(downsampleBuffer(inputBuffer, audioContext.sampleRate, 16000));
@@ -178,6 +213,7 @@ export function useAudioCapture({
       setStatus("Requesting microphone access...");
       const micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
       micStreamRef.current = micStream;
+      setIsMicMuted(false);
 
       const audioContext = new (window.AudioContext || window.webkitAudioContext)();
       await audioContext.resume();
@@ -189,6 +225,7 @@ export function useAudioCapture({
 
       micProcessor.onaudioprocess = (event) => {
         if (isPausedRef.current || !transcriptionActiveRef.current) return;
+        if (!micStreamRef.current?.getAudioTracks().some((t) => t.enabled)) return;
         const inputBuffer = event.inputBuffer.getChannelData(0);
         if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
         wsRef.current.send(downsampleBuffer(inputBuffer, audioContext.sampleRate, 16000));
@@ -262,6 +299,7 @@ export function useAudioCapture({
     transcriptionActiveRef.current = false;
     setIsMicActive(false);
     setIsScreenSharing(false);
+    setIsMicMuted(false);
     setStatus("Ready to start recording");
   }
 
@@ -345,16 +383,55 @@ export function useAudioCapture({
     }
   }
 
+  // Called once the interviewer confirms the Recording Setup modal - re-anchors
+  // the elapsed-time origin to right now (discarding whatever setup time
+  // passed since the mic/screen were granted) and lets the ticking start.
+  function armTimer() {
+    startTimeRef.current = Date.now() - accumulatedRef.current * 1000;
+    setIsTimerArmed(true);
+    transcriptionActiveRef.current = true;
+  }
+
+  // What the status line should read once unmuted, given whatever's
+  // currently wired up (screen share + its audio, or just the mic).
+  function listeningStatusLabel() {
+    if (isScreenSharing) {
+      return wsDisplayRef.current
+        ? "Listening (interviewer + candidate)…"
+        : "Screen shared — no computer audio detected";
+    }
+    return "Listening (interviewer mic)…";
+  }
+
+  // Mutes just the interviewer's own mic track (candidate/screen audio, if
+  // shared, keeps flowing) - lets them step away mid-interview without
+  // pausing the whole recording/timer.
+  function toggleMicMute() {
+    const muted = !isMicMuted;
+    micStreamRef.current?.getAudioTracks().forEach((t) => { t.enabled = !muted; });
+    setIsMicMuted(muted);
+    setStatus(
+      muted
+        ? isScreenSharing && wsDisplayRef.current
+          ? "Microphone muted — candidate audio still recording"
+          : "Microphone muted"
+        : listeningStatusLabel()
+    );
+  }
+
   return {
     isMicActive,
     isScreenSharing,
     isPaused,
+    isMicMuted,
     timer,
     status,
     videoRef,
     startMicOnly,
+    armTimer,
     stopScreenShare,
     toggleScreenShare,
+    toggleMicMute,
     togglePause,
   };
 }

@@ -2,15 +2,8 @@ import { useEffect, useState } from 'react'
 import { modal, form, flex, button } from '../../styles/layout'
 import { isEmail, isPhone, isFullName, isFutureDateTime } from '../../lib/validators.js'
 import { useAuth } from '../../lib/AuthContext.jsx'
-import { api, authedFetch } from '../../lib/api.js'
+import { authedFetch } from '../../lib/api.js'
 import InterviewerCombobox from './InterviewerCombobox.jsx'
-import FileDropzone from './FileDropzone.jsx'
-
-function getFileName(value = '') {
-  if (!value) return ''
-  if (typeof value !== 'string') return ''
-  return value.split('/').pop() || value
-}
 
 export default function EditCandidateForm({
   jobs = [],
@@ -37,12 +30,6 @@ export default function EditCandidateForm({
     scheduled_at: initialScheduledAt,
   })
 
-  const [cvFile, setCvFile] = useState(null)
-  const [coverLetterFile, setCoverLetterFile] = useState(null)
-  const [existingCvName, setExistingCvName] = useState(getFileName(initialData?.cv_url))
-  const [existingCoverLetterName, setExistingCoverLetterName] = useState(
-    getFileName(initialData?.cover_letter_url)
-  )
   const [interviewers, setInterviewers] = useState([])
   const [interviewerOpen, setInterviewerOpen] = useState(false)
 
@@ -109,9 +96,9 @@ export default function EditCandidateForm({
 
     try {
       // 1. Update candidate profile. Document URLs are deliberately NOT
-      //    sent here - a new upload sets them server-side via the
-      //    CV-analysis endpoint (step 3), and sending null used to wipe
-      //    the existing CV link on every save.
+      //    sent here - CV/cover letter are uploaded separately (the
+      //    candidate page's CV/Cover Letter tabs), and sending null used to
+      //    wipe the existing links on every save.
       const candRes = await authedFetch(`/api/candidates/${formState.cand_id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -154,30 +141,6 @@ export default function EditCandidateForm({
       }
 
       const saved = await appRes.json()
-
-      // 3. A newly attached CV kicks off (or replaces) the analysis for
-      //    this application - the cover letter rides along when present.
-      //    The backend returns as soon as the file is stored
-      //    (status=processing) and finishes in the background - the
-      //    candidate page's "View" button polls until it's ready.
-      //    A cover letter added WITHOUT a new CV doesn't involve the
-      //    analyser, so it goes through the standalone document upload.
-      try {
-        if (cvFile && formState.application_id) {
-          const fd = new FormData()
-          fd.append('jobcand_id', formState.application_id)
-          fd.append('cv', cvFile)
-          if (coverLetterFile) fd.append('cover_letter', coverLetterFile)
-          await api.analyseCv(fd)
-        } else if (coverLetterFile && formState.cand_id) {
-          const fd = new FormData()
-          fd.append('cover_letter', coverLetterFile)
-          await api.uploadCandidateCoverLetter(formState.cand_id, fd)
-        }
-      } catch (err) {
-        console.warn('Document upload failed:', err)
-      }
-
       onSaved(saved)
     } catch (err) {
       setError(err.message || 'Something went wrong.')
@@ -246,36 +209,6 @@ export default function EditCandidateForm({
                 ))}
               </select>
             </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <FileDropzone
-              label="Resume / CV"
-              existingName={existingCvName}
-              file={cvFile}
-              onFileChange={(file) => {
-                setCvFile(file)
-                setExistingCvName('')
-              }}
-              onRemove={() => {
-                setCvFile(null)
-                setExistingCvName('')
-              }}
-            />
-
-            <FileDropzone
-              label="Cover Letter"
-              existingName={existingCoverLetterName}
-              file={coverLetterFile}
-              onFileChange={(file) => {
-                setCoverLetterFile(file)
-                setExistingCoverLetterName('')
-              }}
-              onRemove={() => {
-                setCoverLetterFile(null)
-                setExistingCoverLetterName('')
-              }}
-            />
           </div>
 
           <div className="grid grid-cols-2 gap-4">

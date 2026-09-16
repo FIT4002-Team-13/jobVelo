@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { flex } from "../../../styles/layout";
 import { SECTION_COLORS } from "../../../utils/constants.js";
 import { formatTimer, parseTimestamp } from "../../../utils/time.js";
@@ -63,6 +63,66 @@ function HighlightedText({ text, query }) {
         )
       )}
     </>
+  );
+}
+
+function DownloadMenu({ onDownloadReport, onDownloadTranscript }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    function onMouseDown(e) {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+    }
+    function onKey(e) {
+      if (e.key === "Escape") setOpen(false);
+    }
+    document.addEventListener("mousedown", onMouseDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onMouseDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, []);
+
+  const items = [
+    { label: "Download Candidate Report", onClick: () => onDownloadReport?.("candidate") },
+    { label: "Download Interviewer Report", onClick: () => onDownloadReport?.("interviewer") },
+    { label: "Download Transcript", onClick: () => onDownloadTranscript?.() },
+  ];
+
+  return (
+    <div ref={ref} className="relative shrink-0">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="flex items-center gap-1.5 rounded-xl px-4 py-0.5 text-sm font-semibold text-white bg-primary-500 hover:bg-primary-600 transition-colors"
+      >
+        Download
+        <svg
+          width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"
+          className={`transition-transform ${open ? "rotate-180" : ""}`}
+        >
+          <polyline points="6 9 12 15 18 9" />
+        </svg>
+      </button>
+      {open && (
+        <div className="absolute right-0 top-full mt-2 z-20 min-w-[230px] overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-lg">
+          {items.map((item, i) => (
+            <button
+              key={item.label}
+              type="button"
+              onClick={() => { item.onClick(); setOpen(false); }}
+              className={`block w-full text-left px-4 py-2.5 text-sm text-neutral-700 transition-colors hover:bg-primary-500/10 hover:text-primary-600 ${
+                i < items.length - 1 ? "border-b border-neutral-100" : ""
+              }`}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -163,6 +223,7 @@ export default function TranscriptAnalysisTab({
   interview,
   onNoteChange,
   onDownloadReport,
+  onDownloadTranscript,
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [search, setSearch] = useState("");
@@ -386,15 +447,8 @@ export default function TranscriptAnalysisTab({
                 </button>
               ))}
             </div>
-            {(activeTab === "candidate" || activeTab === "interviewer") && onDownloadReport && (
-              <button
-                type="button"
-                onClick={() => onDownloadReport(activeTab)}
-                title={`Download the ${activeTab} report`}
-                className="shrink-0 rounded-xl px-4 py-0.5 text-sm font-semibold text-white bg-primary-500 hover:bg-primary-600 transition-colors"
-              >
-                Download
-              </button>
+            {(onDownloadReport || onDownloadTranscript) && (
+              <DownloadMenu onDownloadReport={onDownloadReport} onDownloadTranscript={onDownloadTranscript} />
             )}
           </div>
 

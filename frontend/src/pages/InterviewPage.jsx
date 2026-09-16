@@ -32,6 +32,10 @@ export default function InterviewPage() {
   const startTimeRef = useRef(Date.now());
   const generateFollowUpRef = useRef(null);
   const [reportState, setReportState] = useState({ phase: "idle" });
+  // Recording Setup modal stays open (even once the mic goes live) until the
+  // user explicitly hits "Ready" - so they can also opt into screen share
+  // before dismissing it, instead of it vanishing the instant the mic starts.
+  const [recordingSetupDone, setRecordingSetupDone] = useState(false);
 
   const {
     serverData,
@@ -83,6 +87,8 @@ export default function InterviewPage() {
     handleNoteChange,
     showLatestTranscript,
     jumpToTranscriptEntry,
+    assignSpeaker,
+    assignSpeakerForEntry
   } = useTranscript(id, {
     serverData,
     candidateName,
@@ -112,13 +118,16 @@ export default function InterviewPage() {
     isMicActive,
     isScreenSharing,
     isPaused,
+    isMicMuted,
     timer,
     status: audioStatus,
     videoRef,
     startMicOnly,
     stopScreenShare,
     toggleScreenShare,
+    toggleMicMute,
     togglePause,
+    armTimer,
   } = useAudioCapture({
     candidateName,
     user,
@@ -246,6 +255,15 @@ export default function InterviewPage() {
 
             <div className={`${flex.row} gap-4 items-center`}>
               <button
+                disabled={!isMicActive}
+                className={`${button.outline} ${
+                  isMicMuted ? "bg-coral-100 text-coral-800 hover:bg-coral-200" : ""
+                } ${!isMicActive ? "opacity-50 cursor-not-allowed" : ""}`}
+                onClick={() => toggleMicMute()}
+              >
+                {isMicMuted ? "Unmute mic" : "Mute mic"}
+              </button>
+              <button
                 className={`${button.outline} ${
                   isScreenSharing
                     ? "bg-sky-100 text-sky-800 hover:bg-sky-200"
@@ -305,6 +323,10 @@ export default function InterviewPage() {
             videoRef={videoRef}
             interviewerLabel={interviewerLabel}
             candidateLabel={candidateLabel}
+            onAssignSpeaker={(entry, person, line) => {
+              if (line === "one") assignSpeakerForEntry(entry, person);
+              else assignSpeaker(entry, person);
+            }}
           />
 
           <div className={`flex-1 ${flex.col} gap-4 overflow-hidden`}>
@@ -370,11 +392,17 @@ export default function InterviewPage() {
         </div>
       </div>
 
-      {serverData && !isMicActive && !isCompleted && (
+      {serverData && !isCompleted && !recordingSetupDone && (
         <RecordingSetupModal
           isMicActive={isMicActive}
+          isScreenSharing={isScreenSharing}
           audioStatus={audioStatus}
           onSetupRecording={() => void startMicOnly()}
+          onToggleScreenShare={() => void toggleScreenShare()}
+          onReady={() => {
+            armTimer();
+            setRecordingSetupDone(true);
+          }}
         />
       )}
 

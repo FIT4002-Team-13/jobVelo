@@ -228,6 +228,13 @@ export default function CandidatePage() {
     );
   }
 
+  function handleDownloadTranscript() {
+    if (!id) return;
+    downloadFileWithAuth(`/api/interviews/${id}/transcript-pdf`).catch((err) =>
+      toast.error(err.message || "Failed to download the transcript.")
+    );
+  }
+
   async function handleCvUpload(file) {
     if (!jobCand?.jobcand_id) return;
     setCvUploading(true);
@@ -396,6 +403,7 @@ export default function CandidatePage() {
               interview={mergedInterview}
               onNoteChange={handleNoteChange}
               onDownloadReport={handleDownloadReport}
+              onDownloadTranscript={handleDownloadTranscript}
             />
           )}
 
@@ -458,8 +466,6 @@ export default function CandidatePage() {
                   interviewer: "",
                   interviewer_user_id: "",
                   interview_datetime: intvDateTime ?? null,
-                  cv_url: cvUrl,
-                  cover_letter_url: coverLetterUrl,
                 }}
                 onClose={() => { setShowProfile(false); setShowEditMode(false); setProfileVisible(true); }}
                 onSaved={() => { refreshCandidate(); setShowProfile(false); setShowEditMode(false); setProfileVisible(true); }}

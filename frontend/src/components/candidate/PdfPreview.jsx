@@ -1,6 +1,7 @@
 import { card } from '../../styles/layout'
 
 export default function PdfPreview({ src, label, onDelete }) {
+export default function PdfPreview({ src, label, onDelete }) {
   if (!src) {
     return (
       <div className={`${card.base} flex items-center justify-center aspect-[1/1.5] text-base text-neutral-400`}>

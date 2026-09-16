@@ -1,3 +1,4 @@
+//TODO: delete file?
 import { useNavigate } from "react-router-dom";
 import CandidateInfoCard from "../CandidateInfoCard.jsx";
 import CandidateScorePanel from "../CandidateScorePanel.jsx";

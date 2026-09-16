@@ -9,6 +9,7 @@ export default function DocumentSlot({ url, label, uploading, onUpload, onDelete
       <div className="flex-1 relative overflow-hidden">
         <div className="h-full overflow-y-auto p-6">
           <PdfPreview src={pdfSrc} label={label} onDelete={onDelete} />
+          <PdfPreview src={pdfSrc} label={label} onDelete={onDelete} />
         </div>
       </div>
     );
