@@ -288,8 +288,8 @@ export default function EditCandidateForm({
             />
           </div>
 
-          {user?.role === "recruiter" && (
-            <div className="grid grid-cols-2 gap-4">
+            {(user?.role === 'recruiter' || user?.role === 'admin') && (            
+              <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className={form.label}>Interviewer</label>
                 <InterviewerCombobox
