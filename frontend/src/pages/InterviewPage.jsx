@@ -1,7 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { flex, button } from "../styles/layout";
-import Sidebar from "../components/common/Sidebar";
 import { useAuth } from "../lib/AuthContext.jsx";
 import { authedFetch } from "../lib/api.js";
 
@@ -42,6 +41,8 @@ export default function InterviewPage() {
     candidateName,
     candidateRole,
     jobId,
+    cvAnalysis,
+    cvAnalysisLoaded,
     isCompleted,
     setIsCompleted,
     intvStatus,
@@ -100,21 +101,6 @@ export default function InterviewPage() {
   });
 
   const {
-    questions,
-    questionsLoading,
-    questionsError,
-    similarQuestionId,
-    displayedQuestions,
-    generateFollowUpQuestions,
-    generateMoreLike,
-    ignoreQuestion,
-  } = useInterviewQuestions(jobId, { isCompleted, intvStatus, transcriptRef });
-
-  useEffect(() => {
-    generateFollowUpRef.current = generateFollowUpQuestions;
-  }, [generateFollowUpQuestions]);
-
-  const {
     isMicActive,
     isScreenSharing,
     isPaused,
@@ -152,6 +138,44 @@ export default function InterviewPage() {
     resumeSection,
     doneSection,
   } = useInterviewSections(id, { serverData, timerRef, intvStatus, isMicActive });
+
+  // The interview section currently running/paused, kept in a ref so the
+  // question generator can steer follow-ups to fit where the interview is.
+  const activeSectionRef = useRef(null);
+  useEffect(() => {
+    const idx = sectionStates.findIndex(
+      (st) => st.status === "running" || st.status === "paused"
+    );
+    activeSectionRef.current =
+      idx === -1
+        ? null
+        : {
+            name: sections[idx]?.name || "",
+            description: sections[idx]?.description || "",
+          };
+  }, [sections, sectionStates]);
+
+  const {
+    questions,
+    questionsLoading,
+    questionsError,
+    similarQuestionId,
+    displayedQuestions,
+    generateReactiveQuestions,
+    generateMoreLike,
+    ignoreQuestion,
+  } = useInterviewQuestions(jobId, {
+    isCompleted,
+    intvStatus,
+    transcriptRef,
+    activeSectionRef,
+    cvQuestions: cvAnalysis?.interview_questions,
+    cvAnalysisLoaded,
+  });
+
+  useEffect(() => {
+    generateFollowUpRef.current = generateReactiveQuestions;
+  }, [generateReactiveQuestions]);
 
   // Real identities behind the "Interviewer"/"Candidate" speaker labels the
   // transcript hooks stamp onto each entry - used so the transcript panel
@@ -223,171 +247,168 @@ export default function InterviewPage() {
   }
 
   return (
-    <div className="flex h-screen bg-neutral-50 font-sans">
-      <Sidebar />
-      <div className="flex-1 flex flex-col overflow-hidden">
-        <header className="bg-neutral-0 border-b border-neutral-200 px-10 py-4 shrink-0">
-          <div className={flex.rowBetween}>
-            <div className={`${flex.row} gap-16`}>
-              <div className={flex.col}>
-                <span className="text-xs font-bold text-neutral-400 uppercase tracking-widest mb-0.5">
-                  Candidate
-                </span>
-                <span className="text-2xl font-bold text-neutral-800">
-                  {candidateName || "—"}
-                </span>
-                <span className="text-sm text-neutral-400">
-                  {candidateRole || "—"}
-                </span>
-              </div>
-              <div className={flex.col}>
-                <span className="text-xs font-bold text-neutral-400 uppercase tracking-widest mb-0.5">
-                  Interviewer
-                </span>
-                <span className="text-2xl font-bold text-neutral-800">
-                  {user?.full_name || "—"}
-                </span>
-                <span className="text-sm text-neutral-400">
-                  {user?.role || "—"}
-                </span>
-              </div>
+    <div className="h-screen flex flex-col bg-neutral-50 font-sans overflow-hidden">
+      <header className="bg-neutral-0 border-b border-neutral-200 px-10 py-4 shrink-0">
+        <div className={flex.rowBetween}>
+          <div className={`${flex.row} gap-16`}>
+            <div className={flex.col}>
+              <span className="text-xs font-bold text-neutral-400 uppercase tracking-widest mb-0.5">
+                Candidate
+              </span>
+              <span className="text-2xl font-bold text-neutral-800">
+                {candidateName || "—"}
+              </span>
+              <span className="text-sm text-neutral-400">
+                {candidateRole || "—"}
+              </span>
             </div>
-
-            <div className={`${flex.row} gap-4 items-center`}>
-              <button
-                disabled={!isMicActive}
-                className={`${button.outline} ${
-                  isMicMuted ? "bg-coral-100 text-coral-800 hover:bg-coral-200" : ""
-                } ${!isMicActive ? "opacity-50 cursor-not-allowed" : ""}`}
-                onClick={() => toggleMicMute()}
-              >
-                {isMicMuted ? "Unmute mic" : "Mute mic"}
-              </button>
-              <button
-                className={`${button.outline} ${
-                  isScreenSharing
-                    ? "bg-sky-100 text-sky-800 hover:bg-sky-200"
-                    : ""
-                }`}
-                onClick={() => void toggleScreenShare()}
-              >
-                {isScreenSharing ? "Stop screen share" : "Share screen"}
-              </button>
-              <div
-                className={`${flex.row} gap-2 items-center text-neutral-700 font-semibold text-xl`}
-              >
-                <span>{formatTimer(timer)}</span>
-                <span
-                  className={`w-3 h-3 rounded-pill ${
-                    !isPaused && !isCompleted
-                      ? "bg-coral-500 animate-pulse"
-                      : "bg-neutral-300"
-                  }`}
-                />
-              </div>
+            <div className={flex.col}>
+              <span className="text-xs font-bold text-neutral-400 uppercase tracking-widest mb-0.5">
+                Interviewer
+              </span>
+              <span className="text-2xl font-bold text-neutral-800">
+                {user?.full_name || "—"}
+              </span>
+              <span className="text-sm text-neutral-400">
+                {user?.role || "—"}
+              </span>
             </div>
           </div>
-          {audioStatus && (
-            <p
-              className={`mt-2 text-right text-xs font-medium ${
-                /denied|error|unable|no (microphone|computer audio|screen)|cancelled/i.test(
-                  audioStatus
-                )
-                  ? "text-coral-500"
-                  : "text-neutral-400"
-              }`}
-            >
-              {audioStatus}
-            </p>
-          )}
-        </header>
 
-        <div
-          className={`flex-1 ${flex.row} gap-6 p-6 overflow-hidden items-stretch`}
-        >
-          <TranscriptPanel
-            transcript={transcript}
-            transcriptVisible={transcriptVisible}
-            setTranscriptVisible={setTranscriptVisible}
-            hasNewTranscriptUpdates={hasNewTranscriptUpdates}
-            showLatestTranscript={showLatestTranscript}
-            onNoteChange={handleNoteChange}
-            highlightedEntryIdx={highlightedEntryIdx}
-            highlightedEntryId={highlightedEntryId}
-            transcriptContainerRef={transcriptContainerRef}
-            transcriptEntryRefs={transcriptEntryRefs}
-            biasWarnings={biasWarnings}
-            dismissBiasWarning={dismissBiasWarning}
-            jumpToTranscriptEntry={jumpToTranscriptEntry}
-            isScreenSharing={isScreenSharing}
-            videoRef={videoRef}
-            interviewerLabel={interviewerLabel}
-            candidateLabel={candidateLabel}
-            onAssignSpeaker={(entry, person, line) => {
-              if (line === "one") assignSpeakerForEntry(entry, person);
-              else assignSpeaker(entry, person);
-            }}
+          <div className={`${flex.row} gap-4 items-center`}>
+            <button
+              disabled={!isMicActive}
+              className={`${button.outline} ${
+                isMicMuted ? "bg-coral-100 text-coral-800 hover:bg-coral-200" : ""
+              } ${!isMicActive ? "opacity-50 cursor-not-allowed" : ""}`}
+              onClick={() => toggleMicMute()}
+            >
+              {isMicMuted ? "Unmute mic" : "Mute mic"}
+            </button>
+            <button
+              className={`${button.outline} ${
+                isScreenSharing
+                  ? "bg-sky-100 text-sky-800 hover:bg-sky-200"
+                  : ""
+              }`}
+              onClick={() => void toggleScreenShare()}
+            >
+              {isScreenSharing ? "Stop screen share" : "Share screen"}
+            </button>
+            <div
+              className={`${flex.row} gap-2 items-center text-neutral-700 font-semibold text-lg`}
+            >
+              <span>{formatTimer(timer)}</span>
+              <span
+                className={`w-3 h-3 rounded-pill ${
+                  !isPaused && !isCompleted
+                    ? "bg-coral-500 animate-pulse"
+                    : "bg-neutral-300"
+                }`}
+              />
+            </div>
+          </div>
+        </div>
+        {phase !== "prep" && audioStatus && (
+          <p
+            className={`mt-2 text-right text-xs font-medium ${
+              /denied|error|unable|no (microphone|computer audio|screen)|cancelled/i.test(
+                audioStatus
+              )
+                ? "text-coral-500"
+                : "text-neutral-400"
+            }`}
+          >
+            {audioStatus}
+          </p>
+        )}
+      </header>
+
+      <div
+        className="flex-1 flex items-stretch gap-4 short:gap-3 px-5 short:px-4 pt-3 short:pt-2 pb-4 short:pb-3 overflow-hidden"
+      >
+        <TranscriptPanel
+          transcript={transcript}
+          transcriptVisible={transcriptVisible}
+          setTranscriptVisible={setTranscriptVisible}
+          hasNewTranscriptUpdates={hasNewTranscriptUpdates}
+          showLatestTranscript={showLatestTranscript}
+          onNoteChange={handleNoteChange}
+          highlightedEntryIdx={highlightedEntryIdx}
+          highlightedEntryId={highlightedEntryId}
+          transcriptContainerRef={transcriptContainerRef}
+          transcriptEntryRefs={transcriptEntryRefs}
+          biasWarnings={biasWarnings}
+          dismissBiasWarning={dismissBiasWarning}
+          jumpToTranscriptEntry={jumpToTranscriptEntry}
+          isScreenSharing={isScreenSharing}
+          videoRef={videoRef}
+          interviewerLabel={interviewerLabel}
+          candidateLabel={candidateLabel}
+          onAssignSpeaker={(entry, person, line) => {
+            if (line === "one") assignSpeakerForEntry(entry, person);
+            else assignSpeaker(entry, person);
+          }}
+        />
+
+        <div className={`flex-1 ${flex.col} gap-2 overflow-hidden min-h-0`}>
+          {sections.length > 0 && (
+            <InterviewSectionTimeline
+              sections={sections}
+              sectionStates={sectionStates}
+              isCompleted={isCompleted}
+              isMicActive={isMicActive}
+              sectionsScrollRef={sectionsScrollRef}
+              sectionCardRefs={sectionCardRefs}
+              jumpToSection={jumpToSection}
+              startSection={startSection}
+              pauseSection={pauseSection}
+              resumeSection={resumeSection}
+              doneSection={doneSection}
+            />
+          )}
+
+          <SuggestedQuestionDeck
+            questions={questions}
+            questionsLoading={questionsLoading}
+            questionsError={questionsError}
+            displayedQuestions={displayedQuestions}
+            similarQuestionId={similarQuestionId}
+            onMoreLike={generateMoreLike}
+            onIgnore={ignoreQuestion}
           />
 
-          <div className={`flex-1 ${flex.col} gap-4 overflow-hidden`}>
-            {sections.length > 0 && (
-              <InterviewSectionTimeline
-                sections={sections}
-                sectionStates={sectionStates}
-                isCompleted={isCompleted}
-                isMicActive={isMicActive}
-                sectionsScrollRef={sectionsScrollRef}
-                sectionCardRefs={sectionCardRefs}
-                jumpToSection={jumpToSection}
-                startSection={startSection}
-                pauseSection={pauseSection}
-                resumeSection={resumeSection}
-                doneSection={doneSection}
-              />
-            )}
-
-            <SuggestedQuestionDeck
-              questions={questions}
-              questionsLoading={questionsLoading}
-              questionsError={questionsError}
-              displayedQuestions={displayedQuestions}
-              similarQuestionId={similarQuestionId}
-              onMoreLike={generateMoreLike}
-              onIgnore={ignoreQuestion}
-            />
-
-            <div className={`${flex.row} gap-4 shrink-0`}>
-              <button
-                onClick={() => !isCompleted && togglePause()}
-                disabled={isCompleted}
-                className={`flex-1 py-2 text-sm font-semibold rounded-xl transition-colors ${
-                  isCompleted
-                    ? "bg-neutral-300 text-neutral-500 cursor-not-allowed"
-                    : isPaused
-                    ? "bg-mint-400 hover:bg-mint-500 text-white"
-                    : "bg-coral-400 hover:bg-coral-500 text-white"
-                }`}
-              >
-                {isPaused ? "Unpause" : "Pause"}
-              </button>
-              <button
-                onClick={() => completeInterview()}
-                disabled={reportState.phase === "generating"}
-                className={`flex-1 py-2 text-sm font-semibold rounded-xl transition-colors ${
-                  reportState.phase === "generating"
-                    ? "bg-neutral-300 text-neutral-500 cursor-wait"
-                    : isCompleted
-                    ? "text-white bg-primary-500 hover:bg-primary-600"
-                    : "text-white bg-sky-300 hover:bg-sky-400"
-                }`}
-              >
-                {reportState.phase === "generating"
-                  ? "Generating…"
+          <div className={`${flex.row} gap-4 shrink-0`}>
+            <button
+              onClick={() => !isCompleted && togglePause()}
+              disabled={isCompleted}
+              className={`flex-1 py-2 short:py-1.5 text-sm font-semibold rounded-xl transition-colors ${
+                isCompleted
+                  ? "bg-neutral-300 text-neutral-500 cursor-not-allowed"
+                  : isPaused
+                  ? "bg-mint-400 hover:bg-mint-500 text-white"
+                  : "bg-coral-400 hover:bg-coral-500 text-white"
+              }`}
+            >
+              {isPaused ? "Unpause" : "Pause"}
+            </button>
+            <button
+              onClick={() => completeInterview()}
+              disabled={reportState.phase === "generating"}
+              className={`flex-1 py-2 short:py-1.5 text-sm font-semibold rounded-xl transition-colors ${
+                reportState.phase === "generating"
+                  ? "bg-neutral-300 text-neutral-500 cursor-wait"
                   : isCompleted
-                  ? "View Report"
-                  : "Complete"}
-              </button>
-            </div>
+                  ? "text-white bg-primary-500 hover:bg-primary-600"
+                  : "text-white bg-sky-300 hover:bg-sky-400"
+              }`}
+            >
+              {reportState.phase === "generating"
+                ? "Generating…"
+                : isCompleted
+                ? "View Report"
+                : "Complete"}
+            </button>
           </div>
         </div>
       </div>

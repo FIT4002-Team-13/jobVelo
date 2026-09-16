@@ -114,13 +114,19 @@ function CvViewButton({ cvAnalysis, cvUrl, onViewAnalysis, onAnalyse, analysing 
 }
 
 export default function CandidateInfoCard({
-  candidate, job, interview, onStartInterview, interviewer,
+  candidate, job, interview, onStartInterview, interviewer, assignedInterviewerId,
   onEdit, cvAnalysis, onViewCvAnalysis, onAnalyseCv, analysingCv,
   showDocumentLinks = true, showRole = true, showMeetingDate = true, title = null,
 }) {
   const { user } = useAuth()
   const status = (interview?.intv_status ?? 'not_scheduled').replace(/_/g, ' ').toUpperCase()
-  const canStartInterview = status === 'SCHEDULED' && user?.role === 'interviewer'
+  const isInterviewerRole = user?.role === 'interviewer'
+  const isAssignedInterviewer =
+    isInterviewerRole && !!assignedInterviewerId && assignedInterviewerId === user?.userid
+  // The assigned interviewer owns the session: only they may start a SCHEDULED
+  // interview or resume one that's IN PROGRESS.
+  const canStartInterview =
+    (status === 'SCHEDULED' || status === 'IN PROGRESS') && isAssignedInterviewer
   const startLabel = status === 'IN PROGRESS' ? 'Resume Interview' : 'Start Interview'
   const statusClass = CANDIDATE_STATUS_STYLES[status] ?? FALLBACK_STATUS_CLASS
 
