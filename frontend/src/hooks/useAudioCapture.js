@@ -101,13 +101,42 @@ export function useAudioCapture({
     socket.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
-        if (data.type === "transcript" && typeof data.text === "string") {
-          appendTranscript(data.text, Boolean(data.is_final), speaker, partialRef);
-        } else if (data.type === "bias_warning" && typeof data.quote === "string") {
+
+        if (data.type === "diarized_transcript") {
+          console.log("Detected speakers:", data);
+
+          if (!data.is_final || !Array.isArray(data.groups)) return;
+
+          // These must match "mic" and "screen" in useTranscript.js
+          const source = role === "interviewer" ? "mic" : "screen";
+          const sourceLabel = source === "mic" ? "Mic" : "Shared audio";
+
+          for (const group of data.groups) {
+            if (typeof group.text !== "string" || !group.text.trim()) {
+              continue;
+            }
+
+            const detectedSpeaker = Number.isInteger(group.speaker_id)
+              ? `${sourceLabel} · Speaker ${group.speaker_id + 1}`
+              : `${sourceLabel} · Unknown speaker`;
+
+            appendTranscript(group.text, true, detectedSpeaker, partialRef,
+              {
+                source,
+                stream_id: data.stream_id,
+                speaker_id: group.speaker_id,
+              }
+            );
+          }
+
+          return;
+        }
+
+        if (data.type === "bias_warning" && typeof data.quote === "string") {
           addBiasWarning(data);
         }
       } catch (err) {
-        console.error("Failed to parse transcription event", err);
+        console.error("Failed to parse transcription event", err);  
       }
     };
     socket.onerror = () => setStatus("Connection error");

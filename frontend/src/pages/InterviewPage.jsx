@@ -112,6 +112,8 @@ export default function InterviewPage() {
     handleNoteChange,
     showLatestTranscript,
     jumpToTranscriptEntry,
+    assignSpeaker,
+    assignSpeakerForEntry
   } = useTranscript(id, {
     serverData,
     candidateName,
@@ -412,6 +414,10 @@ export default function InterviewPage() {
             videoRef={videoRef}
             interviewerLabel={interviewerLabel}
             candidateLabel={candidateLabel}
+            onAssignSpeaker={(entry, person, line) => {
+              if (line === "one") assignSpeakerForEntry(entry, person);
+              else assignSpeaker(entry, person);
+            }}
           />
 
           <div className={`flex-1 ${flex.col} gap-2 overflow-hidden min-h-0`}>
