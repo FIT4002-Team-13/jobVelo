@@ -183,7 +183,7 @@ export default function ApplicationsPage() {
               Manage all candidates across jobs
             </p>
           </div>
-          {user?.role === "recruiter" && (
+          {(user?.role === "recruiter" || user?.role === "admin") && (
             <button
               type="button"
               onClick={() => setShowAddModal(true)}
