@@ -103,7 +103,10 @@ export function useInterviewQuestions(
           seen.add(key);
           return true;
         });
-      appendToPool(fresh);
+      // Only add enough to reach the floor - a drained pool refills to at most
+      // MIN_POOL questions, not the whole generated batch.
+      const room = Math.max(0, MIN_POOL - poolRef.current.length);
+      appendToPool(fresh.slice(0, room));
     } catch (error) {
       console.error("Question pool top-up failed", error);
     } finally {
