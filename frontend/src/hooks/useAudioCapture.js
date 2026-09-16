@@ -94,7 +94,11 @@ export function useAudioCapture({
 
   function createTranscriptionSocket(speaker, partialRef, role) {
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const socket = new WebSocket(`${protocol}//${window.location.host}/api/realtime/transcribe?role=${role}`);
+    // const socket = new WebSocket(`${protocol}//${window.location.host}/api/realtime/transcribe?role=${role}`);
+    const wsBase = import.meta.env.VITE_WS_URL || `${protocol}//${window.location.host}`;
+    const socket = new WebSocket(
+      `${wsBase}/api/realtime/transcribe?role=${role}`
+    );
     socket.binaryType = "arraybuffer";
 
     socket.onopen = () => setStatus("Listening…");
