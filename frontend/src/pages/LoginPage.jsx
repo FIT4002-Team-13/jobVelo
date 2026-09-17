@@ -10,11 +10,6 @@ export default function LoginPage() {
   const location = useLocation()
   const { login } = useAuth()
   const justSignedUp = location.state?.justSignedUp
-  // Where to send the user post-login. If they were redirected here from
-  // a protected route, send them back; otherwise everyone (admins
-  // included) lands on the regular dashboard - admins reach their
-  // invitation-key page via the sidebar's admin-only nav item.
-  const fromPath = location.state?.from?.pathname
 
   const [form, setForm] = useState({ identifier: '', password: '' })
   const [submitting, setSubmitting] = useState(false)
@@ -34,17 +29,16 @@ export default function LoginPage() {
     }
     setSubmitting(true)
     try {
-      const user = await login(form.identifier.trim(), form.password)
-      // Everyone lands on the shared dashboard - admins use the same app
-      // shell as every other role and reach the invitation-key page via
-      // the admin-only sidebar item. The captured fromPath still wins so
-      // deep links survive the login bounce, except admin-only paths for
-      // non-admins (RequireRole would just bounce them back out).
-      const isAdmin = user?.role === 'admin'
-      const wantsAdmin = fromPath?.startsWith('/admin')
-      const target =
-        fromPath && (isAdmin || !wantsAdmin) ? fromPath : '/dashboard'
-      navigate(target, { replace: true })
+      await login(form.identifier.trim(), form.password)
+      // Always land on the shared dashboard, regardless of what page the
+      // login form was reached from. We deliberately don't honor a
+      // redirected-from deep link here: whoever just typed credentials
+      // into this form may not be the same account that was previously
+      // signed in (e.g. logging out and back in as a different user on
+      // the same browser), so bouncing them back into someone else's
+      // in-progress page is unsafe as well as confusing. Admins reach
+      // their invitation-key page via the sidebar's admin-only nav item.
+      navigate('/dashboard', { replace: true })
     } catch (err) {
       if (err instanceof ApiError) {
         setError(err.status === 401 ? 'Incorrect username/email or password.' : err.message)

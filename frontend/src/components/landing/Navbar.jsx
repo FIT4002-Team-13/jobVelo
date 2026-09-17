@@ -16,9 +16,13 @@ export default function Navbar() {
   const { user, isAuthenticated, logout } = useAuth()
   const navigate = useNavigate()
 
+  // Navigate away before clearing auth state - see the matching comment in
+  // Sidebar.jsx's handleLogout for why the order matters (a same-tab race
+  // with RequireAuth's redirect can otherwise stash this protected page as
+  // the next login's redirect target, even for a different account).
   const onLogout = () => {
-    logout()
     navigate('/', { replace: true })
+    logout()
   }
 
   return (

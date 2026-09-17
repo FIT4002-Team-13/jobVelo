@@ -13,7 +13,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from bson import ObjectId
 
-from database import get_db
 from dependencies import get_current_user
 from main import app
 from routes.interview import _TRANSCRIPT_CHAR_BUDGET, _transcript_to_text
@@ -200,8 +199,10 @@ def test_delete_job_cascades_interviews_links_and_analyses(authed):
     mock_db.interview_users.delete_many = AsyncMock()
     mock_db.interviews.delete_many = AsyncMock()
 
-    app.dependency_overrides[get_db] = lambda: mock_db
-    with patch("routes.jobs.delete_upload") as fake_delete:
+    with (
+        patch("routes.jobs.get_db", return_value=mock_db),
+        patch("routes.jobs.delete_upload") as fake_delete,
+    ):
         response = client.delete(f"/api/jobs/{job_id}")
 
     assert response.status_code == 204
@@ -236,8 +237,10 @@ def test_remove_candidate_from_job_cascades_cv_analysis(authed):
     mock_db.cv_analyses.delete_many = AsyncMock()
     mock_db.interviews.find.return_value = _cursor([])
 
-    app.dependency_overrides[get_db] = lambda: mock_db
-    with patch("routes.jobs.delete_upload") as fake_delete:
+    with (
+        patch("routes.jobs_candidates.get_db", return_value=mock_db),
+        patch("routes.jobs.delete_upload") as fake_delete,
+    ):
         response = client.delete(f"/api/jobs/{job_id}/candidates/{link_id}")
 
     assert response.status_code == 204

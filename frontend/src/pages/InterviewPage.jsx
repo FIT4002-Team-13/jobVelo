@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { flex, button } from "../styles/layout";
 import { useAuth } from "../lib/AuthContext.jsx";
-import { authedFetch } from "../lib/api.js";
+import { api } from "../lib/api.js";
 
 import { TranscriptPanel } from "../components/interview/InterviewTranscriptPanel.jsx";
 import { SuggestedQuestionDeck } from "../components/interview/InterviewQuestionDeck.jsx";
@@ -212,22 +212,11 @@ export default function InterviewPage() {
       const finalEntries = transcript.filter(
         (e) => !String(e.id).startsWith("partial-")
       );
-      const res = await authedFetch(`/api/interviews/${id}/complete`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          transcript: finalEntries,
-          duration_seconds: timer,
-          bias_incidents: biasIncidentsRef.current,
-        }),
+      const data = await api.completeInterview(id, {
+        transcript: finalEntries,
+        duration_seconds: timer,
+        bias_incidents: biasIncidentsRef.current,
       });
-      const data = await res.json().catch(() => null);
-      if (!res.ok) {
-        const detail = data?.detail;
-        throw new Error(
-          typeof detail === "string" ? detail : "Report generation failed."
-        );
-      }
       if (isScreenSharing) void stopScreenShare();
       setIsCompleted(true);
       localStorage.removeItem(`transcript-${id}`);
