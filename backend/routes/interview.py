@@ -485,6 +485,30 @@ def _cv_analysis_to_text(doc: dict) -> str:
     return "\n".join(lines)
 
 
+def _plan_sections_to_text(sections: list | None) -> str | None:
+    """Condense the interview plan sections into a numbered list for the report
+    prompt (topic coverage + plan adherence). None when there's no plan."""
+    if not sections:
+        return None
+    lines: list[str] = []
+    for i, s in enumerate(sections, 1):
+        if not isinstance(s, dict):
+            continue
+        name = (s.get("name") or "").strip()
+        if not name:
+            continue
+        desc = (s.get("description") or "").strip()
+        minutes = s.get("suggested_minutes")
+        extra = []
+        if desc:
+            extra.append(desc)
+        if isinstance(minutes, (int, float)) and minutes:
+            extra.append(f"{int(minutes)} min")
+        suffix = f" - {'; '.join(extra)}" if extra else ""
+        lines.append(f"{i}. {name}{suffix}")
+    return "\n".join(lines) or None
+
+
 async def _get_interviewer_name(db, intv_id: str) -> str | None:
     """Look up the interviewer's display name via interview_users -> users.
 
@@ -526,6 +550,7 @@ async def _generate_reports(
     job: dict,
     candidate: dict,
     cv_context: str | None,
+    plan_context: str | None,
     candidate_speech_detected: bool,
     interviewer_label: str,
     candidate_label: str,
@@ -543,6 +568,7 @@ async def _generate_reports(
             job_description=job.get("description"),
             candidate_name=candidate.get("cand_full_name"),
             cv_analysis_context=cv_context,
+            plan_context=plan_context,
             duration_seconds=duration_seconds,
             interviewer_speaker_label=interviewer_label,
             candidate_speaker_label=candidate_label,
@@ -789,6 +815,10 @@ async def complete_interview(
     if analysis and (analysis.get("status") or "completed") == "completed":
         cv_context = _cv_analysis_to_text(analysis) or None
 
+    # Interview plan (for the interviewer report's questioning-pattern analysis:
+    # topic coverage + plan adherence). Absent when no plan was set.
+    plan_context = _plan_sections_to_text(link.get("plan_sections"))
+
     # Diarization guard: detect transcripts where every line is attributed to
     # the interviewer (see _has_non_interviewer_speech for the failure mode).
     interviewer_name = await _get_interviewer_name(db, intv_id)
@@ -809,6 +839,7 @@ async def complete_interview(
             job=job,
             candidate=candidate,
             cv_context=cv_context,
+            plan_context=plan_context,
             candidate_speech_detected=candidate_speech_detected,
             interviewer_label=interviewer_label,
             candidate_label=candidate_label,
