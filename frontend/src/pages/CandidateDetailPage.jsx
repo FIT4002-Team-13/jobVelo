@@ -5,6 +5,7 @@ import Sidebar from '../components/common/Sidebar'
 import StartInterviewModal from '../components/job-candidate/StartInterviewModal'
 import EditCandidateForm from '../components/candidate/EditCandidateForm'
 import { flex, page } from '../styles/layout'
+import { useAuth } from '../lib/AuthContext.jsx'
 import { useToast } from '../components/common/ToastContext.jsx'
 import { api, downloadFileWithAuth } from '../lib/api.js'
 
@@ -16,6 +17,7 @@ import CandidateInfoCard from '../components/candidate/CandidateInfoCard.jsx'
 
 export default function CandidateDetailPage() {
   const { candId, jobId } = useParams()
+  const { user } = useAuth()
   const navigate = useNavigate()
   const toast = useToast()
 
@@ -34,7 +36,6 @@ export default function CandidateDetailPage() {
   const [showScoreEvidence, setShowScoreEvidence] = useState(false)
   const [refreshKey, setRefreshKey] = useState(0)
   const [cvAnalysis, setCvAnalysis] = useState(null)
-  const [cvAnalysisLoaded, setCvAnalysisLoaded] = useState(false)
   const [analysingCv, setAnalysingCv] = useState(false)
 
   // Analyse the candidate's already-stored CV against THIS job - no
@@ -60,31 +61,15 @@ export default function CandidateDetailPage() {
   // processing, so the "View" button flips from spinner to available the
   // moment the background analysis lands. A 404 just means no CV has been
   // uploaded yet.
-  //
-  // `cvAnalysisLoaded` tracks whether this fetch has resolved at least once.
-  // Until it has, `cvAnalysis` is still `null` even though the rest of the
-  // page (candidate, cvUrl) has already loaded - without this flag,
-  // CvViewButton would briefly treat "null + cvUrl present" as "no analysis
-  // yet" and flash the "Analyse CV" button before flipping to "View" the
-  // moment this fetch lands.
   useEffect(() => {
     const jobcandId = jobCand?.jobcand_id
     if (!jobcandId) {
-      // jobCand hasn't loaded yet (or this candidate genuinely has none).
-      // Stay in the "not loaded" state rather than marking it loaded=true -
-      // the page's own `loading` gate keeps CvViewButton unmounted during
-      // the pre-load window anyway, and if we flipped this true here it
-      // would go stale the instant jobCand actually loads (this effect
-      // re-runs, but only *after* that render has already committed and
-      // shown the wrong stale-loaded state to CvViewButton for one frame).
       setCvAnalysis(null)
-      setCvAnalysisLoaded(false)
       return undefined
     }
 
     let cancelled = false
     let timer = null
-    setCvAnalysisLoaded(false)
 
     async function fetchAnalysis() {
       try {
@@ -96,8 +81,6 @@ export default function CandidateDetailPage() {
         }
       } catch {
         if (!cancelled) setCvAnalysis(null)
-      } finally {
-        if (!cancelled) setCvAnalysisLoaded(true)
       }
     }
 
@@ -116,21 +99,75 @@ export default function CandidateDetailPage() {
         setInterviewerName('--')
         setInterviewerUserId('')
 
-        // One aggregate call replaces the old Promise.all of candidate +
-        // job-candidates + interviews + job, plus the follow-up
-        // interview-users -> users pair for the interviewer name.
-        const detail = await api.getCandidateDetail(candId, jobId)
+        const [candData, allJobCandidates, allInterviews, jobData, allJobsData] =
+          await Promise.all([
+            api.getCandidate(candId).catch(() => {
+              throw new Error('Candidate not found.')
+            }),
+            api.getJobCandidatesByCandidate(candId).catch(() => {
+              throw new Error('Failed to load candidate-job link.')
+            }),
+            api.listInterviews({ cand_id: candId, job_id: jobId }).catch(() => {
+              throw new Error('Failed to load interview.')
+            }),
+            api.getJob(jobId).catch(() => {
+              throw new Error('Job not found.')
+            }),
+            api.listJobs().catch(() => []),
+          ])
 
-        if (!detail.job_candidate) {
+        if (!Array.isArray(allJobCandidates)) {
+          throw new Error('Candidate-job response is invalid.')
+        }
+
+        if (!Array.isArray(allInterviews)) {
+          throw new Error('Interview response is invalid.')
+        }
+
+        const selectedJobCand = allJobCandidates.find(
+          (item) => item.job_id === jobId
+        )
+
+        if (!selectedJobCand) {
           throw new Error('Candidate-job link not found for this job.')
         }
 
-        setCandidate(detail.candidate)
-        setJobCand(detail.job_candidate)
-        setInterview(detail.interview ?? null)
-        setJob(detail.job)
-        setInterviewerUserId(detail.interviewer?.user_id || '')
-        setInterviewerName(detail.interviewer?.full_name || '--')
+        const selectedInterview = allInterviews[0] ?? null
+
+        if (selectedInterview?.intv_id) {
+          navigate(`/interview/${selectedInterview.intv_id}`, { replace: true })
+          return
+        }
+
+        setCandidate(candData)
+        setJobCand(selectedJobCand)
+        setInterview(selectedInterview)
+        setJob(jobData)
+        setJobs(Array.isArray(allJobsData) ? allJobsData : [])
+
+        if (selectedInterview?.intv_id && user?.comp_id) {
+          const interviewUsers = await api
+            .getInterviewUsersByInterview(selectedInterview.intv_id)
+            .catch(() => null)
+          const resolvedInterviewerUserId = Array.isArray(interviewUsers)
+            ? interviewUsers[0]?.user_id
+            : null
+
+          if (resolvedInterviewerUserId) {
+            setInterviewerUserId(resolvedInterviewerUserId)
+            const usersData = await api.listUsers().catch(() => null)
+            const matchedUser = Array.isArray(usersData)
+              ? usersData.find((u) => u.userid === resolvedInterviewerUserId)
+              : null
+
+            setInterviewerName(
+              matchedUser?.full_name ||
+              matchedUser?.username ||
+              matchedUser?.email ||
+              '--'
+            )
+          }
+        }
       } catch (err) {
         setError(err.message || 'Something went wrong.')
       } finally {
@@ -139,18 +176,7 @@ export default function CandidateDetailPage() {
     }
 
     load()
-  }, [candId, jobId, refreshKey])
-
-  // The company-wide job list only feeds the Edit modal's "Assign to Job"
-  // <select> - fetch it lazily the first time that modal opens rather than
-  // on every page load.
-  useEffect(() => {
-    if (!showEditModal || jobs.length) return
-    api
-      .listJobs()
-      .then((data) => setJobs(Array.isArray(data) ? data : []))
-      .catch(() => setJobs([]))
-  }, [showEditModal, jobs.length])
+  }, [candId, jobId, user?.comp_id, refreshKey])
 
   async function onConfirmStart() {
     try {
@@ -161,7 +187,11 @@ export default function CandidateDetailPage() {
         (i) => i.intv_status === 'in_progress' || i.intv_status === 'scheduled'
       )
       if (resumable) {
-        navigate(`/interview/${resumable.intv_id}`)
+        navigate(
+          resumable.intv_status === 'in_progress'
+            ? `/interview/${resumable.intv_id}/live`
+            : `/interview/${resumable.intv_id}`
+        )
         return
       }
 
@@ -171,7 +201,7 @@ export default function CandidateDetailPage() {
         intv_date_time: new Date().toISOString(),
         intv_status: 'in_progress',
       })
-      navigate(`/interview/${interviewRecord.intv_id}`)
+      navigate(`/interview/${interviewRecord.intv_id}/live`)
     } catch (err) {
       console.error('Failed to start interview', err)
       alert(err.message || 'Failed to start interview.')
@@ -229,9 +259,10 @@ export default function CandidateDetailPage() {
               interview={interview}
               jobCand={jobCand}
               interviewer={interviewerName}
+              assignedInterviewerId={interviewerUserId}
               onStartInterview={() => {
                 if (interview?.intv_status === 'in_progress') {
-                  navigate(`/interview/${interview.intv_id}`)
+                  navigate(`/interview/${interview.intv_id}/live`)
                   return
                 }
                 setStartTarget({
@@ -241,7 +272,6 @@ export default function CandidateDetailPage() {
               }}
               onEdit={() => setShowEditModal(true)}
               cvAnalysis={cvAnalysis}
-              cvAnalysisLoaded={cvAnalysisLoaded}
               onViewCvAnalysis={() => {
                 if (!jobCand?.jobcand_id) return
                 navigate(`/cv-analysis/${jobCand.jobcand_id}`, {
@@ -260,7 +290,7 @@ export default function CandidateDetailPage() {
               onViewTranscription={() => {
                 if (!interview?.intv_id) return
 
-                navigate(`/interview/${interview.intv_id}`)
+                navigate(`/interview/${interview.intv_id}?view=transcript`)
               }}
             />
           </div>
@@ -314,8 +344,6 @@ export default function CandidateDetailPage() {
             interviewer: interviewerName === '--' ? '' : interviewerName,
             interviewer_user_id: interviewerUserId,
             interview_datetime: interview?.intv_date_time ?? null,
-            cv_url: candidate?.cand_cv_url,
-            cover_letter_url: candidate?.cand_cover_letter_url,
           }}
           onClose={() => setShowEditModal(false)}
           onSaved={() => {

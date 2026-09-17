@@ -5,6 +5,7 @@ import { SECTION_COLORS } from '../../utils/constants.js'
 
 export default function InterviewPlanCard({ jobId, candId, jobCand }) {
   const [state, setState] = useState('idle')
+  const [editMode, setEditMode] = useState(false)
   const [sections, setSections] = useState([])
   const [errorMsg, setErrorMsg] = useState('')
   const [totalMinutes, setTotalMinutes] = useState(60)
@@ -89,32 +90,51 @@ export default function InterviewPlanCard({ jobId, candId, jobCand }) {
   const fieldClass = 'w-full rounded-lg border border-neutral-200 bg-white px-2 py-1 text-xs text-neutral-800 focus:outline-none focus:ring-1 focus:ring-primary-400'
 
   return (
-    <section className={`${card.base} ${flex.col} gap-4 mb-6`}>
+    <section className={`${card.base} ${flex.col} gap-4`}>
       <div className={flex.rowBetween}>
         <div>
           <h2 className="text-lg font-bold text-neutral-800">Interview Plan</h2>
           <p className="text-xs text-neutral-400 mt-0.5">AI-suggested sections based on this role and candidate</p>
         </div>
         <div className={`${flex.row} items-center gap-3`}>
-          <label className={`${flex.row} items-center gap-1.5`}>
-            <span className="text-xs font-semibold text-neutral-500 whitespace-nowrap">Total duration</span>
-            <input type="number" min={10} max={240} value={totalMinutes} onChange={(e) => setTotalMinutes(Number(e.target.value) || 60)}
-              className="w-16 rounded-lg border border-neutral-200 px-2 py-1 text-xs text-neutral-800 text-center focus:outline-none focus:ring-1 focus:ring-primary-400" />
-            <span className="text-xs text-neutral-400">min</span>
-          </label>
-          {state === 'done' ? (
+          {/* Duration input only matters while generating fresh or editing. */}
+          {state !== 'loading' && (state !== 'done' || editMode) && (
+            <label className={`${flex.row} items-center gap-1.5`}>
+              <span className="text-xs font-semibold text-neutral-500 whitespace-nowrap">Total duration</span>
+              <input type="number" min={10} max={240} value={totalMinutes} onChange={(e) => setTotalMinutes(Number(e.target.value) || 60)}
+                className="w-16 rounded-lg border border-neutral-200 px-2 py-1 text-xs text-neutral-800 text-center focus:outline-none focus:ring-1 focus:ring-primary-400" />
+              <span className="text-xs text-neutral-400">min</span>
+            </label>
+          )}
+
+          {state === 'done' && !editMode && (
             <>
-              <span className="text-xs text-neutral-400">{plannedMinutes} min planned</span>
-              <button type="button" onClick={generate} className="rounded-xl border border-neutral-200 bg-white px-3 py-1.5 text-xs font-semibold text-neutral-500 transition-colors hover:bg-neutral-50">Regenerate</button>
+              <span className="text-xs font-semibold text-neutral-400 tabular-nums">
+                {plannedMinutes} min · {sections.length} section{sections.length === 1 ? '' : 's'}
+              </span>
+              <button type="button" onClick={() => setEditMode(true)} className="rounded-xl border border-neutral-200 bg-white px-3 py-1.5 text-xs font-semibold text-neutral-500 transition-colors hover:bg-neutral-50">Edit</button>
             </>
-          ) : state !== 'loading' ? (
+          )}
+
+          {state === 'done' && editMode && (
+            <>
+              <span className={`text-xs font-semibold tabular-nums ${plannedMinutes === totalMinutes ? 'text-mint-600' : 'text-amber-600'}`}>
+                {plannedMinutes} / {totalMinutes} min
+                {plannedMinutes > totalMinutes ? ' (over)' : plannedMinutes < totalMinutes ? ' (under)' : ''}
+              </span>
+              <button type="button" onClick={generate} className="rounded-xl border border-neutral-200 bg-white px-3 py-1.5 text-xs font-semibold text-neutral-500 transition-colors hover:bg-neutral-50">Regenerate</button>
+              <button type="button" onClick={() => setEditMode(false)} className="rounded-xl bg-primary-500 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-primary-600">Done</button>
+            </>
+          )}
+
+          {state !== 'done' && state !== 'loading' && (
             <button type="button" onClick={generate} className="inline-flex items-center gap-2 rounded-xl bg-primary-500 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-primary-600">
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/>
               </svg>
               Generate Plan
             </button>
-          ) : null}
+          )}
         </div>
       </div>
 
@@ -147,23 +167,47 @@ export default function InterviewPlanCard({ jobId, candId, jobCand }) {
         </div>
       )}
 
-      {state === 'done' && (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+      {state === 'done' && !editMode && (
+        <ol className={`${flex.col} gap-1.5`}>
+          {sections.map((section, i) => {
+            const color = SECTION_COLORS[i % SECTION_COLORS.length]
+            return (
+              <li
+                key={i}
+                className="flex items-center gap-3 rounded-xl border border-neutral-100 bg-neutral-0 px-3 py-2.5 transition-colors hover:bg-neutral-50"
+              >
+                <span className="w-4 shrink-0 text-right text-xs font-semibold tabular-nums text-neutral-300">{i + 1}</span>
+                <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${color.dot}`} />
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-semibold leading-tight text-neutral-800">{section.name}</p>
+                  {section.description && (
+                    <p className="mt-0.5 line-clamp-1 text-xs leading-snug text-neutral-400">{section.description}</p>
+                  )}
+                </div>
+                <span className="shrink-0 text-xs font-semibold tabular-nums text-neutral-500">{section.suggested_minutes} min</span>
+              </li>
+            )
+          })}
+        </ol>
+      )}
+
+      {state === 'done' && editMode && (
+        <div className={`${flex.col} gap-1.5`}>
           {sections.map((section, i) => {
             const color = SECTION_COLORS[i % SECTION_COLORS.length]
             if (editingIndex === i) {
               return (
-                <div key={i} className={`${flex.col} gap-2 rounded-2xl border-2 border-primary-300 bg-primary-50 p-3`}>
+                <div key={i} className={`${flex.col} gap-2 rounded-xl border-2 border-primary-300 bg-primary-50 p-3`}>
                   <input className={fieldClass} value={editDraft.name} onChange={(e) => setEditDraft((d) => ({ ...d, name: e.target.value }))} placeholder="Section name" autoFocus />
-                  <textarea className={`${fieldClass} resize-none`} rows={3} value={editDraft.description} onChange={(e) => setEditDraft((d) => ({ ...d, description: e.target.value }))} placeholder="Description" />
-                  <div className={`${flex.row} items-center gap-1`}>
+                  <textarea className={`${fieldClass} resize-none`} rows={2} value={editDraft.description} onChange={(e) => setEditDraft((d) => ({ ...d, description: e.target.value }))} placeholder="Description" />
+                  <div className={`${flex.row} items-center gap-2`}>
                     <input type="number" min={1} max={120} className="w-14 rounded-lg border border-neutral-200 bg-white px-2 py-1 text-xs text-neutral-800 text-center focus:outline-none focus:ring-1 focus:ring-primary-400"
                       value={editDraft.suggested_minutes} onChange={(e) => setEditDraft((d) => ({ ...d, suggested_minutes: e.target.value }))} />
                     <span className="text-xs text-neutral-400">min</span>
-                  </div>
-                  <div className={`${flex.row} gap-2 mt-1`}>
-                    <button type="button" onClick={cancelEdit} className="flex-1 rounded-lg border border-neutral-200 bg-white py-1 text-xs font-semibold text-neutral-500 hover:bg-neutral-50">Cancel</button>
-                    <button type="button" onClick={commitEdit} disabled={!editDraft?.name?.trim()} className="flex-1 rounded-lg bg-primary-500 py-1 text-xs font-semibold text-white hover:bg-primary-600 disabled:bg-neutral-300 disabled:cursor-not-allowed">Save</button>
+                    <div className="ml-auto flex gap-2">
+                      <button type="button" onClick={cancelEdit} className="rounded-lg border border-neutral-200 bg-white px-3 py-1 text-xs font-semibold text-neutral-500 hover:bg-neutral-50">Cancel</button>
+                      <button type="button" onClick={commitEdit} disabled={!editDraft?.name?.trim()} className="rounded-lg bg-primary-500 px-3 py-1 text-xs font-semibold text-white hover:bg-primary-600 disabled:bg-neutral-300 disabled:cursor-not-allowed">Save</button>
+                    </div>
                   </div>
                 </div>
               )
@@ -175,53 +219,59 @@ export default function InterviewPlanCard({ jobId, candId, jobCand }) {
                 onDragLeave={() => setDragOverIndex(null)}
                 onDrop={(e) => { e.preventDefault(); if (dragSrcIndex.current !== null && dragSrcIndex.current !== i) reorderSection(dragSrcIndex.current, i); setDragOverIndex(null) }}
                 onDragEnd={() => { dragSrcIndex.current = null; setDragOverIndex(null) }}
-                className={`${flex.col} gap-2 rounded-2xl border p-4 ${color.bg} ${color.border} cursor-grab active:cursor-grabbing active:opacity-50 transition-opacity ${dragOverIndex === i ? 'ring-2 ring-primary-400 ring-offset-1' : ''}`}
+                className={`flex items-center gap-3 rounded-xl border border-neutral-100 bg-neutral-0 px-3 py-2.5 transition-all active:cursor-grabbing active:opacity-50 ${dragOverIndex === i ? 'ring-2 ring-primary-400' : ''}`}
               >
-                <div className={`${flex.row} items-center gap-2`}>
-                  <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor" className="text-neutral-300 shrink-0">
-                    <circle cx="2" cy="2" r="1"/><circle cx="8" cy="2" r="1"/><circle cx="2" cy="5" r="1"/><circle cx="8" cy="5" r="1"/><circle cx="2" cy="8" r="1"/><circle cx="8" cy="8" r="1"/>
-                  </svg>
-                  <span className={`h-2 w-2 shrink-0 rounded-full ${color.dot}`} />
-                  <span className="text-sm font-bold text-neutral-800 leading-tight flex-1">{section.name}</span>
+                <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor" className="shrink-0 cursor-grab text-neutral-300">
+                  <circle cx="2" cy="2" r="1"/><circle cx="8" cy="2" r="1"/><circle cx="2" cy="5" r="1"/><circle cx="8" cy="5" r="1"/><circle cx="2" cy="8" r="1"/><circle cx="8" cy="8" r="1"/>
+                </svg>
+                <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${color.dot}`} />
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-semibold leading-tight text-neutral-800">{section.name}</p>
+                  {section.description && (
+                    <p className="mt-0.5 line-clamp-1 text-xs leading-snug text-neutral-400">{section.description}</p>
+                  )}
                 </div>
-                <p className="text-xs text-neutral-500 leading-relaxed flex-1">{section.description}</p>
-                <div className="flex items-center justify-between mt-1">
-                  <span className={`text-xs font-semibold ${color.time}`}>{section.suggested_minutes} min</span>
-                  <div className={`${flex.row} gap-0.5`}>
-                    <button type="button" onClick={() => startEdit(i)} title="Edit section" className="p-1 rounded-lg text-neutral-400 hover:text-neutral-600 hover:bg-black/5 transition-colors">
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
-                      </svg>
-                    </button>
-                    <button type="button" onClick={() => deleteSection(i)} title="Remove section" className="p-1 rounded-lg text-neutral-400 hover:text-coral-500 hover:bg-coral-50 transition-colors">
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/>
-                      </svg>
-                    </button>
-                  </div>
+                <span className="shrink-0 text-xs font-semibold tabular-nums text-neutral-500">{section.suggested_minutes} min</span>
+                <div className={`${flex.row} shrink-0 gap-0.5`}>
+                  <button type="button" disabled={i === 0} onClick={() => reorderSection(i, i - 1)} title="Move up" className="p-1 rounded-lg text-neutral-400 hover:text-neutral-600 hover:bg-black/5 transition-colors disabled:opacity-30 disabled:cursor-not-allowed">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M18 15l-6-6-6 6"/></svg>
+                  </button>
+                  <button type="button" disabled={i === sections.length - 1} onClick={() => reorderSection(i, i + 1)} title="Move down" className="p-1 rounded-lg text-neutral-400 hover:text-neutral-600 hover:bg-black/5 transition-colors disabled:opacity-30 disabled:cursor-not-allowed">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+                  </button>
+                  <button type="button" onClick={() => startEdit(i)} title="Edit section" className="p-1 rounded-lg text-neutral-400 hover:text-neutral-600 hover:bg-black/5 transition-colors">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                    </svg>
+                  </button>
+                  <button type="button" onClick={() => deleteSection(i)} title="Remove section" className="p-1 rounded-lg text-neutral-400 hover:text-coral-500 hover:bg-coral-50 transition-colors">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/>
+                    </svg>
+                  </button>
                 </div>
               </div>
             )
           })}
 
           {addingNew ? (
-            <div className={`${flex.col} gap-2 rounded-2xl border-2 border-dashed border-primary-300 bg-primary-50 p-3`}>
+            <div className={`${flex.col} gap-2 rounded-xl border-2 border-dashed border-primary-300 bg-primary-50 p-3`}>
               <input className={fieldClass} value={newDraft.name} onChange={(e) => setNewDraft((d) => ({ ...d, name: e.target.value }))} placeholder="Section name" autoFocus />
-              <textarea className={`${fieldClass} resize-none`} rows={3} value={newDraft.description} onChange={(e) => setNewDraft((d) => ({ ...d, description: e.target.value }))} placeholder="Description" />
-              <div className={`${flex.row} items-center gap-1`}>
+              <textarea className={`${fieldClass} resize-none`} rows={2} value={newDraft.description} onChange={(e) => setNewDraft((d) => ({ ...d, description: e.target.value }))} placeholder="Description" />
+              <div className={`${flex.row} items-center gap-2`}>
                 <input type="number" min={1} max={120} className="w-14 rounded-lg border border-neutral-200 bg-white px-2 py-1 text-xs text-neutral-800 text-center focus:outline-none focus:ring-1 focus:ring-primary-400"
                   value={newDraft.suggested_minutes} onChange={(e) => setNewDraft((d) => ({ ...d, suggested_minutes: e.target.value }))} />
                 <span className="text-xs text-neutral-400">min</span>
-              </div>
-              <div className={`${flex.row} gap-2 mt-1`}>
-                <button type="button" onClick={cancelAdd} className="flex-1 rounded-lg border border-neutral-200 bg-white py-1 text-xs font-semibold text-neutral-500 hover:bg-neutral-50">Cancel</button>
-                <button type="button" onClick={commitAdd} disabled={!newDraft.name.trim()} className="flex-1 rounded-lg bg-primary-500 py-1 text-xs font-semibold text-white hover:bg-primary-600 disabled:bg-neutral-300 disabled:cursor-not-allowed">Add</button>
+                <div className="ml-auto flex gap-2">
+                  <button type="button" onClick={cancelAdd} className="rounded-lg border border-neutral-200 bg-white px-3 py-1 text-xs font-semibold text-neutral-500 hover:bg-neutral-50">Cancel</button>
+                  <button type="button" onClick={commitAdd} disabled={!newDraft.name.trim()} className="rounded-lg bg-primary-500 px-3 py-1 text-xs font-semibold text-white hover:bg-primary-600 disabled:bg-neutral-300 disabled:cursor-not-allowed">Add</button>
+                </div>
               </div>
             </div>
           ) : (
             <button type="button" onClick={startAdd}
-              className={`${flex.col} items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-neutral-200 p-4 text-neutral-400 hover:border-primary-300 hover:text-primary-400 transition-colors min-h-[120px]`}>
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              className="flex items-center justify-center gap-2 rounded-xl border-2 border-dashed border-neutral-200 py-2.5 text-neutral-400 hover:border-primary-300 hover:text-primary-400 transition-colors">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
               </svg>
               <span className="text-xs font-semibold">Add section</span>

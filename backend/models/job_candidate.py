@@ -120,6 +120,9 @@ class JobCandidateRowOut(BaseModel):
     status: str
     scheduled_at: datetime | None = None
     interviewer: str | None = None
+    # The assigned interviewer's user id, so the frontend can let ONLY that
+    # interviewer resume an in-progress interview.
+    interviewer_user_id: str | None = None
     ratings: dict | None = None
     score: float | None = None
     intv_completed: bool = False

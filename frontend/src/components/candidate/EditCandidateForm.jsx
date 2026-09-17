@@ -4,13 +4,6 @@ import { isEmail, isPhone, isFullName, isFutureDateTime } from '../../lib/valida
 import { useAuth } from '../../lib/AuthContext.jsx'
 import { api } from '../../lib/api.js'
 import InterviewerCombobox from './InterviewerCombobox.jsx'
-import FileDropzone from './FileDropzone.jsx'
-
-function getFileName(value = '') {
-  if (!value) return ''
-  if (typeof value !== 'string') return ''
-  return value.split('/').pop() || value
-}
 
 // Turn an ApiError (or any error) into a user-facing message, expanding
 // FastAPI's `detail` array into `field: message` bullets when present.
@@ -27,6 +20,7 @@ export default function EditCandidateForm({
   initialData,
   onClose,
   onSaved,
+  noOverlay = false,
 }) {
   const { user } = useAuth()
 
@@ -46,12 +40,6 @@ export default function EditCandidateForm({
     scheduled_at: initialScheduledAt,
   })
 
-  const [cvFile, setCvFile] = useState(null)
-  const [coverLetterFile, setCoverLetterFile] = useState(null)
-  const [existingCvName, setExistingCvName] = useState(getFileName(initialData?.cv_url))
-  const [existingCoverLetterName, setExistingCoverLetterName] = useState(
-    getFileName(initialData?.cover_letter_url)
-  )
   const [interviewers, setInterviewers] = useState([])
   const [interviewerOpen, setInterviewerOpen] = useState(false)
 
@@ -116,9 +104,9 @@ export default function EditCandidateForm({
 
     try {
       // 1. Update candidate profile. Document URLs are deliberately NOT
-      //    sent here - a new upload sets them server-side via the
-      //    CV-analysis endpoint (step 3), and sending null used to wipe
-      //    the existing CV link on every save.
+      //    sent here - CV/cover letter are uploaded separately (the
+      //    candidate page's CV/Cover Letter tabs), and sending null used to
+      //    wipe the existing links on every save.
       try {
         await api.updateCandidate(formState.cand_id, {
           cand_full_name: formState.name.trim(),
@@ -141,29 +129,6 @@ export default function EditCandidateForm({
         throw new Error(messageFromError(err, 'Failed to update application.'))
       }
 
-      // 3. A newly attached CV kicks off (or replaces) the analysis for
-      //    this application - the cover letter rides along when present.
-      //    The backend returns as soon as the file is stored
-      //    (status=processing) and finishes in the background - the
-      //    candidate page's "View" button polls until it's ready.
-      //    A cover letter added WITHOUT a new CV doesn't involve the
-      //    analyser, so it goes through the standalone document upload.
-      try {
-        if (cvFile && formState.application_id) {
-          const fd = new FormData()
-          fd.append('jobcand_id', formState.application_id)
-          fd.append('cv', cvFile)
-          if (coverLetterFile) fd.append('cover_letter', coverLetterFile)
-          await api.analyseCv(fd)
-        } else if (coverLetterFile && formState.cand_id) {
-          const fd = new FormData()
-          fd.append('cover_letter', coverLetterFile)
-          await api.uploadCandidateCoverLetter(formState.cand_id, fd)
-        }
-      } catch (err) {
-        console.warn('Document upload failed:', err)
-      }
-
       onSaved(saved)
     } catch (err) {
       setError(err.message || 'Something went wrong.')
@@ -172,9 +137,8 @@ export default function EditCandidateForm({
     }
   }
 
-  return (
-    <div className={modal.overlay}>
-      <div className={`${modal.panel} scrollbar-primary max-w-2xl max-h-[90vh] overflow-y-auto transition-[padding] ${interviewerOpen ? 'pb-52' : ''}`}>
+  const panel = (
+    <div className={`${modal.panel} scrollbar-primary max-w-2xl max-h-[90vh] overflow-y-auto transition-[padding] ${interviewerOpen ? 'pb-52' : ''}`}>
         <button
           type="button"
           onClick={onClose}
@@ -236,36 +200,6 @@ export default function EditCandidateForm({
           </div>
 
           <div className="grid grid-cols-2 gap-4">
-            <FileDropzone
-              label="Resume / CV"
-              existingName={existingCvName}
-              file={cvFile}
-              onFileChange={(file) => {
-                setCvFile(file)
-                setExistingCvName('')
-              }}
-              onRemove={() => {
-                setCvFile(null)
-                setExistingCvName('')
-              }}
-            />
-
-            <FileDropzone
-              label="Cover Letter"
-              existingName={existingCoverLetterName}
-              file={coverLetterFile}
-              onFileChange={(file) => {
-                setCoverLetterFile(file)
-                setExistingCoverLetterName('')
-              }}
-              onRemove={() => {
-                setCoverLetterFile(null)
-                setExistingCoverLetterName('')
-              }}
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
             <div>
               <label className={form.label}>Interviewer</label>
               <InterviewerCombobox
@@ -314,6 +248,7 @@ export default function EditCandidateForm({
           </div>
         </form>
       </div>
-    </div>
   )
+
+  return noOverlay ? panel : <div className={modal.overlay}>{panel}</div>
 }

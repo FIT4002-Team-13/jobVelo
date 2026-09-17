@@ -1,8 +1,13 @@
 import React from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, CalendarDays, Briefcase, Users, KeyRound } from 'lucide-react';
+import { LayoutDashboard, CalendarDays, Briefcase, Users, KeyRound, Search } from 'lucide-react';
 import logoFull from '../../assets/logo-final.png';
 import { useAuth } from '../../lib/AuthContext.jsx';
+import CommandPalette from './CommandPalette.jsx';
+
+// Platform-aware shortcut hint for the search bar (⌘K on Mac, Ctrl K elsewhere).
+const IS_MAC =
+  typeof navigator !== 'undefined' && /Mac|iPhone|iPad/i.test(navigator.platform);
 
 // `user` is the shape returned by /api/auth/me (UserOut). The prop is
 // optional - if the parent doesn't pass one (e.g. JobsPage / JobDetailPage),
@@ -93,8 +98,23 @@ export default function Sidebar({ user: userProp }) {
   return (
     <aside className="w-[200px] shrink-0 bg-neutral-0 border-r border-neutral-200 flex flex-col h-screen sticky top-0">
       {/* Logo */}
-      <div className="pt-5 px-4 pb-6 flex items-center justify-center">
+      <div className="pt-5 px-4 pb-4 flex items-center justify-center">
         <img src={logoFull} alt="Logo" className="h-16 w-auto" />
+      </div>
+
+      {/* Master search - opens the global command palette (also Ctrl/Cmd+K). */}
+      <div className="px-3 pb-4">
+        <button
+          type="button"
+          onClick={() => window.dispatchEvent(new Event('open-command-palette'))}
+          className="w-full flex items-center gap-2 rounded-lg border border-neutral-200 bg-neutral-50 px-2.5 py-2 text-left text-sm text-neutral-400 transition-colors hover:border-primary-200 hover:bg-primary-500/10 hover:text-primary-600"
+        >
+          <Search size={15} className="shrink-0" />
+          <span className="flex-1 truncate">Search…</span>
+          <kbd className="rounded border border-neutral-200 bg-neutral-0 px-1 py-0.5 text-[10px] font-semibold text-neutral-400">
+            {IS_MAC ? '⌘K' : 'Ctrl K'}
+          </kbd>
+        </button>
       </div>
 
       {/* Nav */}
@@ -135,6 +155,10 @@ export default function Sidebar({ user: userProp }) {
           Log Out
         </button>
       </div>
+
+      {/* Mounted here so the palette (and its Ctrl/Cmd+K listener) exists on
+          every page that renders the sidebar. It portals to <body>. */}
+      <CommandPalette />
     </aside>
   );
 }

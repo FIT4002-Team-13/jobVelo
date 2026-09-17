@@ -19,9 +19,40 @@ export function useTranscript(id, { serverData, candidateName, userId, isComplet
   const followUpTimerRef = useRef(null);
   const hasLocalRef = useRef(false);
   const hasInitializedFromServerRef = useRef(false);
+  // Whether the interviewer is currently reading at the bottom of the log. Used
+  // to auto-follow new lines only when they haven't scrolled up to read history.
+  const atBottomRef = useRef(true);
+
+  const [speakerAssignments, setSpeakerAssignments] = useState({});
+  const speakerAssignmentsRef = useRef({});
 
   useEffect(() => {
     transcriptRef.current = transcript;
+  }, [transcript]);
+
+  // Track how close to the bottom the interviewer is scrolled. Re-attaches when
+  // the panel is shown/hidden (the container unmounts while hidden). 160px of
+  // slack counts as "at the bottom" so a just-arrived line doesn't flip it.
+  useEffect(() => {
+    const el = transcriptContainerRef.current;
+    if (!el) return undefined;
+    const onScroll = () => {
+      atBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 160;
+    };
+    onScroll();
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => el.removeEventListener("scroll", onScroll);
+  }, [transcriptVisible]);
+
+  // Auto-follow the latest line. When a new transcript entry (or live partial)
+  // arrives and the interviewer is already at the bottom, keep it in view so
+  // they never have to scroll manually. If they've scrolled up, leave them be -
+  // the "New Updates" pill lets them jump down when ready.
+  useEffect(() => {
+    const el = transcriptContainerRef.current;
+    if (!el || !atBottomRef.current) return;
+    el.scrollTop = el.scrollHeight;
+    setHasNewTranscriptUpdates(false);
   }, [transcript]);
 
   useEffect(() => {
@@ -82,16 +113,19 @@ export function useTranscript(id, { serverData, candidateName, userId, isComplet
     entryCounterRef.current = maxId + 1;
   }
 
-  function appendTranscript(text, isFinal, speaker, partialRef) {
+  function appendTranscript(text, isFinal, speaker, partialRef, detected = {}) {
     const timestamp = formatTimer(Math.floor((Date.now() - startTimeRef.current) / 1000));
-    const isCandidate = speaker === (candidateName || "Candidate");
+    const assignment = getSpeakerAssignment(detected);
+
+    const displayedSpeaker = assignment?.speaker_name || (Number.isInteger(detected.speaker_id) ? `Speaker ${detected.speaker_id + 1}` : speaker);
+    const isCandidate = assignment?.speaker_role === "candidate" || (!detected.stream_id && speaker === (candidateName || "Candidate"));
 
     if (isFinal) {
       const entryId = String(entryCounterRef.current++);
       const prevPartialId = partialRef.current;
       partialRef.current = null;
 
-      const newEntry = { id: entryId, speaker, timestamp, text };
+      const newEntry = {id: entryId, speaker: displayedSpeaker, timestamp, text, source: detected.source, stream_id: detected.stream_id, speaker_id: detected.speaker_id, participant_id: assignment?.participant_id ?? null, speaker_role: assignment?.speaker_role ?? null};
       setTranscript((prev) => {
         const refreshed = prevPartialId ? prev.filter((e) => e.id !== prevPartialId) : prev;
         const updated = [...refreshed, newEntry];
@@ -106,11 +140,22 @@ export function useTranscript(id, { serverData, candidateName, userId, isComplet
       const partialId = partialRef.current;
       setTranscript((prev) => [
         ...prev.filter((e) => e.id !== partialId),
-        { id: partialId, speaker, timestamp, text },
+        { id: partialId,
+          speaker: displayedSpeaker,
+          timestamp,
+          text,
+          source: detected.source,
+          stream_id: detected.stream_id,
+          speaker_id: detected.speaker_id,
+          participant_id: assignment?.participant_id ?? null,
+          speaker_role: assignment?.speaker_role ?? null},
       ]);
     }
 
-    if (isCandidate && text?.trim()) {
+    // Accumulate only FINAL candidate lines (not live partials) and wait for a
+    // longer real pause before considering a follow-up, so the generator works
+    // from complete answers and doesn't fire on every brief hesitation.
+    if (isFinal && isCandidate && text?.trim()) {
       pendingCandidateResponseRef.current = [pendingCandidateResponseRef.current, text.trim()]
         .filter(Boolean)
         .join(" ");
@@ -121,7 +166,7 @@ export function useTranscript(id, { serverData, candidateName, userId, isComplet
         if (!response) return;
         pendingCandidateResponseRef.current = "";
         generateFollowUpRef.current?.(response);
-      }, 2000);
+      }, 4500);
     }
   }
 
@@ -147,13 +192,144 @@ export function useTranscript(id, { serverData, candidateName, userId, isComplet
   function jumpToTranscriptEntry(quote) {
     const interviewerLabel = userId || "Interviewer";
     const match = [...transcriptRef.current]
-      .reverse()
-      .find((entry) => entry.speaker === interviewerLabel && entry.text === quote);
+        .reverse()
+        .find((entry) => entry.speaker_role === "interviewer" && entry.text === quote) ||
+      [...transcriptRef.current]
+        .reverse()
+        .find((entry) => entry.speaker === interviewerLabel && entry.text === quote);
     if (!match) return;
 
     document.getElementById(`transcript-entry-${match.id}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
     setHighlightedEntryId(match.id);
     setTimeout(() => setHighlightedEntryId((cur) => (cur === match.id ? null : cur)), 3000);
+  }
+
+  function detectedSpeakerKey(detected) {
+    if (!detected.stream_id || !Number.isInteger(detected.speaker_id)) {
+      return null;
+    }
+
+    return `${detected.stream_id}:${detected.speaker_id}`;
+  }
+
+  function storeSpeakerAssignment(key, assignment) {
+    const updatedAssignments = { ...speakerAssignmentsRef.current, [key]: assignment};
+
+    speakerAssignmentsRef.current = updatedAssignments;
+    setSpeakerAssignments(updatedAssignments);
+
+    return assignment;
+  }
+
+  function getSpeakerAssignment(detected) {
+    const key = detectedSpeakerKey(detected);
+
+    if (!key) return null;
+    const currentAssignments = speakerAssignmentsRef.current;
+
+    // This voice ois already assigned
+    if (Object.prototype.hasOwnProperty.call(currentAssignments, key)) {
+      return currentAssignments[key];
+    }
+
+    const streamAlreadyHasSpeaker = Object.values(currentAssignments).some( assignment => assignment.stream_id === detected.stream_id);
+
+    let person = null;
+
+    if (!streamAlreadyHasSpeaker && detected.source === "mic") {
+      person = {
+        participant_id: "primary-interviewer",
+        speaker_name: userId || "Interviewer",
+        speaker_role: "interviewer"
+      };
+    }
+
+    if (!streamAlreadyHasSpeaker && detected.source === "screen") {
+      person = {
+        participant_id: "candidate",
+        speaker_name: candidateName || "Candidate",
+        speaker_role: "candidate"
+      };
+    }
+
+    return storeSpeakerAssignment(key, {
+      stream_id: detected.stream_id,
+      speaker_id: detected.speaker_id,
+      source: detected.source,
+
+      // Additional voices remain unassigned.
+      participant_id: person?.participant_id ?? null,
+      speaker_name: person?.speaker_name ?? null,
+      speaker_role: person?.speaker_role ?? null
+    });
+  }
+
+  function assignSpeaker(entry, person) {
+    const key = detectedSpeakerKey(entry);
+
+    if (!key) return;
+
+    const demotedKeys = new Set();
+    if (person?.role === "interviewer" || person?.role === "candidate") {
+      for (const [existingKey, existing] of Object.entries(speakerAssignmentsRef.current)) {
+        if (existingKey === key) continue;
+        if (existing.speaker_role === person.role) {
+          storeSpeakerAssignment(existingKey, {
+            stream_id: existing.stream_id,
+            speaker_id: existing.speaker_id,
+            source: existing.source,
+            participant_id: null,
+            speaker_name: null,
+            speaker_role: null,
+          });
+          demotedKeys.add(existingKey);
+        }
+      }
+    }
+
+    storeSpeakerAssignment(key, {
+      stream_id: entry.stream_id,
+      speaker_id: entry.speaker_id,
+      source: entry.source,
+      participant_id: person?.id ?? null,
+      speaker_name: person?.name ?? null,
+      speaker_role: person?.role ?? null
+    });
+
+    setTranscript(prev => {
+      const updated = prev.map(item => {
+        const itemKey = detectedSpeakerKey(item);
+
+        if (itemKey === key) {
+          const fallback = Number.isInteger(item.speaker_id) ? `Speaker ${item.speaker_id + 1}` : "Speaker";
+          return {...item, speaker: person?.name || fallback, participant_id: person?.id ?? null, speaker_role: person?.role ?? null};
+        }
+        if (itemKey && demotedKeys.has(itemKey)) {
+          const fallback = Number.isInteger(item.speaker_id) ? `Speaker ${item.speaker_id + 1}` : "Speaker";
+          return { ...item, speaker: fallback, participant_id: null, speaker_role: null};
+        }
+
+        return item;
+      });
+
+      localStorage.setItem(`transcript-${id}`, JSON.stringify(updated));
+      return updated;
+    });
+  }
+
+  function assignSpeakerForEntry(entry, person) {
+    if (!entry?.id) return;
+
+    setTranscript((prev) => {
+      const updated = prev.map((item) => {
+        if (item.id !== entry.id) return item;
+        
+        const fallback = Number.isInteger(item.speaker_id) ? `Speaker ${item.speaker_id + 1}` : "Speaker";
+        return {...item, speaker: person?.name || fallback, participant_id: person?.id ?? null, speaker_role: person?.role ?? null};
+      });
+      localStorage.setItem(`transcript-${id}`, JSON.stringify(updated));
+      return updated;
+    });
   }
 
   return {
@@ -174,5 +350,8 @@ export function useTranscript(id, { serverData, candidateName, userId, isComplet
     handleNoteChange,
     showLatestTranscript,
     jumpToTranscriptEntry,
+    speakerAssignments,
+    assignSpeaker,
+    assignSpeakerForEntry,
   };
 }

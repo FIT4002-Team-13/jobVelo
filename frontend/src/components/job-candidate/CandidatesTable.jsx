@@ -120,7 +120,13 @@ export default function CandidatesTable({
                   <td className="px-4 py-3 font-semibold text-neutral-700">{formatScore(c.score)}</td>
                 )
                 const isRanked = typeof c.score === 'number' && Number.isFinite(c.score)
-                const canStart = c.status === 'SCHEDULED' && isInterviewer
+                const isAssignedInterviewer = isInterviewer && c.interviewer_user_id === user?.userid
+                const isInProgress = c.status === 'IN PROGRESS'
+                // The assigned interviewer owns the session: only they may start
+                // a SCHEDULED interview or resume one that's IN PROGRESS
+                // (previously in-progress greyed out with no way back in).
+                const canStart =
+                  (c.status === 'SCHEDULED' || isInProgress) && isAssignedInterviewer
                 const hasCompletedInterview = Boolean(c.intv_completed)
                 const actionsCell = (
                   <td className="px-4 py-3 w-[1%]" onClick={(e) => e.stopPropagation()}>
@@ -144,7 +150,13 @@ export default function CandidatesTable({
                         <button
                           type="button"
                           disabled={!canStart}
-                          title={!isInterviewer ? 'Only interviewers can start interviews' : undefined}
+                          title={
+                            !isInterviewer
+                              ? 'Only interviewers can start interviews'
+                              : !isAssignedInterviewer
+                              ? `Only the assigned interviewer can ${isInProgress ? 'resume' : 'start'} this interview`
+                              : undefined
+                          }
                           onClick={() => canStart && onStartInterview?.(c)}
                           className={`${flex.row} justify-center w-[150px] gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors whitespace-nowrap ${
                             canStart ? 'bg-primary-500 hover:bg-primary-600 text-white' : 'bg-neutral-100 text-neutral-400 cursor-not-allowed'
@@ -153,7 +165,7 @@ export default function CandidatesTable({
                           <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor">
                             <polygon points="5 3 19 12 5 21 5 3" />
                           </svg>
-                          Start Interview
+                          {isInProgress ? 'Resume Interview' : 'Start Interview'}
                         </button>
                       )}
                       <span className="mx-1 w-px self-stretch bg-neutral-200" aria-hidden />

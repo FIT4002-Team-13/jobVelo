@@ -218,6 +218,28 @@ def interview_helper(interview: dict) -> InterviewOut:
     )
 
 
+async def _assigned_interviewer_id(db, intv_id: str) -> str | None:
+    """The user_id assigned to run this interview (via the interview_users
+    link), or None when no interviewer has been assigned yet."""
+    link = await db.interview_users.find_one({"intv_id": str(intv_id)})
+    return str(link["user_id"]) if link and link.get("user_id") else None
+
+
+async def _assert_assigned_interviewer(db, intv_id: str, user: dict) -> None:
+    """Only the assigned interviewer may start / resume / complete an interview.
+
+    The assigned interviewer owns the whole session. When the interview has no
+    assignment yet, anyone with the interviewer role (already enforced by the
+    route) may proceed - there is no one to protect it for.
+    """
+    assigned = await _assigned_interviewer_id(db, intv_id)
+    if assigned and assigned != str(user["_id"]):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only the assigned interviewer can start or resume this interview.",
+        )
+
+
 @router.post(
     "",
     response_model=InterviewOut,
@@ -246,6 +268,22 @@ async def create_interview(
         {"_id": ObjectId(payload.cand_id), "comp_id": comp_id}, {"_id": 1}
     ):
         raise HTTPException(status_code=404, detail="Candidate not found.")
+
+    # The assigned interviewer owns the session. If this candidate+job already
+    # has an interview with an assigned interviewer, only that person may start
+    # a new one. (The UI resumes an existing interview rather than creating a
+    # duplicate; this guards the API against a direct call.)
+    if payload.intv_status == "in_progress":
+        prior_interviews = await db.interviews.find(
+            {"cand_id": payload.cand_id, "job_id": payload.job_id}
+        ).to_list(length=50)
+        for prior in prior_interviews:
+            assigned = await _assigned_interviewer_id(db, str(prior["_id"]))
+            if assigned and assigned != str(_user["_id"]):
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Only the assigned interviewer can start this interview.",
+                )
 
     now = datetime.now(timezone.utc)
 
@@ -453,6 +491,14 @@ def _has_non_interviewer_speech(
         text = (e.get("text") or "").strip()
         if not text:
             continue
+
+        role = (e.get("speaker_role") or "").strip().casefold()
+
+        if role:
+            if role == "candidate":
+                return True
+            continue
+
         speaker = (e.get("speaker") or "").strip()
         if speaker and speaker.casefold() not in interviewer_names:
             return True
@@ -757,6 +803,9 @@ async def complete_interview(
             status_code=404, detail="Interview evaluation data not found."
         )
 
+    # Only the assigned interviewer may complete the interview they ran.
+    await _assert_assigned_interviewer(db, intv_id, _user)
+
     # Re-entry: reports already generated -> serve cached result without a
     # second LLM run. The link may have been deleted in the meantime; if so,
     # return null scores rather than fabricating 0.0/0.0/0.0.
@@ -774,6 +823,9 @@ async def complete_interview(
             intv_id=intv_id,
             intv_status="completed",
             scores=scores,
+            ratings=CandidateRatings.model_validate(stored_ratings)
+            if stored_ratings
+            else None,
             candidate_report=InterviewFeedback(**interview["intv_candidate_report"]),
             interviewer_report=InterviewFeedback(
                 **interview["intv_interviewer_report"]
@@ -879,6 +931,7 @@ async def complete_interview(
         intv_id=intv_id,
         intv_status="completed",
         scores=_scores_from_ratings(ratings),
+        ratings=ratings,
         candidate_report=candidate_report,
         interviewer_report=interviewer_report,
         bias_incidents=bias_incidents,
@@ -947,6 +1000,7 @@ async def _report_pdf_response(intv_id: str, kind: str, user: dict) -> Response:
         duration_seconds=interview.get("intv_duration_seconds"),
         status=interview.get("intv_status"),
         scores=scores,
+        skill_evidence=ratings if kind == "candidate" else None,
         transcript=interview.get("intv_transcript") or [],
         bias_incidents=interview.get("intv_bias_incidents") or [],
     )
@@ -1066,6 +1120,7 @@ def _transcript_to_text(entries: list[dict]) -> str:
 async def update_interview(
     intv_id: str,
     payload: InterviewUpdate,
+    user: dict = Depends(get_current_user),
     comp_id: ObjectId = Depends(get_current_comp_id),
 ) -> InterviewOut:
     db = get_db()
@@ -1075,6 +1130,12 @@ async def update_interview(
 
     if not update_data:
         return interview_helper(existing_interview)
+
+    # Guard only the "begin / resume" transition (setting status to in_progress),
+    # not plan/section/transcript edits - so non-interviewer roles can still
+    # prepare the interview plan, while only the assigned interviewer starts it.
+    if update_data.get("intv_status") == "in_progress":
+        await _assert_assigned_interviewer(db, intv_id, user)
 
     update_data["intv_updated_at"] = datetime.now(timezone.utc)
 

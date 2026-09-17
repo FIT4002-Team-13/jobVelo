@@ -1,9 +1,10 @@
 import { useState, useRef, useEffect } from "react";
 import { api } from "../lib/api.js";
 
-export function useInterviewSections(id, { serverData, timerRef, intvStatus }) {
+export function useInterviewSections(id, { serverData, timerRef, intvStatus, isMicActive }) {
   const [sections, setSections] = useState([]);
   const [sectionStates, setSectionStates] = useState([]);
+  const [startPending, setStartPending] = useState(false);
 
   const sectionIntervals = useRef([]);
   const sectionsScrollRef = useRef(null);
@@ -114,7 +115,7 @@ export function useInterviewSections(id, { serverData, timerRef, intvStatus }) {
       setSections(intv_sections);
       setSectionStates(intv_sections.map(() => ({ status: "idle", elapsed: 0 })));
       sectionIntervals.current = new Array(intv_sections.length).fill(null);
-      if (!completed) startSection(0);
+      if (!completed) setStartPending(true);
     } else if (!completed) {
       api
         .generatePlan({ job_id, cand_id })
@@ -123,12 +124,19 @@ export function useInterviewSections(id, { serverData, timerRef, intvStatus }) {
           setSections(plan);
           setSectionStates(plan.map(() => ({ status: "idle", elapsed: 0 })));
           sectionIntervals.current = new Array(plan.length).fill(null);
-          startSection(0);
+          setStartPending(true);
           api.updateInterview(id, { intv_sections: plan }).catch(() => {});
         })
         .catch(() => {});
     }
   }, [serverData, intvStatus]);
+
+  useEffect(() => {
+    if (isMicActive && startPending) {
+      setStartPending(false);
+      startSection(0);
+    }
+  }, [isMicActive, startPending]);
 
   return {
     sections,

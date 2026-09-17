@@ -114,7 +114,7 @@ _ANON_MATRIX = [
     ("post", f"/api/interview-questions/{_OID}", {}),
     (
         "post",
-        f"/api/interview-questions/{_OID}/follow-up",
+        f"/api/interview-questions/{_OID}/reactive",
         {"json": {"candidate_response": "hi"}},
     ),
     (

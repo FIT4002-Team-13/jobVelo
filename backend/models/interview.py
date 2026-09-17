@@ -145,6 +145,7 @@ class InterviewCompleteOut(BaseModel):
     intv_id: str
     intv_status: InterviewStatus
     scores: InterviewScores | None = None
+    ratings: CandidateRatings | None = None
     candidate_report: InterviewFeedback
     interviewer_report: InterviewFeedback
 
