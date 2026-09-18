@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { authedFetch, api } from "../lib/api.js";
+import { api } from "../lib/api.js";
 
 export function useInterviewData(id) {
   const [serverData, setServerData] = useState(null);
@@ -25,8 +25,8 @@ export function useInterviewData(id) {
   // Pull the candidate record into local state. Shared by the initial load and
   // by refreshCandidate() so an in-page edit reflects without a hard reload.
   function loadCandidate(cid) {
-    return authedFetch(`/api/candidates/${cid}`)
-      .then((r) => r.json())
+    return api
+      .getCandidate(cid)
       .then((cand) => {
         if (cand.cand_full_name) setCandidateName(cand.cand_full_name);
         if (cand.cand_cv_url) setCvUrl(cand.cand_cv_url);
@@ -37,47 +37,45 @@ export function useInterviewData(id) {
   }
 
   useEffect(() => {
-    authedFetch(`/api/interviews/${id}`)
-      .then((r) => r.json())
-      .then((data) => {
-        const completed = data.intv_status === "completed";
-        setIsCompleted(completed);
-        setIntvStatus(data.intv_status ?? null);
-        setIntvDateTime(data.intv_date_time ?? null);
-        setServerData(data);
+    api.getInterview(id).then((data) => {
+      const completed = data.intv_status === "completed";
+      setIsCompleted(completed);
+      setIntvStatus(data.intv_status ?? null);
+      setIntvDateTime(data.intv_date_time ?? null);
+      setServerData(data);
 
-        if (data.job_id) {
-          setJobId(data.job_id);
-          authedFetch(`/api/jobs/${data.job_id}`)
-            .then((r) => r.json())
-            .then((j) => {
-              if (j.title) setCandidateRole(j.title);
-              setJob(j);
-            })
-            .catch(() => {});
-        }
+      if (data.job_id) {
+        setJobId(data.job_id);
+        api
+          .getJob(data.job_id)
+          .then((j) => {
+            if (j.title) setCandidateRole(j.title);
+            setJob(j);
+          })
+          .catch(() => {});
+      }
 
-        if (data.cand_id) {
-          setCandId(data.cand_id);
-          loadCandidate(data.cand_id);
-        }
+      if (data.cand_id) {
+        setCandId(data.cand_id);
+        loadCandidate(data.cand_id);
+      }
 
-        if (data.cand_id && data.job_id) {
-          authedFetch(`/api/job-candidates/by-candidate/${data.cand_id}`)
-            .then((r) => (r.ok ? r.json() : []))
-            .then((links) => {
-              const link = Array.isArray(links) ? links.find((l) => l.job_id === data.job_id) : null;
-              if (!link?.jobcand_id) {
-                setCvAnalysisLoaded(true);
-                return;
-              }
-              setJobCand(link);
-            })
-            .catch(() => setCvAnalysisLoaded(true));
-        } else {
-          setCvAnalysisLoaded(true);
-        }
-      });
+      if (data.cand_id && data.job_id) {
+        api
+          .getJobCandidatesByCandidate(data.cand_id)
+          .then((links) => {
+            const link = Array.isArray(links) ? links.find((l) => l.job_id === data.job_id) : null;
+            if (!link?.jobcand_id) {
+              setCvAnalysisLoaded(true);
+              return;
+            }
+            setJobCand(link);
+          })
+          .catch(() => setCvAnalysisLoaded(true));
+      } else {
+        setCvAnalysisLoaded(true);
+      }
+    });
   }, [id]);
 
   // Poll CV analysis while the backend job is still running so the UI

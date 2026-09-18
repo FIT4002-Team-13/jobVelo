@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from bson import ObjectId
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
-from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from database import get_db
 from dependencies import get_current_user
@@ -30,8 +29,8 @@ def _company_out(doc: dict) -> dict:
 async def get_company(
     comp_id: str,
     current_user=Depends(get_current_user),
-    db: AsyncIOMotorDatabase = Depends(get_db),
 ):
+    db = get_db()
     if not ObjectId.is_valid(comp_id):
         raise HTTPException(status_code=400, detail="Invalid comp_id")
 
@@ -54,8 +53,8 @@ async def update_company(
     comp_id: str,
     payload: dict,
     current_user=Depends(get_current_user),
-    db: AsyncIOMotorDatabase = Depends(get_db),
 ):
+    db = get_db()
     if not ObjectId.is_valid(comp_id):
         raise HTTPException(status_code=400, detail="Invalid comp_id")
 
@@ -89,8 +88,8 @@ async def update_company_logo(
     comp_id: str,
     logo: UploadFile = File(...),
     current_user=Depends(get_current_user),
-    db: AsyncIOMotorDatabase = Depends(get_db),
 ):
+    db = get_db()
     if not ObjectId.is_valid(comp_id):
         raise HTTPException(status_code=400, detail="Invalid comp_id")
 

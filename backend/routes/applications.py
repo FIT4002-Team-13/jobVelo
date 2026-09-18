@@ -5,10 +5,10 @@ from typing import Any
 
 from bson import ObjectId
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel
 
 from database import get_db
 from dependencies import get_current_comp_id, get_current_user
+from models.application import ApplicationRowOut, ApplicationUpdate
 
 router = APIRouter(prefix="/api/applications", tags=["applications"])
 
@@ -30,7 +30,7 @@ def _safe_avg_score(job_candidate: dict[str, Any]) -> float | None:
     return round(sum(valid_scores) / len(valid_scores), 1)
 
 
-@router.get("")
+@router.get("", response_model=list[ApplicationRowOut])
 async def list_applications(
     user_id: str | None = Query(
         None,
@@ -38,7 +38,7 @@ async def list_applications(
     ),
     user: dict = Depends(get_current_user),
     comp_id: ObjectId = Depends(get_current_comp_id),
-) -> list[dict[str, Any]]:
+) -> list[ApplicationRowOut]:
     """List applications, scoped by the caller's ROLE (from the JWT):
 
     - interviewer: only the applications whose interview they are assigned
@@ -154,32 +154,6 @@ async def list_applications(
             ).to_list(length=2000)
         }
 
-    # Resolve each row's interviewer THROUGH its interview (interview ->
-    # interview_users -> users). The old code stamped the requesting user's
-    # own name on every row, which was only coincidentally right for the
-    # interviewer-scoped view and wrong for the company-wide one.
-    intv_id_strs = [str(i["_id"]) for i in interviews]
-    interviewer_id_by_intv: dict[str, str] = {}
-    if intv_id_strs:
-        async for link in db.interview_users.find(
-            {"intv_id": {"$in": intv_id_strs}}, {"intv_id": 1, "user_id": 1}
-        ):
-            interviewer_id_by_intv[link.get("intv_id")] = link.get("user_id")
-
-    interviewer_oids = [
-        ObjectId(uid)
-        for uid in set(interviewer_id_by_intv.values())
-        if uid and ObjectId.is_valid(uid)
-    ]
-    interviewers_by_id: dict[str, dict] = {}
-    if interviewer_oids:
-        interviewers_by_id = {
-            str(u["_id"]): u
-            for u in await db.users.find(
-                {"_id": {"$in": interviewer_oids}}, {"password_hash": 0}
-            ).to_list(length=2000)
-        }
-
     # CV-analysis status per application, so the list's CV cell can link to
     # the analysis report (completed) or show a progress/failure hint
     # instead of the raw PDF. _effective_status also downgrades stale
@@ -194,7 +168,7 @@ async def list_applications(
     ):
         analysis_status_map[a["jobcand_id"]], _ = _effective_status(a)
 
-    rows: list[dict[str, Any]] = []
+    rows: list[ApplicationRowOut] = []
 
     for jc in matched_job_candidates:
         cand_id = jc.get("cand_id")
@@ -223,41 +197,38 @@ async def list_applications(
         )
 
         rows.append(
-            {
-                "application_id": str(jc["_id"]),
-                "cand_id": str(candidate["_id"]),
-                "candidate_name": candidate.get("cand_full_name") or "Unknown",
-                "email": candidate.get("cand_email") or "",
-                "phone": candidate.get("cand_phone") or "",
-                "job_id": str(job["_id"]),
-                "job_title": job.get("title") or "",
-                # When the candidate profile was created - the dashboard's
-                # admin summary uses it for the "+N this month" delta.
-                "cand_created_at": candidate.get("cand_created_at"),
-                "status": (interview.get("intv_status") or "not_scheduled")
+            ApplicationRowOut(
+                application_id=str(jc["_id"]),
+                cand_id=str(candidate["_id"]),
+                candidate_name=candidate.get("cand_full_name") or "Unknown",
+                email=candidate.get("cand_email") or "",
+                phone=candidate.get("cand_phone") or "",
+                job_id=str(job["_id"]),
+                job_title=job.get("title") or "",
+                cand_created_at=candidate.get("cand_created_at"),
+                status=(interview.get("intv_status") or "not_scheduled")
                 .replace("_", " ")
                 .upper()
                 if interview
                 else "NOT SCHEDULED",
-                "cv_url": candidate.get("cand_cv_url"),
-                "cover_letter_url": candidate.get("cand_cover_letter_url"),
-                # None when no analysis exists for this application yet.
-                "cv_analysis_status": analysis_status_map.get(str(jc["_id"])),
-                "score": _safe_avg_score(jc),
-                "interview_datetime": interview.get("intv_date_time")
+                cv_url=candidate.get("cand_cv_url"),
+                cover_letter_url=candidate.get("cand_cover_letter_url"),
+                cv_analysis_status=analysis_status_map.get(str(jc["_id"])),
+                score=_safe_avg_score(jc),
+                interview_datetime=interview.get("intv_date_time")
                 if interview
                 else None,
-                "interviewer": interviewer_name,
-                "interviewer_user_id": interviewer_uid,
+                interviewer=interviewer_name,
+                interviewer_user_id=interviewer_uid,
                 # Interview id rides along so rows can deep-link to the
                 # interview page without an extra lookup.
-                "intv_id": intv_id,
-                "ratings": jc.get("ratings"),
-            }
+                intv_id=intv_id,
+                ratings=jc.get("ratings"),
+            )
         )
 
-    def _sort_key(row):
-        dt = row.get("interview_datetime")
+    def _sort_key(row: ApplicationRowOut):
+        dt = row.interview_datetime
 
         if dt is None:
             return datetime.min.replace(tzinfo=timezone.utc)
@@ -266,12 +237,6 @@ async def list_applications(
 
     rows.sort(key=_sort_key, reverse=True)
     return rows
-
-
-class ApplicationUpdate(BaseModel):
-    job_id: str
-    interviewer_user_id: str | None = None
-    scheduled_at: str | None = None
 
 
 @router.patch("/{application_id}")
