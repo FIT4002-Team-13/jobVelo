@@ -13,7 +13,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from bson import ObjectId
 
-from database import get_db
 from dependencies import get_current_user
 from main import app
 from routes.interview import _TRANSCRIPT_CHAR_BUDGET, _transcript_to_text
@@ -212,8 +211,10 @@ def test_delete_job_cascades_interviews_links_and_analyses(authed_recruiter):
     mock_db.interview_users.delete_many = AsyncMock()
     mock_db.interviews.delete_many = AsyncMock()
 
-    app.dependency_overrides[get_db] = lambda: mock_db
-    with patch("routes.jobs.delete_upload") as fake_delete:
+    with (
+        patch("routes.jobs.get_db", return_value=mock_db),
+        patch("routes.jobs.delete_upload") as fake_delete,
+    ):
         response = client.delete(f"/api/jobs/{job_id}")
 
     assert response.status_code == 204
@@ -248,8 +249,10 @@ def test_remove_candidate_from_job_cascades_cv_analysis(authed):
     mock_db.cv_analyses.delete_many = AsyncMock()
     mock_db.interviews.find.return_value = _cursor([])
 
-    app.dependency_overrides[get_db] = lambda: mock_db
-    with patch("routes.jobs.delete_upload") as fake_delete:
+    with (
+        patch("routes.jobs_candidates.get_db", return_value=mock_db),
+        patch("routes.jobs.delete_upload") as fake_delete,
+    ):
         response = client.delete(f"/api/jobs/{job_id}/candidates/{link_id}")
 
     assert response.status_code == 204
@@ -446,6 +449,8 @@ def test_complete_echoes_stored_bias_incidents_on_cached_read(authed):
     )
     mock_db.jobs.find_one = AsyncMock(return_value={"_id": job_id, "comp_id": comp_id})
     mock_db.job_candidates.find_one = AsyncMock(return_value=link)
+    # No assigned interviewer -> the assignee guard is a no-op here.
+    mock_db.interview_users.find_one = AsyncMock(return_value=None)
 
     with (
         patch("routes.interview.get_db", return_value=mock_db),
@@ -460,3 +465,35 @@ def test_complete_echoes_stored_bias_incidents_on_cached_read(authed):
     body = res.json()
     assert body["cached"] is True
     assert body["bias_incidents"] == bias
+
+
+def test_complete_rejected_for_non_assigned_interviewer(authed):
+    """Only the assigned interviewer may complete an interview. A different
+    interviewer (even in the same company) is 403'd and the LLM never runs."""
+    comp_id, client = authed
+    cand_id, job_id = ObjectId(), ObjectId()
+    interview = _interview_doc(
+        status="in_progress", cand_id=str(cand_id), job_id=str(job_id)
+    )
+
+    mock_db = MagicMock()
+    mock_db.interviews.find_one = AsyncMock(return_value=interview)
+    mock_db.candidates.find_one = AsyncMock(
+        return_value={"_id": cand_id, "comp_id": comp_id}
+    )
+    mock_db.jobs.find_one = AsyncMock(return_value={"_id": job_id, "comp_id": comp_id})
+    # Interview is assigned to SOMEONE ELSE (a different user id).
+    mock_db.interview_users.find_one = AsyncMock(
+        return_value={"intv_id": str(interview["_id"]), "user_id": str(ObjectId())}
+    )
+
+    with (
+        patch("routes.interview.get_db", return_value=mock_db),
+        patch(
+            "routes.interview.generate_interview_reports", new_callable=AsyncMock
+        ) as gen,
+    ):
+        res = client.post(f"/api/interviews/{interview['_id']}/complete", json={})
+
+    assert res.status_code == 403
+    gen.assert_not_awaited()

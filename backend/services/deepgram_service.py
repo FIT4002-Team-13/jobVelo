@@ -27,6 +27,7 @@ logger = logging.getLogger(__name__)
 
 # (text, is_final) — is_final means DG won't revise this segment.
 TranscriptHandler = Callable[[str, bool], Awaitable[None]]
+DiarizationHandler = Callable[[list[dict], bool], Awaitable[None]]
 
 
 def _join(fragments: list[str]) -> str:
@@ -36,6 +37,33 @@ def _join(fragments: list[str]) -> str:
     for punct in (" .", " ,", " ?", " !", " ;", " :"):
         text = text.replace(punct, punct[1])
     return text
+
+
+def group_speaker_words(words):
+    groups = []
+
+    for word in words:
+        text = (
+            getattr(word, "punctuated_word", None) or getattr(word, "word", "") or ""
+        ).strip()
+
+        if not text:
+            continue
+
+        speaker_id = getattr(word, "speaker", None)
+
+        if not groups or groups[-1]["speaker_id"] != speaker_id:
+            groups.append({"speaker_id": speaker_id, "words": []})
+
+        groups[-1]["words"].append(text)
+
+    return [
+        {
+            "speaker_id": group["speaker_id"],
+            "text": " ".join(group["words"]),
+        }
+        for group in groups
+    ]
 
 
 class DeepgramSession:
@@ -48,9 +76,15 @@ class DeepgramSession:
     configured endpointing silence). Interim events still stream the
     in-progress sentence so the live caption stays responsive."""
 
-    def __init__(self, on_transcript: TranscriptHandler):
+    def __init__(
+        self,
+        on_transcript: TranscriptHandler,
+        on_diarization: DiarizationHandler | None = None,
+    ):
         self._on_transcript = on_transcript
+        self._on_diarization = on_diarization
         self._connection = None
+
         # Finalized-but-not-yet-flushed fragments of the current utterance.
         self._buffer: list[str] = []
 
@@ -67,6 +101,20 @@ class DeepgramSession:
         """
         text = transcript.strip()
         if not text:
+            # Deepgram also sends an *empty* final with speech_final=True
+            # purely to mark end-of-utterance after silence - no new words,
+            # just "the speaker stopped." That still has to flush whatever's
+            # buffered: otherwise a fully finished sentence (e.g. the
+            # interviewer's question) sits in the buffer through the other
+            # speaker's entire turn on their own connection, and only gets
+            # flushed - stitched onto it - when this speaker's mic picks up
+            # new speech later, producing one merged line spanning both
+            # turns instead of two separate ones.
+            if is_final and speech_final and self._buffer:
+                sentence = _join(self._buffer)
+                self._buffer = []
+                if sentence:
+                    await self._on_transcript(sentence, True)
             return
 
         if not is_final:
@@ -97,6 +145,16 @@ class DeepgramSession:
         async def _on_message(_self, result, **_kwargs):
             try:
                 alt = result.channel.alternatives[0]
+                if getattr(result, "is_final", False):
+                    groups = group_speaker_words(alt.words or [])
+
+                    print(
+                        "DIARISATION",
+                        f"connection={id(self)}",
+                        groups,
+                    )
+                    if groups and self._on_diarization is not None:
+                        await self._on_diarization(groups, True)
                 await self._handle_result(
                     alt.transcript or "",
                     bool(getattr(result, "is_final", False)),
@@ -123,6 +181,7 @@ class DeepgramSession:
             encoding="linear16",
             sample_rate=16000,
             channels=1,
+            diarize=True,
         )
         ok = await self._connection.start(options)
         if not ok:

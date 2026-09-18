@@ -1,11 +1,14 @@
 import { useState } from "react";
 import { flex } from "../../styles/layout";
 import { initials, avatarColor, speakerColor } from "../../utils/avatar.js";
+import SpeakerAssignmentPopup from "./SpeakerAssignmentPopup.jsx";
 
 export { initials, avatarColor };
 
-export function TranscriptEntry({ entry, onNoteChange, highlighted, otherSpeaker }) {
+export function TranscriptEntry({ entry, onNoteChange, highlighted, otherSpeaker, onAssignSpeaker, interviewerLabel, candidateLabel, }) {
   const [editing, setEditing] = useState(false);
+  const [assigningSpeaker, setAssigningSpeaker] = useState(false);
+  const canAssignSpeaker = Boolean(entry.stream_id) && Boolean(onAssignSpeaker);
   const hasNote = !!entry.comment;
 
   return (
@@ -16,15 +19,42 @@ export function TranscriptEntry({ entry, onNoteChange, highlighted, otherSpeaker
           highlighted ? "bg-coral-50 ring-1 ring-coral-200" : ""
         }`}
       >
-        <div
-          className={`w-8 h-8 rounded-pill ${
-            flex.rowCenter
-          } text-white text-xs font-bold shrink-0 ${speakerColor(entry.speaker, otherSpeaker)}`}
-        >
-          {initials(entry.speaker)}
-        </div>
-        <div className={`${flex.col} gap-0.5 flex-1 min-w-0`}>
-          <span className="text-xs text-neutral-400">{entry.timestamp}</span>
+        {canAssignSpeaker ? (
+          <button type="button" onClick={() => setAssigningSpeaker((open) => !open)} aria-label={`Change speaker for ${entry.speaker}`} title="Change speaker" className={`w-8 h-8 rounded-pill ${flex.rowCenter} text-white text-xs font-bold shrink-0 transition-transform hover:scale-110 hover:ring-2 hover:ring-primary-300 ${speakerColor(entry.speaker, otherSpeaker)}`}>
+            {initials(entry.speaker)}
+          </button>
+        ) : (
+          <div
+            className={`w-8 h-8 rounded-pill ${
+              flex.rowCenter
+            } text-white text-xs font-bold shrink-0 ${speakerColor(entry.speaker, otherSpeaker)}`}
+          >
+            {initials(entry.speaker)}
+          </div>
+        )}
+        <div className={`${flex.col} gap-0.5 flex-1 min-w-0 relative`}>
+          <div className="flex items-center gap-2">
+            {canAssignSpeaker ? (
+              <button type="button" onClick={() => setAssigningSpeaker(open => !open)} aria-expanded={assigningSpeaker} className="text-xs font-semibold text-neutral-600 hover:text-primary-500">
+                {entry.speaker} ▾
+              </button>
+            ) : (
+              <span className="text-xs font-semibold text-neutral-600">
+                {entry.speaker}
+              </span>
+            )}
+            {entry.source && (
+              <span className={`rounded-md px-2 py-0.5 text-xs font-medium ${entry.source === "mic" ? "bg-mint-50 text-mint-700" : "bg-primary-50 text-primary-700"}`}>
+                {entry.source === "mic" ? "Mic" : "Screen share"}
+              </span>
+            )}
+            <span className="text-xs text-neutral-400">
+              {entry.timestamp}
+            </span>
+          </div>
+          {assigningSpeaker && (
+            <SpeakerAssignmentPopup entry={entry} interviewerLabel={interviewerLabel} candidateLabel={candidateLabel} onAssign={onAssignSpeaker} onClose={() => setAssigningSpeaker(false)}/>
+          )}
           <span className="text-sm text-neutral-700 leading-snug">
             {entry.text}
           </span>
@@ -183,9 +213,10 @@ export function TranscriptPanel({
   videoRef,
   interviewerLabel,
   candidateLabel,
+  onAssignSpeaker
 }) {
   return (
-    <div className="card-base relative isolate flex flex-col w-[48%] overflow-hidden p-0 pt-3">
+    <div className="card-base relative isolate flex flex-col w-[48%] overflow-hidden p-0">
       <div className={`${flex.rowBetween} px-6 pt-1 pb-1 border-b border-neutral-100 shrink-0`}>
         <span className="text-base font-semibold text-neutral-800">Live Transcription</span>
         <div className={`${flex.row} gap-3 items-center`}>
@@ -226,7 +257,7 @@ export function TranscriptPanel({
 
       {transcriptVisible && (
         <div
-          className="flex-1 min-h-[200px] overflow-y-auto px-6 py-3 scrollbar-primary scroll-auto"
+          className="flex-1 min-h-[200px] short:min-h-[120px] overflow-y-auto px-6 py-3 scrollbar-primary scroll-auto"
           ref={transcriptContainerRef}
         >
           {transcript.length === 0 ? (
@@ -247,6 +278,9 @@ export function TranscriptPanel({
                   highlighted={entry.id === highlightedEntryId}
                   onNoteChange={onNoteChange}
                   otherSpeaker={entry.speaker === interviewerLabel ? candidateLabel : interviewerLabel}
+                  onAssignSpeaker={onAssignSpeaker}
+                  interviewerLabel={interviewerLabel}
+                  candidateLabel={candidateLabel}
                 />
               </div>
             ))
@@ -255,13 +289,13 @@ export function TranscriptPanel({
       )}
 
       {isScreenSharing && (
-        <div className="relative z-0 shrink-0 border-t border-neutral-100 pt-4 px-6 pb-4">
-          <p className="text-xs text-neutral-500 mb-2 font-medium">Screen Share</p>
+        <div className="relative z-0 shrink-0 border-t border-neutral-100 pt-4 short:pt-2 px-6 pb-4 short:pb-2">
+          <p className="text-xs text-neutral-500 mb-2 short:mb-1 font-medium">Screen Share</p>
           <video
             ref={videoRef}
             autoPlay
             muted
-            className="relative z-0 w-full h-40 bg-neutral-900 rounded-lg object-cover"
+            className="relative z-0 w-full h-40 short:h-28 bg-neutral-900 rounded-lg object-cover"
           />
         </div>
       )}

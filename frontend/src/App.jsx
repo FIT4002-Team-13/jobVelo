@@ -15,6 +15,7 @@ import JobDetailPage from './pages/JobDetailPage'
 import Profile from './pages/ProfilePage.jsx'
 import CvAnalysisPage from './pages/CvAnalysisPage'
 import InterviewPage from './pages/InterviewPage'
+import CandidatePage from './pages/CandidatePage.jsx'
 import CandidateDetailPage from './pages/CandidateDetailPage.jsx'
 import ApplicationsPage from './pages/ApplicationsPage.jsx'
 import ErrorPage, { AppErrorBoundary } from './pages/ErrorPage.jsx'
@@ -101,6 +102,14 @@ export default function App() {
           />
           <Route
             path="/interview/:id"
+            element={
+              <RequireAuth>
+                <CandidatePage />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/interview/:id/live"
             element={
               <RequireAuth>
                 <InterviewPage />

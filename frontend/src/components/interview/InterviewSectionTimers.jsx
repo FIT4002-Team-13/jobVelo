@@ -20,12 +20,12 @@ export function SectionCard({ section, st, color, onStart, onPause, onResume, on
   const timerClass = over ? "text-coral-500 animate-pulse" : isRunning ? color.timer : "text-neutral-700";
 
   return (
-    <div className={`shrink-0 w-[190px] h-[186px] flex flex-col border ${borderClass} rounded-2xl overflow-hidden bg-neutral-0 transition-all duration-300 ${isDone ? "opacity-50" : ""}`}>
+    <div className={`shrink-0 w-[190px] short:w-[178px] h-[186px] short:h-[166px] flex flex-col border ${borderClass} rounded-2xl overflow-hidden bg-neutral-0 transition-all duration-300 ${isDone ? "opacity-50" : ""}`}>
       <div className="h-1 bg-neutral-100 shrink-0">
         <div className={`h-1 ${barClass} transition-all duration-1000`} style={{ width: `${pct}%` }} />
       </div>
 
-      <div className="flex flex-1 flex-col gap-1.5 p-3.5">
+      <div className="flex flex-1 flex-col gap-1.5 short:gap-1 p-3.5 short:p-3">
         <div className={`${flex.rowBetween} gap-1.5 shrink-0`}>
           <span className="font-semibold text-neutral-800 text-sm leading-tight line-clamp-1">{section.name}</span>
           <span className={`text-xs px-1.5 py-0.5 rounded-full shrink-0 ${isDone ? "bg-neutral-100 text-neutral-400" : color.badge}`}>
@@ -33,7 +33,7 @@ export function SectionCard({ section, st, color, onStart, onPause, onResume, on
           </span>
         </div>
 
-        <p className="text-xs text-neutral-400 leading-snug line-clamp-2">{section.description}</p>
+        <p className="text-xs text-neutral-400 leading-snug line-clamp-2 short:line-clamp-1">{section.description}</p>
 
         <div className={`${flex.row} items-baseline gap-1 shrink-0`}>
           <span className={`font-mono text-lg font-bold ${timerClass}`}>{formatTimer(st.elapsed)}</span>
@@ -109,7 +109,7 @@ export function InterviewSectionTimeline({
 
   return (
     <div className="card-flat flex flex-col shrink-0 overflow-hidden">
-      <div className="px-6 pt-3.5 pb-2.5 border-b border-neutral-100 shrink-0">
+      <div className="px-6 pt-2.5 short:pt-2 pb-2 short:pb-1.5 border-b border-neutral-100 shrink-0">
         <h2 className="text-base font-semibold text-neutral-800">Interview Sections</h2>
       </div>
 
@@ -143,7 +143,7 @@ export function InterviewSectionTimeline({
           })}
         </div>
       ) : (
-        <div ref={sectionsScrollRef} className="overflow-x-auto px-6 py-4" style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}>
+        <div ref={sectionsScrollRef} className="overflow-x-auto px-6 py-3 short:py-2" style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}>
           <div className={`${flex.row} gap-3 items-stretch`}>
             {sections.map((section, i) => (
               <div key={i} ref={(el) => (sectionCardRefs.current[i] = el)} className="shrink-0">
