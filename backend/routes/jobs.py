@@ -245,6 +245,8 @@ async def create_job(
     comp_id: ObjectId = Depends(get_current_comp_id),
     user: dict = Depends(require_job_manager),
 ) -> JobOut:
+    
+    db = get_db()
     """Create a job in the caller's company. Any comp_id in the body is
     IGNORED - we substitute the JWT one so a user can't create jobs in a
     company they don't belong to."""
@@ -277,6 +279,8 @@ async def update_job(
     comp_id: ObjectId = Depends(get_current_comp_id),
     user: dict = Depends(require_job_manager),
 ) -> JobOut:
+    
+    db = get_db()
     if user.get("role") not in ("admin", "recruiter"):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -325,6 +329,8 @@ async def delete_job(
     comp_id: ObjectId = Depends(get_current_comp_id),
     user: dict = Depends(require_job_manager),
 ):
+    
+    db = get_db()
     """Delete the job AND everything hanging off it: job_candidates links,
     interviews (+ interviewer links), and cv_analyses docs/files. The
     candidate docs themselves are NOT deleted - candidates are shared
