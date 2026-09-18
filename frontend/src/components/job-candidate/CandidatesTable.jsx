@@ -123,7 +123,10 @@ export default function CandidatesTable({
                   <td className="px-4 py-3 font-semibold text-neutral-700">{formatScore(c.score)}</td>
                 )
                 const isRanked = typeof c.score === 'number' && Number.isFinite(c.score)
-                const isAssignedInterviewer = isInterviewer && c.interviewer_user_id === user?.userid
+                const isAssignedInterviewer =
+                  (isInterviewer || isHiringManager) &&
+                  !!c.interviewer_user_id &&
+                  c.interviewer_user_id === user?.userid
                 const isInProgress = c.status === 'IN PROGRESS'
                 // The assigned interviewer owns the session: only they may start
                 // a SCHEDULED interview or resume one that's IN PROGRESS
@@ -155,7 +158,7 @@ export default function CandidatesTable({
                           disabled={!canStart}
                           title={
                             !isInterviewer
-                              ? 'Only interviewers can start interviews'
+                              ? 'Only interviewers and hiring managers can start interviews'
                               : !isAssignedInterviewer
                               ? `Only the assigned interviewer can ${isInProgress ? 'resume' : 'start'} this interview`
                               : undefined
