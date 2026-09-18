@@ -13,7 +13,7 @@ from bson import ObjectId
 from mongomock_motor import AsyncMongoMockClient
 
 import database as db_module
-from dependencies import get_current_comp_id
+from dependencies import get_current_comp_id, get_current_user
 from main import app
 
 
@@ -28,14 +28,20 @@ async def db_client():
             yield c, mock_db
     app.dependency_overrides.clear()
 
-
 @pytest.fixture
 async def authed_db_client(db_client):
     client, db = db_client
     comp_id = ObjectId()
-    app.dependency_overrides[get_current_comp_id] = lambda: comp_id
-    yield client, db, comp_id
 
+    app.dependency_overrides[get_current_comp_id] = lambda: comp_id
+    app.dependency_overrides[get_current_user] = lambda: {
+        "_id": ObjectId(),
+        "role": "recruiter",
+        "comp_id": comp_id,
+    }
+
+    yield client, db, comp_id
+    
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 

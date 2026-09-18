@@ -22,7 +22,7 @@ from fastapi import APIRouter, Depends, HTTPException, Response, status
 from pydantic import BaseModel, EmailStr, Field
 
 from database import get_db
-from dependencies import get_current_comp_id
+from dependencies import get_current_comp_id, get_current_user
 from models.job import JobCreate, JobOut, JobUpdate
 from services.file_storage import delete_upload
 
@@ -205,6 +205,7 @@ async def list_jobs(
     ]
 
 
+
 @router.get("/{job_id}", response_model=JobOut)
 async def get_job(
     job_id: str,
@@ -228,16 +229,32 @@ async def get_job(
         }
     )
 
+async def require_job_manager(
+    user: dict = Depends(get_current_user),
+) -> dict:
+    if user.get("role") not in ("admin", "recruiter"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only recruiters and admins can manage jobs.",
+        )
+    return user
 
 @router.post("", response_model=JobOut, status_code=status.HTTP_201_CREATED)
 async def create_job(
     payload: JobCreate,
     comp_id: ObjectId = Depends(get_current_comp_id),
+    user: dict = Depends(require_job_manager),
 ) -> JobOut:
+    
+    db = get_db()
     """Create a job in the caller's company. Any comp_id in the body is
     IGNORED - we substitute the JWT one so a user can't create jobs in a
     company they don't belong to."""
-    db = get_db()
+    if user.get("role") not in ("admin", "recruiter"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only recruiters and admins can manage jobs.",
+        )
     now = datetime.now(timezone.utc)
     body = payload.model_dump()
     body["comp_id"] = comp_id  # JWT-derived; ignore whatever the client sent
@@ -260,8 +277,15 @@ async def update_job(
     job_id: str,
     payload: JobUpdate,
     comp_id: ObjectId = Depends(get_current_comp_id),
+    user: dict = Depends(require_job_manager),
 ) -> JobOut:
+    
     db = get_db()
+    if user.get("role") not in ("admin", "recruiter"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only recruiters and admins can manage jobs.",
+        )
     oid = _validate_oid(job_id)
 
     updates = {k: v for k, v in payload.model_dump().items() if v is not None}
@@ -303,7 +327,10 @@ async def update_job(
 async def delete_job(
     job_id: str,
     comp_id: ObjectId = Depends(get_current_comp_id),
+    user: dict = Depends(require_job_manager),
 ):
+    
+    db = get_db()
     """Delete the job AND everything hanging off it: job_candidates links,
     interviews (+ interviewer links), and cv_analyses docs/files. The
     candidate docs themselves are NOT deleted - candidates are shared
@@ -312,7 +339,12 @@ async def delete_job(
     Without the full cascade, orphaned interviews kept feeding the
     dashboard status rollup (pinning candidates at "SCHEDULED" forever)
     and analysis PDFs accumulated on disk unreachably."""
-    db = get_db()
+    
+    if user.get("role") not in ("admin", "recruiter"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only recruiters and admins can manage jobs.",
+        )
     oid = _validate_oid(job_id)
 
     # Collect the dependent ids BEFORE deleting anything.
@@ -462,7 +494,7 @@ async def add_candidate_to_job(
         if not ObjectId.is_valid(payload.interviewer_user_id):
             raise HTTPException(status_code=400, detail="Invalid interviewer_user_id")
         interviewer_user = await db.users.find_one(
-            {"_id": ObjectId(payload.interviewer_user_id), "comp_id": comp_id},
+            {"_id": ObjectId(payload.interviewer_user_id), "comp_id": comp_id, "role": {"$in": ["interviewer", "hiring_manager"]}},
             {"_id": 1},
         )
         if interviewer_user is None:

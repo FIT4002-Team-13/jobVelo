@@ -129,7 +129,9 @@ export default function CandidateInfoCard({
     (status === 'SCHEDULED' || status === 'IN PROGRESS') && isAssignedInterviewer
   const startLabel = status === 'IN PROGRESS' ? 'Resume Interview' : 'Start Interview'
   const statusClass = CANDIDATE_STATUS_STYLES[status] ?? FALLBACK_STATUS_CLASS
-
+  const canManageCandidates =
+    user?.role === 'admin' || user?.role === 'recruiter'
+    
   return (
     <section className={`${card.base} ${flex.col} h-full`}>
       <div className={flex.rowBetween}>
@@ -159,25 +161,25 @@ export default function CandidateInfoCard({
               {startLabel}
             </button>
           )}
-
-          <button
-            type="button"
-            disabled={status === 'COMPLETED' || status === 'CANCELLED'}
-            onClick={onEdit}
-            title={
-              status === 'COMPLETED' || status === 'CANCELLED'
-                ? 'This interview is finished - the application can no longer be edited.'
-                : undefined
-            }
-            className={`rounded-pill border px-4 py-0.5 text-sm font-semibold ${
-              status === 'COMPLETED' || status === 'CANCELLED'
-                ? 'cursor-not-allowed border-neutral-100 bg-neutral-50 text-neutral-300'
-                : 'border-neutral-200 bg-white text-neutral-500 hover:bg-neutral-50'
-            }`}
-          >
-            Edit
-          </button>
-
+          {canManageCandidates && (
+            <button
+              type="button"
+              disabled={status === 'COMPLETED' || status === 'CANCELLED'}
+              onClick={onEdit}
+              title={
+                status === 'COMPLETED' || status === 'CANCELLED'
+                  ? 'This interview is finished - the application can no longer be edited.'
+                  : undefined
+              }
+              className={`rounded-pill border px-4 py-0.5 text-sm font-semibold ${
+                status === 'COMPLETED' || status === 'CANCELLED'
+                  ? 'cursor-not-allowed border-neutral-100 bg-neutral-50 text-neutral-300'
+                  : 'border-neutral-200 bg-white text-neutral-500 hover:bg-neutral-50'
+              }`}
+            >
+              Edit
+            </button>
+          )}
           <span className={`rounded-pill px-3 py-1 text-xs font-bold uppercase ${statusClass}`}>
             {status}
           </span>
