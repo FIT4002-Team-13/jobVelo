@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom'
 import { LayoutDashboard, CalendarDays, Briefcase, Users, Search } from 'lucide-react'
 import { authedFetch } from '../../lib/api.js'
 import { useAuth } from '../../lib/AuthContext.jsx'
+import { formatMediumDate } from '../../utils/format.js'
 
 // Global quick-nav (Ctrl+K / Cmd+K). Searches jobs, candidates and pages in
 // one box and jumps straight to the match. Data is fetched lazily the first
@@ -100,7 +101,7 @@ export default function CommandPalette() {
         key: `job-${j.id}`,
         icon: <Briefcase size={14} />,
         title: j.title || 'Untitled role',
-        subtitle: j.status || null,
+        subtitle: j.job_created_at ? formatMediumDate(j.job_created_at) : null,
         to: `/jobs/${j.id}`,
       }))
 
