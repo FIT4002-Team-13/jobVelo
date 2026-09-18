@@ -184,7 +184,6 @@ async def list_candidates_for_job(
                     else "NOT SCHEDULED"
                 ),
                 scheduled_at=scheduled_at,
-                interviewer_user_id = user_id,
                 interviewer=interviewer_name,
                 # The assigned interviewer's user id, so the frontend can let
                 # ONLY that interviewer resume an in-progress interview.

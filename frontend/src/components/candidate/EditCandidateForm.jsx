@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { modal, form, flex, button } from '../../styles/layout'
 import { isEmail, isPhone, isFullName, isFutureDateTime } from '../../lib/validators.js'
 import { useAuth } from '../../lib/AuthContext.jsx'
-import { api } from '../../lib/api.js'
+import { api, authedFetch } from '../../lib/api.js'
 import InterviewerCombobox from './InterviewerCombobox.jsx'
 
 // Turn an ApiError (or any error) into a user-facing message, expanding
@@ -54,7 +54,6 @@ export default function EditCandidateForm({
           authedFetch('/api/users?role=interviewer'),
           authedFetch('/api/users?role=hiring_manager'),
         ])
-
         if (!interviewerRes.ok || !hiringManagerRes.ok) throw new Error()
 
         const interviewerData = await interviewerRes.json()
@@ -64,7 +63,8 @@ export default function EditCandidateForm({
           ...(Array.isArray(interviewerData) ? interviewerData : []),
           ...(Array.isArray(hiringManagerData) ? hiringManagerData : []),
         ])
-          } catch {
+      } catch (err) {
+        console.error('Failed to load interviewers:', err)
         setInterviewers([])
       }
     }
@@ -210,37 +210,6 @@ export default function EditCandidateForm({
               </select>
             </div>
           </div>
-{/*  */}
-          <div className="grid grid-cols-2 gap-4">
-            <FileDropzone
-              label="Resume / CV"
-              existingName={existingCvName}
-              file={cvFile}
-              onFileChange={(file) => {
-                setCvFile(file)
-                setExistingCvName('')
-              }}
-              onRemove={() => {
-                setCvFile(null)
-                setExistingCvName('')
-              }}
-            />
-
-            <FileDropzone
-              label="Cover Letter"
-              existingName={existingCoverLetterName}
-              file={coverLetterFile}
-              onFileChange={(file) => {
-                setCoverLetterFile(file)
-                setExistingCoverLetterName('')
-              }}
-              onRemove={() => {
-                setCoverLetterFile(null)
-                setExistingCoverLetterName('')
-              }}
-            />
-          </div>
-{/*  */}
             {(user?.role === 'recruiter' || user?.role === 'admin') && (            
               <div className="grid grid-cols-2 gap-4">
               <div>

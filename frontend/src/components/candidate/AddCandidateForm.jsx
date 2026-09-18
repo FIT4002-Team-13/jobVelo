@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { modal, form, flex, button } from '../../styles/layout'
 import { useAuth } from '../../lib/AuthContext.jsx'
-import { api } from '../../lib/api.js'
+import { api, authedFetch } from '../../lib/api.js'
 import { isEmail, isPhone, isFullName, isFutureDateTime } from '../../lib/validators.js'
 import InterviewerCombobox from './InterviewerCombobox.jsx'
 import FileDropzone from './FileDropzone.jsx'
@@ -32,9 +32,8 @@ export default function AddCandidateForm({ jobs = [], fixedJobId = null, onClose
 
   useEffect(() => {
     async function loadInterviewers() {
-      if (!user?.comp_id || user?.role !== "recruiter") return;
+    if (!user?.comp_id || !['recruiter', 'admin'].includes(user?.role)) return
       try {
-        console.log('LOADING INTERVIEWERS + HIRING MANAGERS')
         const [interviewerRes, hiringManagerRes] = await Promise.all([
           authedFetch(`/api/users?role=interviewer`),
           authedFetch(`/api/users?role=hiring_manager`),
