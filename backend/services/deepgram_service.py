@@ -51,15 +51,22 @@ def group_speaker_words(words):
             continue
 
         speaker_id = getattr(word, "speaker", None)
+        start = getattr(word, "start", None)
+        end = getattr(word, "end", None)
 
         if not groups or groups[-1]["speaker_id"] != speaker_id:
-            groups.append({"speaker_id": speaker_id, "words": []})
+            groups.append({"speaker_id": speaker_id, "start": start, "end": end, "words": []})
+        else:
+            if end is not None:
+                groups[-1]["end"] = end
 
         groups[-1]["words"].append(text)
 
     return [
         {
             "speaker_id": group["speaker_id"],
+            "start": group["start"],
+            "end": group["end"],
             "text": " ".join(group["words"]),
         }
         for group in groups
@@ -147,12 +154,6 @@ class DeepgramSession:
                 alt = result.channel.alternatives[0]
                 if getattr(result, "is_final", False):
                     groups = group_speaker_words(alt.words or [])
-
-                    print(
-                        "DIARISATION",
-                        f"connection={id(self)}",
-                        groups,
-                    )
                     if groups and self._on_diarization is not None:
                         await self._on_diarization(groups, True)
                 await self._handle_result(
