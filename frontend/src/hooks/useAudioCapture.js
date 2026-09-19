@@ -153,8 +153,8 @@ export function useAudioCapture({
                 stream_id: data.stream_id,
                 speaker_id: group.speaker_id,
                 role,
-                start: group.start,
-                end: group.end,
+                start: interviewStart,
+                end: interviewEnd,
               }
             );
           }
