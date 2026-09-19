@@ -132,3 +132,73 @@ def test_login_unknown_user_returns_401(client):
         )
 
     assert response.status_code == 401
+
+
+# ── TC-003: Password complexity enforcement ───────────────────────────────────
+# Pydantic validation fires before the route body runs, so no DB mock is needed.
+# "Passwords do not match" is a frontend-only check; the backend enforces
+# password *strength* via validate_password_strength().
+
+
+_WEAK_PASSWORDS = [
+    ("allowercase1!", "no uppercase letter"),
+    ("ALLUPPERCASE!", "no digit"),
+    ("NoSpecialChar1", "no special character"),
+    ("Sh0rt!", "fewer than 8 characters"),
+]
+
+
+def test_signup_blocked_for_password_missing_uppercase(client):
+    response = client.post(
+        "/api/auth/signup",
+        json={
+            "username": "testuser",
+            "full_name": "Test User",
+            "email": "test@example.com",
+            "password": "allowercase1!",
+            "invitation_code": "any-code",
+        },
+    )
+    assert response.status_code == 422
+
+
+def test_signup_blocked_for_password_missing_digit(client):
+    response = client.post(
+        "/api/auth/signup",
+        json={
+            "username": "testuser",
+            "full_name": "Test User",
+            "email": "test@example.com",
+            "password": "ALLUPPERCASE!",
+            "invitation_code": "any-code",
+        },
+    )
+    assert response.status_code == 422
+
+
+def test_signup_blocked_for_password_missing_special_char(client):
+    response = client.post(
+        "/api/auth/signup",
+        json={
+            "username": "testuser",
+            "full_name": "Test User",
+            "email": "test@example.com",
+            "password": "NoSpecialChar1",
+            "invitation_code": "any-code",
+        },
+    )
+    assert response.status_code == 422
+
+
+def test_signup_blocked_for_password_too_short(client):
+    response = client.post(
+        "/api/auth/signup",
+        json={
+            "username": "testuser",
+            "full_name": "Test User",
+            "email": "test@example.com",
+            "password": "Sh0rt!",
+            "invitation_code": "any-code",
+        },
+    )
+    assert response.status_code == 422
