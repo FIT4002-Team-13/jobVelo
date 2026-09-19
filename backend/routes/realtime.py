@@ -60,6 +60,7 @@ async def realtime_transcribe(websocket: WebSocket, role: str | None = None) -> 
             {
                 "type": "diarized_transcript",
                 "stream_id": stream_id,
+                "role": role,
                 "groups": groups,
                 "is_final": is_final,
             }

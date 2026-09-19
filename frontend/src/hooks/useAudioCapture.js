@@ -39,6 +39,8 @@ export function useAudioCapture({
   const pausedTimeRef = useRef(0);
   const autoStartedRef = useRef(false);
   const transcriptionActiveRef = useRef(false);
+  const micTranscriptStartRef = useRef(null);
+  const displayTranscriptStartRef = useRef(null);
 
   useEffect(() => {
     isPausedRef.current = isPaused;
@@ -113,10 +115,15 @@ export function useAudioCapture({
         const data = JSON.parse(event.data);
 
         if (data.type === "diarized_transcript") {
-          console.log("Detected speakers:", data);
 
           if (!data.is_final || !Array.isArray(data.groups)) return;
 
+          // Deepgram timestamps are relative to this individual audio stream.
+          // Convert them to the shared interview timer before storing them.
+          const streamStart =
+            role === "interviewer"
+              ? micTranscriptStartRef.current
+              : displayTranscriptStartRef.current;
           // These must match "mic" and "screen" in useTranscript.js
           const source = role === "interviewer" ? "mic" : "screen";
           const sourceLabel = source === "mic" ? "Mic" : "Shared audio";
@@ -130,11 +137,24 @@ export function useAudioCapture({
               ? `${sourceLabel} · Speaker ${group.speaker_id + 1}`
               : `${sourceLabel} · Unknown speaker`;
 
+            const interviewStart =
+              streamStart != null && group.start != null
+                ? streamStart + Number(group.start)
+                : null;
+
+            const interviewEnd =
+              streamStart != null && group.end != null
+                ? streamStart + Number(group.end)
+                : null;
+
             appendTranscript(group.text, true, detectedSpeaker, partialRef,
               {
                 source,
                 stream_id: data.stream_id,
                 speaker_id: group.speaker_id,
+                role,
+                start: interviewStart,
+                end: interviewEnd,
               }
             );
           }
@@ -177,7 +197,19 @@ export function useAudioCapture({
         if (!micStreamRef.current?.getAudioTracks().some((t) => t.enabled)) return;
         const inputBuffer = event.inputBuffer.getChannelData(0);
         if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
-        wsRef.current.send(downsampleBuffer(inputBuffer, audioContext.sampleRate, 16000));
+
+        // Record the shared interview-clock position when this stream
+        // actually starts sending audio to Deepgram.
+        if (micTranscriptStartRef.current === null) {
+          micTranscriptStartRef.current =
+            (Date.now() - startTimeRef.current) / 1000;
+
+          console.log(
+            "Mic transcription clock started at:",
+            micTranscriptStartRef.current
+          );
+        }
+          wsRef.current.send(downsampleBuffer(inputBuffer, audioContext.sampleRate, 16000));
       };
 
       micSource.connect(micProcessor);
@@ -245,6 +277,15 @@ export function useAudioCapture({
           if (isPausedRef.current || !transcriptionActiveRef.current) return;
           const inputBuffer = event.inputBuffer.getChannelData(0);
           if (!wsDisplayRef.current || wsDisplayRef.current.readyState !== WebSocket.OPEN) return;
+          if (displayTranscriptStartRef.current === null) {
+            displayTranscriptStartRef.current =
+              (Date.now() - startTimeRef.current) / 1000;
+
+            console.log(
+              "Candidate transcription clock started at:",
+              displayTranscriptStartRef.current
+            );
+          }
           wsDisplayRef.current.send(downsampleBuffer(inputBuffer, audioContext.sampleRate, 16000));
         };
 
@@ -296,6 +337,8 @@ export function useAudioCapture({
     if (videoRef.current) videoRef.current.srcObject = null;
     if (wsRef.current) { if (wsRef.current.readyState === WebSocket.OPEN) wsRef.current.close(); wsRef.current = null; }
     if (wsDisplayRef.current) { if (wsDisplayRef.current.readyState === WebSocket.OPEN) wsDisplayRef.current.close(); wsDisplayRef.current = null; }
+    micTranscriptStartRef.current = null;
+    displayTranscriptStartRef.current = null;
     transcriptionActiveRef.current = false;
     setIsMicActive(false);
     setIsScreenSharing(false);
@@ -358,6 +401,7 @@ export function useAudioCapture({
     if (displayProcessorRef.current) { displayProcessorRef.current.disconnect(); displayProcessorRef.current.onaudioprocess = null; displayProcessorRef.current = null; }
     if (videoRef.current) videoRef.current.srcObject = null;
     if (wsDisplayRef.current) { if (wsDisplayRef.current.readyState === WebSocket.OPEN) wsDisplayRef.current.close(); wsDisplayRef.current = null; }
+    displayTranscriptStartRef.current = null;
     setIsScreenSharing(false);
     setStatus("Listening (interviewer mic)…");
   }

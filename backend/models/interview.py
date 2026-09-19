@@ -21,6 +21,13 @@ class TranscriptEntry(BaseModel):
     text: str
     comment: str | None = None
 
+    source: str | None = None
+    stream_id: str | None = None
+    speaker_id: int | None = None
+    speaker_role: str | None = None
+
+    start: float | None = None
+    end: float | None = None
 
 class EvidenceRef(BaseModel):
     """One timestamped transcript quote backing a feedback point (US28).

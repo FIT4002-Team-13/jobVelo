@@ -297,9 +297,15 @@ def test_complete_empty_llm_response_is_502_and_releases_claim(authed):
 
     assert response.status_code == 502
     # Only the claim-release update ran - nothing was persisted as a report.
-    assert mock_db.interviews.update_one.await_count == 1
-    unset_call = mock_db.interviews.update_one.await_args.args[1]
-    assert "$unset" in unset_call and "intv_report_state" in unset_call["$unset"]
+    assert mock_db.interviews.update_one.await_count == 2
+    release_call = mock_db.interviews.update_one.await_args_list[1]
+    release_update = release_call.args[1]
+    assert release_update["$set"]["intv_report_state"] == "failed"
+    assert "$unset" in release_update
+    release_call = mock_db.interviews.update_one.await_args_list[1]
+    release_update = release_call.args[1]
+    assert release_update["$set"]["intv_report_state"] == "failed"
+    assert release_update["$unset"]["intv_report_started_at"] == ""
     mock_db.job_candidates.update_one.assert_not_called()
 
 
@@ -329,8 +335,9 @@ def test_complete_mistyped_llm_section_is_502_not_500(authed):
         )
 
     assert response.status_code == 502
-    unset_call = mock_db.interviews.update_one.await_args.args[1]
-    assert "$unset" in unset_call
+    release_call = mock_db.interviews.update_one.await_args_list[1]
+    release_update = release_call.args[1]
+    assert "$unset" in release_update
 
 
 def test_complete_cached_with_missing_link_returns_null_scores(authed):
