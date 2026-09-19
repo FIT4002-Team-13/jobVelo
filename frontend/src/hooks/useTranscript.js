@@ -125,7 +125,19 @@ export function useTranscript(id, { serverData, candidateName, userId, isComplet
       const prevPartialId = partialRef.current;
       partialRef.current = null;
 
-      const newEntry = {id: entryId, speaker: displayedSpeaker, timestamp, text, source: detected.source, stream_id: detected.stream_id, speaker_id: detected.speaker_id, participant_id: assignment?.participant_id ?? null, speaker_role: assignment?.speaker_role ?? null};
+      const newEntry = {
+        id: entryId,
+        speaker: displayedSpeaker,
+        timestamp,
+        text,
+        source: detected.source,
+        stream_id: detected.stream_id,
+        speaker_id: detected.speaker_id,
+        start: detected.start ?? null,
+        end: detected.end ?? null,
+        participant_id: assignment?.participant_id ?? null,
+        speaker_role: assignment?.speaker_role ?? null,
+      };
       setTranscript((prev) => {
         const refreshed = prevPartialId ? prev.filter((e) => e.id !== prevPartialId) : prev;
         const updated = [...refreshed, newEntry];
@@ -147,6 +159,8 @@ export function useTranscript(id, { serverData, candidateName, userId, isComplet
           source: detected.source,
           stream_id: detected.stream_id,
           speaker_id: detected.speaker_id,
+          start: detected.start ?? null,
+          end: detected.end ?? null,
           participant_id: assignment?.participant_id ?? null,
           speaker_role: assignment?.speaker_role ?? null},
       ]);
