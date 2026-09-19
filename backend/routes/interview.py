@@ -1000,8 +1000,14 @@ async def complete_interview(
 
     except Exception:
         await db.interviews.update_one(
-            {"_id": ObjectId(intv_id)},
-            {"$set": {"intv_report_state": "failed"}},
+            {
+                "_id": ObjectId(intv_id),
+                "intv_report_state": "generating",
+            },
+            {
+                "$set": {"intv_report_state": "failed"},
+                "$unset": {"intv_report_started_at": ""},
+            },
         )
         raise
     # Bias incidents the live checker flagged, sent up with the completion
