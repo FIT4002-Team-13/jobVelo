@@ -169,13 +169,15 @@ function ConsistencyChart({ interviewers, teamSeries, allMonths, xScale, activeC
         ))}
 
         {/* Team average line */}
-        {teamData.length >= 2 && (
+        {teamData.length >= 1 && (
           <g opacity={teamOp} style={{ transition: 'opacity 0.15s' }}>
-            <polyline
-              points={seriesPoints(teamData, xScale)}
-              fill="none" stroke="#6366f1" strokeWidth="2.5"
-              strokeLinecap="round" strokeLinejoin="round"
-            />
+            {teamData.length >= 2 && (
+              <polyline
+                points={seriesPoints(teamData, xScale)}
+                fill="none" stroke="#6366f1" strokeWidth="2.5"
+                strokeLinecap="round" strokeLinejoin="round"
+              />
+            )}
             {teamData.map(pt => xScale[pt.month] != null && (
               <circle key={pt.month} cx={xScale[pt.month]} cy={scoreToY(pt.value)} r="3" fill="#6366f1" />
             ))}
@@ -186,9 +188,7 @@ function ConsistencyChart({ interviewers, teamSeries, allMonths, xScale, activeC
         {interviewers.map((intv, idx) => {
           const { color, dash } = paletteFor(idx)
           const series = (intv.series || {})[activeCategory] || []
-          if (series.length < 2) return null
-          const pts = seriesPoints(series, xScale)
-          if (!pts) return null
+          if (series.length < 1) return null
 
           let op, sw, r
           if (!hoveredId)                      { op = 0.85; sw = 2;   r = 2.5 }
@@ -197,10 +197,12 @@ function ConsistencyChart({ interviewers, teamSeries, allMonths, xScale, activeC
 
           return (
             <g key={intv.user_id} opacity={op} style={{ transition: 'opacity 0.15s' }}>
-              <polyline
-                points={pts} fill="none" stroke={color}
-                strokeWidth={sw} strokeDasharray={dash} strokeLinecap="round"
-              />
+              {series.length >= 2 && (
+                <polyline
+                  points={seriesPoints(series, xScale)} fill="none" stroke={color}
+                  strokeWidth={sw} strokeDasharray={dash} strokeLinecap="round"
+                />
+              )}
               {series.map(pt => xScale[pt.month] != null && (
                 <circle key={pt.month} cx={xScale[pt.month]} cy={scoreToY(pt.value)} r={r} fill={color} />
               ))}
