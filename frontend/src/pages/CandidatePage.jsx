@@ -322,38 +322,40 @@ export default function CandidatePage() {
       <Sidebar />
       <div className="flex-1 flex flex-col overflow-hidden">
         <header className="bg-neutral-0 border-b border-neutral-200 px-10 py-4 shrink-0">
-          <button
-            onClick={() => navigate(-1)}
-            className={`${flex.row} gap-2 mb-3 w-fit rounded-lg border border-neutral-200 bg-neutral-0 px-3 py-1.5 text-sm font-semibold text-neutral-600 transition-colors hover:border-primary-200 hover:bg-primary-500/10 hover:text-primary-600`}
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/>
-            </svg>
-            Back
-          </button>
-          <div className={`${flex.row} gap-16 items-center`}>
-            <div className={flex.col}>
-              <span className="text-xs font-bold text-neutral-400 uppercase tracking-widest mb-0.5">
-                Candidate
-              </span>
-              <span className="text-2xl font-bold text-neutral-800">
-                {candidateName || "—"}
-              </span>
-              <span className="text-sm text-neutral-400">
-                {candidateRole || "—"}
-              </span>
+          <div className={`${flex.row} items-center justify-between`}>
+            <div className={`${flex.row} gap-16 items-center`}>
+              <div className={flex.col}>
+                <span className="text-xs font-bold text-neutral-400 uppercase tracking-widest mb-0.5">
+                  Candidate
+                </span>
+                <span className="text-2xl font-bold text-neutral-800">
+                  {candidateName || "—"}
+                </span>
+                <span className="text-sm text-neutral-400">
+                  {candidateRole || "—"}
+                </span>
+              </div>
+              <div className={flex.col}>
+                <span className="text-xs font-bold text-neutral-400 uppercase tracking-widest mb-0.5">
+                  Interviewer
+                </span>
+                <span className="text-2xl font-bold text-neutral-800">
+                  {user?.full_name || "—"}
+                </span>
+                <span className="text-sm text-neutral-400">
+                  {companyName || "—"}
+                </span>
+              </div>
             </div>
-            <div className={flex.col}>
-              <span className="text-xs font-bold text-neutral-400 uppercase tracking-widest mb-0.5">
-                Interviewer
-              </span>
-              <span className="text-2xl font-bold text-neutral-800">
-                {user?.full_name || "—"}
-              </span>
-              <span className="text-sm text-neutral-400">
-                {companyName || "—"}
-              </span>
-            </div>
+            <button
+              onClick={() => navigate(-1)}
+              className={`${flex.row} gap-2 rounded-lg border border-neutral-200 bg-neutral-0 px-3 py-1.5 text-sm font-semibold text-neutral-600 transition-colors hover:border-primary-200 hover:bg-primary-500/10 hover:text-primary-600`}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/>
+              </svg>
+              Back
+            </button>
           </div>
 
           <div className="mt-3 pt-3 border-t border-neutral-100 flex items-center gap-2">

@@ -106,7 +106,7 @@ export default function JobsPage() {
           <button
             type="button"
             onClick={() => setFormModal('create')}
-            className={`flex items-center gap-2 ${button.primary}`}
+            className={`flex items-center gap-2 ${button.primary} !py-1.5`}
           >
             <span className="text-lg leading-none">+</span> Create Job
           </button>

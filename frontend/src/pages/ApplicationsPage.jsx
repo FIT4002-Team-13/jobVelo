@@ -194,7 +194,7 @@ export default function ApplicationsPage() {
           <button
             type="button"
             onClick={() => setShowAddModal(true)}
-            className={`flex items-center gap-2 ${button.primary}`}
+            className={`flex items-center gap-2 ${button.primary} !py-1.5`}
           >
             <span className="text-lg leading-none">+</span> Add Candidate
           </button>
