@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import { flex } from "../../../styles/layout";
 import { SECTION_COLORS } from "../../../utils/constants.js";
 import { formatTimer, parseTimestamp } from "../../../utils/time.js";
 import ReportSections from "../../interview/ReportSections.jsx";
+import SectionMenu from "../SectionMenu.jsx";
 
 const SCORE_COLORS = {
   Communication: "bg-primary-500",
@@ -126,6 +127,18 @@ function DownloadMenu({ onDownloadReport, onDownloadTranscript }) {
   );
 }
 
+function SectionMarkers({ sections }) {
+  return sections?.map((s) => (
+    <div key={s._idx} id={`post-section-${s._idx}`} className={`${flex.row} scroll-mt-2 items-center gap-3 pt-2`}>
+      <span className={`shrink-0 rounded-full px-2.5 py-0.5 font-mono text-xs ${SECTION_COLORS[s._idx % SECTION_COLORS.length].badge}`}>
+        {formatTimer(s.start_at)}
+      </span>
+      <span className="shrink-0 text-base font-semibold text-neutral-800">{s.name}</span>
+      <span className="h-px flex-1 bg-neutral-200" />
+    </div>
+  ));
+}
+
 function TranscriptRow({ entry, query, highlighted, isInterviewer, onClick, entryRef, onNoteChange }) {
   const [editing, setEditing] = useState(false);
   const hasNote = !!entry.comment;
@@ -225,7 +238,7 @@ export default function TranscriptAnalysisTab({
   onDownloadReport,
   onDownloadTranscript,
 }) {
-  const [menuOpen, setMenuOpen] = useState(false);
+  const [showSections, setShowSections] = useState(true);
   const [search, setSearch] = useState("");
   const [localHighlightId, setLocalHighlightId] = useState(null);
   const [activeTab, setActiveTab] = useState("candidate");
@@ -266,6 +279,23 @@ export default function TranscriptAnalysisTab({
     setTimeout(() => setLocalHighlightId((id) => (id === match.id ? null : id)), 3000);
   }
 
+  // Section markers sit inline in the transcript, just before the first entry
+  // at/after the section's start. Hidden while searching so results stay a flat list.
+  const markersByIndex = {};
+  if (showSections && !query) {
+    startedSections.forEach((s) => {
+      let at = transcript.findIndex((e) => parseTimestamp(e.timestamp) >= s.start_at);
+      if (at === -1) at = transcript.length;
+      (markersByIndex[at] ??= []).push(s);
+    });
+  }
+
+  function selectSection(i) {
+    const marker = showSections && document.getElementById(`post-section-${i}`);
+    if (marker) marker.scrollIntoView({ behavior: "smooth", block: "start" });
+    else jumpToSection(i);
+  }
+
   const candidateReport = report?.candidate_report;
 
   const scoreRows = report?.scores
@@ -296,68 +326,17 @@ export default function TranscriptAnalysisTab({
 
   return (
     <>
-      {/* Sections sidebar */}
-      {hasSections && (
-        <div className={`shrink-0 overflow-hidden border-r border-neutral-200 bg-white transition-[width] duration-200 ${flex.col} ${menuOpen ? "w-64" : "w-0"}`}>
-          <div className="w-64 flex flex-col h-full">
-            <div className={`${flex.rowBetween} items-center px-4 py-3.5 border-b border-neutral-100 shrink-0`}>
-              <span className="text-sm font-semibold text-neutral-800">Sections</span>
-              <button
-                onClick={() => setMenuOpen(false)}
-                className="text-neutral-400 hover:text-neutral-600 transition-colors p-1 rounded-lg hover:bg-neutral-100"
-                aria-label="Close menu"
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-                  <line x1="18" y1="6" x2="6" y2="18" />
-                  <line x1="6" y1="6" x2="18" y2="18" />
-                </svg>
-              </button>
-            </div>
-            <div className="flex-1 overflow-y-auto py-2">
-              {startedSections.map((section) => {
-                const i = section._idx;
-                const color = SECTION_COLORS[i % SECTION_COLORS.length];
-                return (
-                  <button
-                    key={i}
-                    onClick={() => { jumpToSection(i); setMenuOpen(false); }}
-                    className="w-full flex items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-neutral-50 group"
-                  >
-                    <span className={`mt-0.5 text-xs font-mono px-2 py-0.5 rounded-full shrink-0 ${color.badge}`}>
-                      {formatTimer(section.start_at)}
-                    </span>
-                    <div className={`${flex.col} min-w-0`}>
-                      <span className="text-sm font-semibold text-neutral-800 group-hover:text-primary-600 transition-colors">
-                        {section.name}
-                      </span>
-                      {section.description && (
-                        <span className="text-xs text-neutral-400 line-clamp-2 mt-0.5">
-                          {section.description}
-                        </span>
-                      )}
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Transcript column */}
       <div className={`flex-1 ${flex.col} overflow-hidden`}>
         <div className="shrink-0 bg-neutral-50 border-b border-neutral-100 px-6 py-3">
           <div className={`${flex.row} items-center gap-2`}>
             {hasSections && (
-              <button
-                onClick={() => setMenuOpen((o) => !o)}
-                aria-label="Toggle section navigation"
-                className="shrink-0 flex flex-col justify-center gap-1 p-2.5 rounded-xl bg-white border border-neutral-200 hover:bg-neutral-50 transition-colors"
-              >
-                <span className="block w-4 h-0.5 bg-neutral-600 rounded" />
-                <span className="block w-4 h-0.5 bg-neutral-600 rounded" />
-                <span className="block w-4 h-0.5 bg-neutral-600 rounded" />
-              </button>
+              <SectionMenu
+                sections={startedSections}
+                visible={showSections}
+                onToggleVisible={() => setShowSections((v) => !v)}
+                onSelect={selectSection}
+              />
             )}
             <div className="relative flex-1">
               <svg
@@ -406,18 +385,23 @@ export default function TranscriptAnalysisTab({
             ) : filteredTranscript.length === 0 ? (
               <p className="text-sm text-neutral-400 text-center mt-8">No results for the current filter.</p>
             ) : (
-              filteredTranscript.map((entry, i) => (
-                <TranscriptRow
-                  key={entry.id}
-                  entry={entry}
-                  query={query}
-                  highlighted={highlightedEntryIdx === i || entry.id === highlightedEntryId || entry.id === localHighlightId}
-                  isInterviewer={entry.speaker === interviewerLabel}
-                  onClick={query ? () => handleFilteredEntryClick(entry) : undefined}
-                  entryRef={(el) => (transcriptEntryRefs.current[i] = el)}
-                  onNoteChange={onNoteChange}
-                />
-              ))
+              <>
+                {filteredTranscript.map((entry, i) => (
+                  <Fragment key={entry.id}>
+                    <SectionMarkers sections={markersByIndex[i]} />
+                    <TranscriptRow
+                      entry={entry}
+                      query={query}
+                      highlighted={highlightedEntryIdx === i || entry.id === highlightedEntryId || entry.id === localHighlightId}
+                      isInterviewer={entry.speaker === interviewerLabel}
+                      onClick={query ? () => handleFilteredEntryClick(entry) : undefined}
+                      entryRef={(el) => (transcriptEntryRefs.current[i] = el)}
+                      onNoteChange={onNoteChange}
+                    />
+                  </Fragment>
+                ))}
+                <SectionMarkers sections={markersByIndex[filteredTranscript.length]} />
+              </>
             )}
           </div>
         </div>
