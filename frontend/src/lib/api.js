@@ -245,6 +245,17 @@ export const api = {
   // ---------- dashboard ----------------------------------------------------
   getDashboardSummary: () => request('/dashboard/summary', { auth: true }),
 
+  // ---------- interviewer feedback (strengths / improvements) --------------
+  getInterviewerFeedback: () => request('/interviewer-feedback', { auth: true }),
+  regenerateInterviewerFeedback: () =>
+    request('/interviewer-feedback/regenerate', { method: 'POST', auth: true }),
+  updateFeedbackItem: (feedbackId, itemId, payload) =>
+    request(`/interviewer-feedback/${encodeURIComponent(feedbackId)}/items/${encodeURIComponent(itemId)}`, {
+      method: 'PATCH',
+      body: payload,
+      auth: true,
+    }),
+
   // ---------- companies --------------------------------------------------
   getCompany:    (comp_id)          => request(`/companies/${comp_id}`,  { auth: true }),
   updateCompany: (comp_id, payload) => request(`/companies/${comp_id}`,  { method: 'PUT', body: payload, auth: true }),
