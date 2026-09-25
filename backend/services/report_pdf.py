@@ -157,6 +157,34 @@ def _score_bar(pdf: _ReportPDF, label: str, value: float, colour: tuple) -> None
     pdf.cell(0, 6, f"{value:.1f}/10", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
 
 
+def _stat_row(pdf: _ReportPDF, label: str, value_text: str) -> None:
+    """A summary row with no progress bar (e.g. a raw count) - same label
+    typography and value-column x position as _score_bar so every row in
+    the summary lines up as one consistent table."""
+    bar_x = pdf.l_margin + 48
+    bar_w = 90.0
+    y = pdf.get_y()
+
+    pdf.set_font("Helvetica", "", 10)
+    pdf.set_text_color(*_INK)
+    pdf.cell(48, 6, _latin(label))
+
+    pdf.set_xy(bar_x + bar_w + 4, y)
+    pdf.set_font("Helvetica", "B", 10)
+    pdf.cell(0, 6, _latin(value_text), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+
+
+def _stat_row_empty(pdf: _ReportPDF, label: str, empty_text: str) -> None:
+    """Empty-state variant of _stat_row - same label style, italic/faint
+    value like the trend section's "No scored interviews" placeholder."""
+    pdf.set_font("Helvetica", "", 10)
+    pdf.set_text_color(*_INK)
+    pdf.cell(48, 6, _latin(label))
+    pdf.set_font("Helvetica", "I", 9)
+    pdf.set_text_color(*_FAINT)
+    pdf.cell(0, 6, _latin(empty_text), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+
+
 _SKILL_LABELS = {
     "communication": "Communication",
     "technical_skills": "Technical Skills",
@@ -555,5 +583,54 @@ def build_interview_report_pdf(
                 new_y=YPos.NEXT,
             )
             pdf.ln(2)
+
+    return bytes(pdf.output())
+
+
+def build_interviewer_stats_pdf(*, interviewer_name: str, stats: dict) -> bytes:
+    """One-page export of the "My Profile" stats card (US35): total
+    interviews, average candidate score, and the 6-month score trend."""
+    pdf = _ReportPDF()
+    pdf.set_auto_page_break(True, margin=18)
+    pdf.set_margins(16, 16, 16)
+    pdf.add_page()
+
+    pdf.set_font("Helvetica", "B", 18)
+    pdf.set_text_color(*_INK)
+    pdf.cell(
+        0, 10, _latin("Interview Performance Statistics"), new_x=XPos.LMARGIN, new_y=YPos.NEXT
+    )
+    pdf.set_font("Helvetica", "", 10)
+    pdf.set_text_color(*_MUTED)
+    generated = datetime.now(timezone.utc).strftime("%d %b %Y, %H:%M UTC")
+    pdf.cell(
+        0,
+        5.5,
+        _latin(f"{interviewer_name} - generated {generated}"),
+        new_x=XPos.LMARGIN,
+        new_y=YPos.NEXT,
+    )
+    pdf.ln(4)
+
+    _heading(pdf, "Summary")
+    total = stats.get("total_interviews") or 0
+    _stat_row(pdf, "Total interviews", str(total))
+
+    avg_score = stats.get("average_candidate_score")
+    if avg_score is not None:
+        _score_bar(pdf, "Average candidate score", float(avg_score), _PRIMARY)
+    else:
+        _stat_row_empty(pdf, "Average candidate score", "Not enough data yet")
+
+    trend = stats.get("score_trend") or []
+    if trend:
+        _heading(pdf, "6-Month Score Trend")
+        for point in trend:
+            label = point.get("label") or ""
+            value = point.get("avg_score")
+            if isinstance(value, (int, float)):
+                _score_bar(pdf, label, float(value), _PRIMARY)
+            else:
+                _stat_row_empty(pdf, label, "No scored interviews")
 
     return bytes(pdf.output())
