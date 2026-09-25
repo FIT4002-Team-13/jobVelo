@@ -100,9 +100,10 @@ export default function Sidebar({ user: userProp }) {
   ];
 
   const isAdmin = user?.role === "admin";
+  const isHiringManager = user?.role === "hiring_manager";
   const mainItems = navItems.filter((i) => i.group === "MAIN");
   const groupItems = navItems.filter((i) => i.group === "GROUP");
-  const insightsItems = navItems.filter((i) => i.group === "INSIGHTS");
+  const insightsItems = isHiringManager ? navItems.filter((i) => i.group === "INSIGHTS") : [];
   const adminItems = isAdmin ? navItems.filter((i) => i.group === "ADMIN") : [];
 
   const navLink = (item) => {
@@ -179,10 +180,14 @@ export default function Sidebar({ user: userProp }) {
         </span>
         {groupItems.map(navLink)}
 
-        <span className="text-xs font-bold text-neutral-400 tracking-[0.08em] px-2 pt-4 pb-1.5">
-          INSIGHTS
-        </span>
-        {insightsItems.map(navLink)}
+        {insightsItems.length > 0 && (
+          <>
+            <span className="text-xs font-bold text-neutral-400 tracking-[0.08em] px-2 pt-4 pb-1.5">
+              INSIGHTS
+            </span>
+            {insightsItems.map(navLink)}
+          </>
+        )}
 
         {adminItems.length > 0 && (
           <>
