@@ -189,7 +189,8 @@ export default function CandidatePage() {
     });
   }, [isCompleted, id, serverData]);
 
-  const interviewerLabel = user?.full_name || "Interviewer";
+  // Assigned interviewer, not the logged-in user (who may just be viewing).
+  const interviewerLabel = assignedInterviewer.name || user?.full_name || "Interviewer";
 
   const report =
     prefetchedReport ??
@@ -363,7 +364,7 @@ export default function CandidatePage() {
                   Interviewer
                 </span>
                 <span className="text-2xl font-bold text-neutral-800">
-                  {user?.full_name || "—"}
+                  {assignedInterviewer.name || "—"}
                 </span>
                 <span className="text-sm text-neutral-400">
                   {companyName || "—"}
