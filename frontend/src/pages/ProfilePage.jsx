@@ -167,53 +167,52 @@ export default function Profile() {
         </div>
       </div>
 
-
-      <div className="grid min-h-0 min-w-0 grid-cols-1 grid-rows-2 gap-4">
-        <div className="min-h-0 overflow-hidden bg-white border rounded-xl p-3 flex flex-col ">
-          <div className="mb-3 flex shrink-0 items-center justify-between gap-2">
-            <h2 className="text-lg font-semibold text-neutral-800">Strengths</h2>
-            <div className="flex items-center gap-2">
-              {feedbackUpdated && (
-                <span className="text-[11px] text-neutral-400">Updated {feedbackUpdated}</span>
-              )}
-              <button
-                type="button"
-                onClick={handleRegenerateFeedback}
-                disabled={regenerating}
-                className="flex items-center gap-1.5 rounded-lg bg-primary-500 px-2.5 py-1 text-xs font-semibold text-white transition-colors hover:bg-primary-600 disabled:opacity-50"
+      <div className="min-h-0 min-w-0 flex flex-col overflow-hidden bg-white border rounded-xl p-3">
+        <div className="mb-3 flex shrink-0 items-center justify-between gap-2">
+          <h2 className="text-lg font-semibold text-neutral-800">Feedback</h2>
+          <div className="flex items-center gap-2">
+            {feedbackUpdated && (
+              <span className="text-[11px] text-neutral-400">Updated {feedbackUpdated}</span>
+            )}
+            <button
+              type="button"
+              onClick={handleRegenerateFeedback}
+              disabled={regenerating}
+              className="flex items-center gap-1.5 rounded-lg bg-primary-500 px-2.5 py-1 text-xs font-semibold text-white transition-colors hover:bg-primary-600 disabled:opacity-50"
+            >
+              <svg
+                width="13"
+                height="13"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className={regenerating ? "animate-spin" : ""}
               >
-                <svg
-                  width="13"
-                  height="13"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2.5"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  className={regenerating ? "animate-spin" : ""}
-                >
-                  <path d="M21 12a9 9 0 1 1-2.64-6.36" />
-                  <path d="M21 3v6h-6" />
-                </svg>
-                {regenerating ? "Generating…" : hasFeedback ? "Regenerate" : "Generate"}
-              </button>
-            </div>
-          </div>
-          {fbError && <p className="mb-2 shrink-0 text-xs text-coral-500">{fbError}</p>}
-
-          <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto pr-2 scrollbar-primary">
-            {renderFeedbackBody(feedback?.strengths)}
+                <path d="M21 12a9 9 0 1 1-2.64-6.36" />
+                <path d="M21 3v6h-6" />
+              </svg>
+              {regenerating ? "Generating…" : hasFeedback ? "Regenerate" : "Generate"}
+            </button>
           </div>
         </div>
+        {fbError && <p className="mb-2 shrink-0 text-xs text-coral-500">{fbError}</p>}
 
-        <div className="flex min-h-0 flex-col overflow-hidden bg-white border rounded-xl p-3">
-          <h2 className="text-lg font-semibold text-neutral-800 mb-3 shrink-0">
-            Improvements
-          </h2>
+        <div className="grid min-h-0 flex-1 grid-cols-1 grid-rows-2 gap-4">
+          <div className="flex min-h-0 flex-col rounded-lg border border-neutral-200 bg-neutral-50/50 p-3">
+            <h3 className="text-sm font-semibold text-neutral-700 mb-2 shrink-0">Strengths</h3>
+            <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto pr-2 scrollbar-primary">
+              {renderFeedbackBody(feedback?.strengths)}
+            </div>
+          </div>
 
-          <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto pr-2 scrollbar-primary">
-            {renderFeedbackBody(feedback?.improvements)}
+          <div className="flex min-h-0 flex-col rounded-lg border border-neutral-200 bg-neutral-50/50 p-3">
+            <h3 className="text-sm font-semibold text-neutral-700 mb-2 shrink-0">Improvements</h3>
+            <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto pr-2 scrollbar-primary">
+              {renderFeedbackBody(feedback?.improvements)}
+            </div>
           </div>
         </div>
       </div>
