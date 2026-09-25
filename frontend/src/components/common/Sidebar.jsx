@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, CalendarDays, Briefcase, Users, KeyRound, Search } from 'lucide-react';
+import { LayoutDashboard, CalendarDays, Briefcase, Users, KeyRound, Search, BarChart3 } from 'lucide-react';
 import logoFull from '../../assets/logo-final.png';
 import { useAuth } from '../../lib/AuthContext.jsx';
 import CommandPalette from './CommandPalette.jsx';
@@ -50,13 +50,15 @@ export default function Sidebar({ user: userProp }) {
     // Admin-only: the invitation-key page. Rendering is gated on role here
     // AND the route itself sits behind RequireRole, so a non-admin neither
     // sees the item nor can deep-link past it.
+    { label: 'Consistency', path: '/interview-consistency', icon: <BarChart3 size={16} />, group: 'INSIGHTS' },
     { label: 'Invitations', path: '/admin/dashboard', icon: <KeyRound size={16} />, group: 'ADMIN' },
   ];
 
   const isAdmin = user?.role === 'admin';
-  const mainItems  = navItems.filter(i => i.group === 'MAIN');
-  const groupItems = navItems.filter(i => i.group === 'GROUP');
-  const adminItems = isAdmin ? navItems.filter(i => i.group === 'ADMIN') : [];
+  const mainItems    = navItems.filter(i => i.group === 'MAIN');
+  const groupItems   = navItems.filter(i => i.group === 'GROUP');
+  const insightsItems = navItems.filter(i => i.group === 'INSIGHTS');
+  const adminItems   = isAdmin ? navItems.filter(i => i.group === 'ADMIN') : [];
 
 
   const navLink = (item) => {
@@ -124,6 +126,9 @@ export default function Sidebar({ user: userProp }) {
 
         <span className="text-xs font-bold text-neutral-400 tracking-[0.08em] px-2 pt-4 pb-1.5">GROUP</span>
         {groupItems.map(navLink)}
+
+        <span className="text-xs font-bold text-neutral-400 tracking-[0.08em] px-2 pt-4 pb-1.5">INSIGHTS</span>
+        {insightsItems.map(navLink)}
 
         {adminItems.length > 0 && (
           <>
