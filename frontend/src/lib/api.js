@@ -256,6 +256,9 @@ export const api = {
       auth: true,
     }),
 
+  // ---------- interviewer stats (total interviews / average score) ---------
+  getInterviewerStats: () => request('/interviewer-stats', { auth: true }),
+
   // ---------- companies --------------------------------------------------
   getCompany:    (comp_id)          => request(`/companies/${comp_id}`,  { auth: true }),
   updateCompany: (comp_id, payload) => request(`/companies/${comp_id}`,  { method: 'PUT', body: payload, auth: true }),

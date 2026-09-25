@@ -3,7 +3,7 @@ import Sidebar from '../components/common/Sidebar'
 import StatDelta from '../components/common/StatDelta';
 import FeedbackItemRow from '../components/profile/FeedbackItemRow';
 import { useEffect, useRef, useState } from "react";
-import { api } from "../lib/api";
+import { api, downloadFileWithAuth } from "../lib/api";
 import { initials } from "../utils/avatar";
 
 export default function Profile() {
@@ -15,12 +15,26 @@ export default function Profile() {
   const [regenerating, setRegenerating] = useState(false);
   const [fbError, setFbError] = useState('');
 
+  const [stats, setStats] = useState(null);
+  const [statsLoading, setStatsLoading] = useState(true);
+  const [exportingStats, setExportingStats] = useState(false);
+  const [statsExportError, setStatsExportError] = useState('');
+
   useEffect(() => {
     let cancelled = false;
     api.getInterviewerFeedback()
       .then((d) => { if (!cancelled) setFeedback(d); })
       .catch(() => {})
       .finally(() => { if (!cancelled) setFbLoading(false); });
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    api.getInterviewerStats()
+      .then((d) => { if (!cancelled) setStats(d); })
+      .catch(() => {})
+      .finally(() => { if (!cancelled) setStatsLoading(false); });
     return () => { cancelled = true; };
   }, []);
 
@@ -37,20 +51,30 @@ export default function Profile() {
         .join(' ')
     : '';
 
-  // Note: Stats are hardcoded for now but will be created by US35
-  const stats = [
-    { m: "Jan", v: 1.1},
-    { m: "Feb", v: 2.7 },
-    { m: "Mar", v: 5.2 },
-    { m: "Apr", v: 8.2 },
-    { m: "May", v: 6.8 },
-    { m: "Now", v: 7.4 },
-  ];
-  const sorted = [...stats].sort((a, b) => a.v - b.v);
-  const colorMap = new Map();
-  sorted.slice(0, 2).forEach(d => colorMap.set(d.m, "bg-red-200"));
-  sorted.slice(2, 4).forEach(d => colorMap.set(d.m, "bg-blue-200"));
-  sorted.slice(4).forEach(d => colorMap.set(d.m, "bg-green-200"));
+  // Score trend bars: rank the scored months low/mid/high so the chart
+  // reads the same red/blue/green way the original mock did. Months with
+  // no scored interviews render as a flat, uncoloured bar.
+  const trend = stats?.score_trend || [];
+  const scoredTrend = trend.filter((d) => d.avg_score != null);
+  const sortedTrend = [...scoredTrend].sort((a, b) => a.avg_score - b.avg_score);
+  const trendColorMap = new Map();
+  sortedTrend.slice(0, Math.ceil(sortedTrend.length / 3)).forEach((d) => trendColorMap.set(d.label, "bg-red-200"));
+  sortedTrend.slice(Math.ceil(sortedTrend.length / 3), Math.ceil((2 * sortedTrend.length) / 3)).forEach((d) => trendColorMap.set(d.label, "bg-blue-200"));
+  sortedTrend.slice(Math.ceil((2 * sortedTrend.length) / 3)).forEach((d) => trendColorMap.set(d.label, "bg-green-200"));
+
+  const formatPct = (pct) => (pct == null ? null : `${pct >= 0 ? "+" : ""}${pct}%`);
+
+  async function handleExportStats() {
+    setExportingStats(true);
+    setStatsExportError("");
+    try {
+      await downloadFileWithAuth("/api/interviewer-stats/report", "my-interview-stats.pdf");
+    } catch (e) {
+      setStatsExportError(e?.message || "Could not export statistics.");
+    } finally {
+      setExportingStats(false);
+    }
+  }
 
   const hasFeedback = Boolean(feedback?.feedback_id);
   const feedbackUpdated = feedback?.generated_at
@@ -118,46 +142,71 @@ export default function Profile() {
           </div>
         </div>
 
-        {/* To be refined in US35. Currently uses hardcoded data for everything. */}
-        <div className="bg-white border rounded-xl p-3  ">
-            <div className="grid h-full min-h-0 grid-rows-[64px_64px_minmax(0,1fr)] gap-3">
-              <div className="flex flex-col justify-center">
-                <p className="text-xs font-medium text-neutral-500 pb-1">
-                  TOTAL INTERVIEWS
-                </p>
-                <div className="flex items-center justify-between">
-                  <p className="text-xl font-bold text-neutral-800">20</p>
-                  <StatDelta value="+3%" label="from past 7 days" />
+        <div className="bg-white border rounded-xl p-3">
+            <div className="mb-3 flex shrink-0 items-center justify-between gap-2">
+              <h2 className="text-lg font-semibold text-neutral-800">Performance Stats</h2>
+              <button
+                type="button"
+                onClick={handleExportStats}
+                disabled={exportingStats}
+                className="flex items-center gap-1.5 rounded-lg bg-primary-500 px-2.5 py-1 text-xs font-semibold text-white transition-colors hover:bg-primary-600 disabled:opacity-50"
+              >
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 3v12" />
+                  <path d="m7 10 5 5 5-5" />
+                  <path d="M5 21h14" />
+                </svg>
+                {exportingStats ? "Exporting…" : "Export PDF"}
+              </button>
+            </div>
+            {statsExportError && (
+              <p className="mb-2 shrink-0 text-xs text-coral-500">{statsExportError}</p>
+            )}
+
+            <div className="flex flex-col gap-4">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="flex flex-col gap-1">
+                  <p className="text-xs font-medium text-neutral-500">
+                    TOTAL INTERVIEWS
+                  </p>
+                  <p className="text-xl font-bold text-neutral-800">
+                    {statsLoading ? "—" : stats?.total_interviews ?? 0}
+                  </p>
+                  {formatPct(stats?.total_interviews_delta_pct) && (
+                    <StatDelta value={formatPct(stats.total_interviews_delta_pct)} label="7d" />
+                  )}
+                </div>
+
+                <div className="flex flex-col gap-1">
+                  <p className="text-xs font-medium text-neutral-500">
+                    AVG. CANDIDATE SCORE
+                  </p>
+                  <p className="text-xl font-bold text-neutral-800">
+                    {statsLoading ? "—" : stats?.average_candidate_score ?? "—"}
+                  </p>
+                  {formatPct(stats?.average_candidate_score_delta_pct) && (
+                    <StatDelta value={formatPct(stats.average_candidate_score_delta_pct)} label="1mo" />
+                  )}
                 </div>
               </div>
 
-              <div className="flex flex-col justify-center">
-                <p className="text-xs font-medium text-neutral-500 pb-1">
-                  AVERAGE CANDIDATE SCORE
-                </p>
-                <div className="flex items-center justify-between">
-                  <p className="text-xl font-bold text-neutral-800">7.4</p>
-                  <StatDelta value="+10%" label="from last month" />
-                </div>
-              </div>
-
-              <div className="flex min-h-0 flex-col gap-2">
+              <div className="flex flex-col gap-2">
                 <p className="shrink-0 text-xs font-medium text-neutral-500">
                   SCORE TRENDS
                 </p>
 
-                <div className="flex min-h-0 flex-1 gap-3">
-                  {stats.map((d) => (
-                    <div key={d.m} className="flex h-full min-w-0 flex-1 flex-col items-center gap-1">
+                <div className="flex h-28 shrink-0 items-end gap-3">
+                  {trend.map((d) => (
+                    <div key={d.label} className="flex h-full min-w-0 flex-1 flex-col items-center gap-1">
                       <div className="flex min-h-0 w-full flex-1 items-end justify-center">
                         <div
-                          className={`w-8 rounded-t-md ${colorMap.get(d.m)}`}
-                          style={{ height: `${(d.v / 10) * 100}%` }}
+                          className={`w-8 rounded-t-md ${d.avg_score != null ? trendColorMap.get(d.label) : "bg-neutral-100"}`}
+                          style={{ height: `${d.avg_score != null ? Math.max((d.avg_score / 10) * 100, 4) : 4}%` }}
                         />
                       </div>
 
                       <p className="shrink-0 text-xs text-neutral-600">
-                        {d.m}
+                        {d.label}
                       </p>
                     </div>
                   ))}
