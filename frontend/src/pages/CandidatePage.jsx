@@ -64,6 +64,29 @@ export default function CandidatePage() {
     return () => { cancelled = true; };
   }, [user?.comp_id]);
 
+  // The interviewer assigned to this interview (interview_users -> users),
+  // used to pre-fill the edit form. Distinct from the logged-in user.
+  const [assignedInterviewer, setAssignedInterviewer] = useState({ name: "", userId: "" });
+
+  async function loadAssignedInterviewer() {
+    try {
+      const linkRes = await authedFetch(`/api/interview-users/by-interview/${id}`);
+      const links = linkRes.ok ? await linkRes.json() : [];
+      const userId = Array.isArray(links) ? links[0]?.user_id : null;
+      if (!userId) return setAssignedInterviewer({ name: "", userId: "" });
+      const usersRes = await authedFetch("/api/users");
+      const users = usersRes.ok ? await usersRes.json() : [];
+      const u = Array.isArray(users) ? users.find((x) => x.userid === userId) : null;
+      setAssignedInterviewer({ name: u?.full_name || u?.username || u?.email || "", userId });
+    } catch {
+      // leave the previous value; the form just opens without a pre-filled interviewer
+    }
+  }
+
+  useEffect(() => {
+    loadAssignedInterviewer();
+  }, [id]);
+
   function switchProfileView(toEdit) {
     setProfileVisible(false);
     setTimeout(() => {
@@ -478,12 +501,14 @@ export default function CandidatePage() {
                   email: candidate?.cand_email,
                   phone: candidate?.cand_phone,
                   job_id: jobId,
-                  interviewer: "",
-                  interviewer_user_id: "",
+                  interviewer: assignedInterviewer.name,
+                  interviewer_user_id: assignedInterviewer.userId,
                   interview_datetime: intvDateTime ?? null,
+                  cv_url: cvUrl,
+                  cover_letter_url: coverLetterUrl,
                 }}
                 onClose={() => { setShowProfile(false); setShowEditMode(false); setProfileVisible(true); }}
-                onSaved={() => { refreshCandidate(); setShowProfile(false); setShowEditMode(false); setProfileVisible(true); }}
+                onSaved={() => { refreshCandidate(); refreshCvAnalysis(); loadAssignedInterviewer(); setShowProfile(false); setShowEditMode(false); setProfileVisible(true); }}
               />
             ) : (
               <CandidateInfoCard
