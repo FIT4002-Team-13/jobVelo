@@ -1,7 +1,9 @@
 from __future__ import annotations
+
 from datetime import datetime
 
 from pydantic import BaseModel, Field
+
 
 class BehaviouralSuggestion(BaseModel):
     title: str = Field(..., description="Short, concrete label (<= 8 words).")
