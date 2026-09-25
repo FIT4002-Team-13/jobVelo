@@ -1,14 +1,42 @@
 import { useAuth } from "../lib/AuthContext";
 import Sidebar from '../components/common/Sidebar'
-import commentIcon from '../assets/icons/comment.png'
 import StatDelta from '../components/common/StatDelta';
+import FeedbackItemRow from '../components/profile/FeedbackItemRow';
 import { useEffect, useRef, useState } from "react";
-import { api } from "../lib/api";
+import { api, downloadFileWithAuth } from "../lib/api";
 import { initials } from "../utils/avatar";
 
 export default function Profile() {
-  const { user } = useAuth();  
+  const { user } = useAuth();
   const [activeTab, setActiveTab] = useState('profile');
+
+  const [feedback, setFeedback] = useState(null);
+  const [fbLoading, setFbLoading] = useState(true);
+  const [regenerating, setRegenerating] = useState(false);
+  const [fbError, setFbError] = useState('');
+
+  const [stats, setStats] = useState(null);
+  const [statsLoading, setStatsLoading] = useState(true);
+  const [exportingStats, setExportingStats] = useState(false);
+  const [statsExportError, setStatsExportError] = useState('');
+
+  useEffect(() => {
+    let cancelled = false;
+    api.getInterviewerFeedback()
+      .then((d) => { if (!cancelled) setFeedback(d); })
+      .catch(() => {})
+      .finally(() => { if (!cancelled) setFbLoading(false); });
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    api.getInterviewerStats()
+      .then((d) => { if (!cancelled) setStats(d); })
+      .catch(() => {})
+      .finally(() => { if (!cancelled) setStatsLoading(false); });
+    return () => { cancelled = true; };
+  }, []);
 
   if (!user) return <div>Loading...</div>;
 
@@ -23,55 +51,74 @@ export default function Profile() {
         .join(' ')
     : '';
 
-  // Note: Strengths and Improvements are hardcoded for now but will be created by US34
-  const strengths = [
-    {
-      title: "Strong Communication",
-      description: "Clearly explains technical concepts and collaborates well with interviewers. Writes clean, readable code and provides thoughtful comments when needed."
-    },
-    {
-      title: "Fast Learner",
-      description: "Adapts quickly to new technologies and unfamiliar workflows."
-    },
-    {
-      title: "Team Player",
-      description: "Works effectively with cross-functional teams and contributes positively."
-    },
-    {
-      title:"test",
-      description: "test"
-    }
-  ]
+  // Score trend bars: rank the scored months low/mid/high so the chart
+  // reads the same red/blue/green way the original mock did. Months with
+  // no scored interviews render as a flat, uncoloured bar.
+  const trend = stats?.score_trend || [];
+  const scoredTrend = trend.filter((d) => d.avg_score != null);
+  const sortedTrend = [...scoredTrend].sort((a, b) => a.avg_score - b.avg_score);
+  const trendColorMap = new Map();
+  sortedTrend.slice(0, Math.ceil(sortedTrend.length / 3)).forEach((d) => trendColorMap.set(d.label, "bg-red-200"));
+  sortedTrend.slice(Math.ceil(sortedTrend.length / 3), Math.ceil((2 * sortedTrend.length) / 3)).forEach((d) => trendColorMap.set(d.label, "bg-blue-200"));
+  sortedTrend.slice(Math.ceil((2 * sortedTrend.length) / 3)).forEach((d) => trendColorMap.set(d.label, "bg-green-200"));
 
-  const improvements = [
-    {
-      title: "System Design Depth",
-      description: "Needs stronger understanding of scalable architecture patterns and trade-offs when designing larger systems."
-    },
-    {
-      title: "Edge Case Handling",
-      description: "Occasionally misses less obvious edge cases in problem-solving scenarios, especially under time pressure."
-    },
-    {
-      title: "Code Optimisation",
-      description: "Can improve awareness of time and space complexity when writing initial solutions, with more refinement in later iterations."
-    }
-  ]
+  const formatPct = (pct) => (pct == null ? null : `${pct >= 0 ? "+" : ""}${pct}%`);
 
-  // Note: Stats are hardcoded for now but will be created by US35
-  const stats = [
-    { m: "Jan", v: 1.1},
-    { m: "Feb", v: 2.7 },
-    { m: "Mar", v: 5.2 },
-    { m: "Apr", v: 8.2 },
-    { m: "May", v: 6.8 },
-    { m: "Now", v: 7.4 },
-  ];
-  const sorted = [...stats].sort((a, b) => a.v - b.v);
-  const colorMap = new Map();
-  sorted.slice(0, 2).forEach(d => colorMap.set(d.m, "bg-red-200"));
-  sorted.slice(2, 4).forEach(d => colorMap.set(d.m, "bg-blue-200"));
-  sorted.slice(4).forEach(d => colorMap.set(d.m, "bg-green-200"));
+  async function handleExportStats() {
+    setExportingStats(true);
+    setStatsExportError("");
+    try {
+      await downloadFileWithAuth("/api/interviewer-stats/report", "my-interview-stats.pdf");
+    } catch (e) {
+      setStatsExportError(e?.message || "Could not export statistics.");
+    } finally {
+      setExportingStats(false);
+    }
+  }
+
+  const hasFeedback = Boolean(feedback?.feedback_id);
+  const feedbackUpdated = feedback?.generated_at
+    ? new Date(feedback.generated_at).toLocaleDateString("en-AU", {
+        day: "numeric",
+        month: "short",
+        year: "numeric",
+      })
+    : null;
+
+  async function handleUpdateFeedbackItem(itemId, patch) {
+    if (!feedback?.feedback_id) return;
+    const updated = await api.updateFeedbackItem(feedback.feedback_id, itemId, patch);
+    setFeedback(updated);
+  }
+
+  async function handleRegenerateFeedback() {
+    setRegenerating(true);
+    setFbError("");
+    try {
+      const d = await api.regenerateInterviewerFeedback();
+      setFeedback(d);
+    } catch (e) {
+      setFbError(e?.message || "Could not generate feedback.");
+    } finally {
+      setRegenerating(false);
+    }
+  }
+
+  // Body renderer shared by the Strengths / Improvements cards.
+  function renderFeedbackBody(items) {
+    if (fbLoading) return <p className="text-xs text-neutral-400">Loading…</p>;
+    if (!hasFeedback)
+      return (
+        <p className="text-xs italic text-neutral-400">
+          No feedback yet. Generate it once you have completed interviews.
+        </p>
+      );
+    if (!items || items.length === 0)
+      return <p className="text-xs italic text-neutral-400">Nothing flagged here.</p>;
+    return items.map((it) => (
+      <FeedbackItemRow key={it.id} item={it} onUpdate={handleUpdateFeedbackItem} />
+    ));
+  }
               
   const profileGrid = (
 
@@ -95,46 +142,71 @@ export default function Profile() {
           </div>
         </div>
 
-        {/* To be refined in US35. Currently uses hardcoded data for everything. */}
-        <div className="bg-white border rounded-xl p-3  ">
-            <div className="grid h-full min-h-0 grid-rows-[64px_64px_minmax(0,1fr)] gap-3">
-              <div className="flex flex-col justify-center">
-                <p className="text-xs font-medium text-neutral-500 pb-1">
-                  TOTAL INTERVIEWS
-                </p>
-                <div className="flex items-center justify-between">
-                  <p className="text-xl font-bold text-neutral-800">20</p>
-                  <StatDelta value="+3%" label="from past 7 days" />
+        <div className="bg-white border rounded-xl p-3">
+            <div className="mb-3 flex shrink-0 items-center justify-between gap-2">
+              <h2 className="text-lg font-semibold text-neutral-800">Performance Stats</h2>
+              <button
+                type="button"
+                onClick={handleExportStats}
+                disabled={exportingStats}
+                className="flex items-center gap-1.5 rounded-lg bg-primary-500 px-2.5 py-1 text-xs font-semibold text-white transition-colors hover:bg-primary-600 disabled:opacity-50"
+              >
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 3v12" />
+                  <path d="m7 10 5 5 5-5" />
+                  <path d="M5 21h14" />
+                </svg>
+                {exportingStats ? "Exporting…" : "Export PDF"}
+              </button>
+            </div>
+            {statsExportError && (
+              <p className="mb-2 shrink-0 text-xs text-coral-500">{statsExportError}</p>
+            )}
+
+            <div className="flex flex-col gap-4">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="flex flex-col gap-1">
+                  <p className="text-xs font-medium text-neutral-500">
+                    TOTAL INTERVIEWS
+                  </p>
+                  <p className="text-xl font-bold text-neutral-800">
+                    {statsLoading ? "—" : stats?.total_interviews ?? 0}
+                  </p>
+                  {formatPct(stats?.total_interviews_delta_pct) && (
+                    <StatDelta value={formatPct(stats.total_interviews_delta_pct)} label="7d" />
+                  )}
+                </div>
+
+                <div className="flex flex-col gap-1">
+                  <p className="text-xs font-medium text-neutral-500">
+                    AVG. CANDIDATE SCORE
+                  </p>
+                  <p className="text-xl font-bold text-neutral-800">
+                    {statsLoading ? "—" : stats?.average_candidate_score ?? "—"}
+                  </p>
+                  {formatPct(stats?.average_candidate_score_delta_pct) && (
+                    <StatDelta value={formatPct(stats.average_candidate_score_delta_pct)} label="1mo" />
+                  )}
                 </div>
               </div>
 
-              <div className="flex flex-col justify-center">
-                <p className="text-xs font-medium text-neutral-500 pb-1">
-                  AVERAGE CANDIDATE SCORE
-                </p>
-                <div className="flex items-center justify-between">
-                  <p className="text-xl font-bold text-neutral-800">7.4</p>
-                  <StatDelta value="+10%" label="from last month" />
-                </div>
-              </div>
-
-              <div className="flex min-h-0 flex-col gap-2">
+              <div className="flex flex-col gap-2">
                 <p className="shrink-0 text-xs font-medium text-neutral-500">
                   SCORE TRENDS
                 </p>
 
-                <div className="flex min-h-0 flex-1 gap-3">
-                  {stats.map((d) => (
-                    <div key={d.m} className="flex h-full min-w-0 flex-1 flex-col items-center gap-1">
+                <div className="flex h-28 shrink-0 items-end gap-3">
+                  {trend.map((d) => (
+                    <div key={d.label} className="flex h-full min-w-0 flex-1 flex-col items-center gap-1">
                       <div className="flex min-h-0 w-full flex-1 items-end justify-center">
                         <div
-                          className={`w-8 rounded-t-md ${colorMap.get(d.m)}`}
-                          style={{ height: `${(d.v / 10) * 100}%` }}
+                          className={`w-8 rounded-t-md ${d.avg_score != null ? trendColorMap.get(d.label) : "bg-neutral-100"}`}
+                          style={{ height: `${d.avg_score != null ? Math.max((d.avg_score / 10) * 100, 4) : 4}%` }}
                         />
                       </div>
 
                       <p className="shrink-0 text-xs text-neutral-600">
-                        {d.m}
+                        {d.label}
                       </p>
                     </div>
                   ))}
@@ -146,67 +218,51 @@ export default function Profile() {
 
 
       <div className="grid min-h-0 min-w-0 grid-cols-1 grid-rows-2 gap-4">
-        {/* To be refined in US34. Currently uses hardcoded data and comment function does not work. */}
         <div className="min-h-0 overflow-hidden bg-white border rounded-xl p-3 flex flex-col ">
-          <h2 className="text-lg font-semibold text-neutral-800 mb-3">
-            Strengths
-          </h2>
+          <div className="mb-3 flex shrink-0 items-center justify-between gap-2">
+            <h2 className="text-lg font-semibold text-neutral-800">Strengths</h2>
+            <div className="flex items-center gap-2">
+              {feedbackUpdated && (
+                <span className="text-[11px] text-neutral-400">Updated {feedbackUpdated}</span>
+              )}
+              <button
+                type="button"
+                onClick={handleRegenerateFeedback}
+                disabled={regenerating}
+                className="flex items-center gap-1.5 rounded-lg bg-primary-500 px-2.5 py-1 text-xs font-semibold text-white transition-colors hover:bg-primary-600 disabled:opacity-50"
+              >
+                <svg
+                  width="13"
+                  height="13"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className={regenerating ? "animate-spin" : ""}
+                >
+                  <path d="M21 12a9 9 0 1 1-2.64-6.36" />
+                  <path d="M21 3v6h-6" />
+                </svg>
+                {regenerating ? "Generating…" : hasFeedback ? "Regenerate" : "Generate"}
+              </button>
+            </div>
+          </div>
+          {fbError && <p className="mb-2 shrink-0 text-xs text-coral-500">{fbError}</p>}
 
           <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto pr-2 scrollbar-primary">
-            {strengths.map((item, idx) => (
-              <div
-                key={idx}
-                className="group shrink-0 bg-neutral-100 rounded-xl px-3 py-2 flex items-center justify-between"
-              >
-                <div className="min-w-0 pr-3">
-                  <p className="text-sm font-bold text-neutral-800">
-                    {item.title}
-                  </p>
-                  <p className="line-clamp-2 text-xs leading-snug text-neutral-500 mt-0.5">
-                    {item.description}
-                  </p>
-                </div>
-                <div className="flex items-center justify-center">
-                  <img 
-                    src={commentIcon} 
-                    alt="Comment" 
-                    className="w-4 h-4 opacity-40 hover:opacity-90 transition shrink-0"
-                  />
-                </div>
-              </div>
-            ))}
+            {renderFeedbackBody(feedback?.strengths)}
           </div>
         </div>
 
-        {/* To be refined in US34. Currently uses hardcoded data and comment function does not work. */}
         <div className="flex min-h-0 flex-col overflow-hidden bg-white border rounded-xl p-3">
-          <h2 className="text-lg font-semibold text-neutral-800 mb-3">
+          <h2 className="text-lg font-semibold text-neutral-800 mb-3 shrink-0">
             Improvements
           </h2>
 
           <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto pr-2 scrollbar-primary">
-            {improvements.map((item, idx) => (
-              <div
-                key={idx}
-                className="group shrink-0 bg-neutral-100 rounded-xl px-3 py-2 flex items-center justify-between"
-              >
-                <div className="min-w-0 pr-3">
-                  <p className="text-sm font-bold text-neutral-800">
-                    {item.title}
-                  </p>
-                  <p className="line-clamp-2 text-xs leading-snug text-neutral-500 mt-0.5">
-                    {item.description}
-                  </p>
-                </div>
-                <div className="flex items-center justify-center">
-                  <img 
-                    src={commentIcon} 
-                    alt="Comment" 
-                    className="w-4 h-4 opacity-40 hover:opacity-90 transition shrink-0"
-                  />
-                </div>
-              </div>
-            ))}
+            {renderFeedbackBody(feedback?.improvements)}
           </div>
         </div>
       </div>

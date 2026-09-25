@@ -103,6 +103,30 @@ class RequirementMapping(BaseModel):
     evidence: list[EvidenceRef] = Field(default_factory=list)
 
 
+class TopicCoverage(BaseModel):
+    """One planned topic/section and whether the interviewer covered it (US: the
+    interviewer questioning-pattern analysis)."""
+
+    topic: str
+    covered: bool
+    note: str = ""
+
+
+class QuestioningPatterns(BaseModel):
+    """Analysis of how the INTERVIEWER questioned - open vs closed mix, topic
+    coverage against the interview plan, and how closely they followed it.
+
+    Populated on the interviewer report only; the candidate report leaves it
+    null. Absent on reports generated before this feature, so the UI/PDF treat
+    None as "no analysis available"."""
+
+    summary: str = ""
+    open_questions: int = 0
+    closed_questions: int = 0
+    topic_coverage: list[TopicCoverage] = Field(default_factory=list)
+    plan_adherence: str = ""
+
+
 class InterviewFeedback(BaseModel):
     """
     Create/update payload for an interview feedback report.
@@ -116,6 +140,10 @@ class InterviewFeedback(BaseModel):
         default_factory=InterviewFeedbackSection
     )
     requirements_mapping: list[RequirementMapping] = Field(default_factory=list)
+    # Interviewer-report only: questioning-pattern analysis (open/closed mix,
+    # topic coverage vs plan, plan adherence). None on the candidate report and
+    # on reports generated before this feature.
+    questioning_patterns: QuestioningPatterns | None = None
 
 
 class InterviewScores(BaseModel):
