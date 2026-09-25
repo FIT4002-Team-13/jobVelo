@@ -266,7 +266,6 @@ function TableView({
               <th className="text-center text-xs font-bold text-neutral-400 uppercase tracking-widest px-3 py-3">Intvs</th>
               <th className="text-center text-xs font-bold text-neutral-400 uppercase tracking-widest px-3 py-3">Avg</th>
               <th className="text-center text-xs font-bold text-neutral-400 uppercase tracking-widest px-3 py-3">Variance</th>
-              <th className="text-center text-xs font-bold text-neutral-400 uppercase tracking-widest px-3 py-3">Hire%</th>
               <th className="text-center text-xs font-bold text-neutral-400 uppercase tracking-widest px-3 py-3">Status</th>
             </tr>
           </thead>
@@ -304,16 +303,13 @@ function TableView({
                     <td className={`px-3 py-3.5 text-sm text-center ${varianceCls(intv.overall.variance)}`}>
                       ± {intv.overall.variance}
                     </td>
-                    <td className="px-3 py-3.5 text-sm text-neutral-600 text-center">
-                      {Math.round((intv.hire_rate || 0) * 100)}%
-                    </td>
                     <td className="px-3 py-3.5 text-center">
                       <StatusBadge highVariance={intv.high_variance} />
                     </td>
                   </tr>
                   {isExpanded && (
                     <tr className={`border-b border-neutral-100 ${intv.high_variance ? 'bg-amber-50/20' : 'bg-primary-50/10'}`}>
-                      <td colSpan={7} className="px-5 pb-3 pt-1">
+                      <td colSpan={6} className="px-5 pb-3 pt-1">
                         <div className="grid grid-cols-3 gap-3 pl-8">
                           <SkillSubCard label="Technical Skills" stat={intv.technical}    barColorCls="bg-primary-500" highVariance={intv.high_variance} />
                           <SkillSubCard label="Communication"    stat={intv.communication} barColorCls="bg-mint-500"    highVariance={intv.high_variance} />
@@ -403,7 +399,7 @@ function CardsView({ interviewers }) {
                   <div>
                     <p className="text-sm font-semibold text-neutral-800">{intv.name}</p>
                     <p className="text-xs text-neutral-400">
-                      {intv.interview_count} interview{intv.interview_count !== 1 ? 's' : ''} · {Math.round((intv.hire_rate || 0) * 100)}% hire rate
+                      {intv.interview_count} interview{intv.interview_count !== 1 ? 's' : ''}
                     </p>
                   </div>
                 </div>
