@@ -331,7 +331,7 @@ function TableView({
             <WarningIcon />
             <p className="text-xs text-amber-700">
               <strong>{highVarianceInterviewers.map(i => i.name).join(', ')}</strong>
-              {' '}— high score variance detected across skill categories. Consider a calibration session.
+              {' '}— high score variance detected across skill categories.
             </p>
           </div>
         )}
@@ -682,9 +682,6 @@ export default function InterviewConsistencyPage() {
                 <option value={180}>Last 6 Months</option>
                 <option value={0}>All Time</option>
               </select>
-              <button className="bg-primary-500 hover:bg-primary-600 text-white text-sm font-semibold px-4 py-2 rounded-xl transition-colors">
-                + Schedule Calibration
-              </button>
             </div>
           </div>
         </header>
