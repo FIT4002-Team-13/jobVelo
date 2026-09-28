@@ -66,6 +66,13 @@ export default function Profile() {
     return "bg-green-200";
   }
 
+  function trendValueColor(avgScore) {
+    if (avgScore == null) return "text-neutral-300";
+    if (avgScore < 3) return "text-coral-500";
+    if (avgScore < 7) return "text-primary-500";
+    return "text-mint-600";
+  }
+
   const formatPct = (pct) => (pct == null ? null : `${pct >= 0 ? "+" : ""}${pct}%`);
 
   function handleTrendRangeChange(e) {
@@ -151,7 +158,7 @@ export default function Profile() {
           </div>
         </div>
 
-        <div className="bg-white border rounded-xl p-5">
+        <div className="flex h-full min-h-0 flex-col bg-white border rounded-xl p-5">
             <div className="mb-4 flex shrink-0 flex-wrap items-center justify-between gap-2">
               <h2 className="text-lg font-semibold text-neutral-800">Performance Stats</h2>
               <button
@@ -172,34 +179,38 @@ export default function Profile() {
               <p className="mb-2 shrink-0 text-xs text-coral-500">{statsExportError}</p>
             )}
 
-            <div className="flex flex-col gap-5">
-              <div className="flex flex-wrap gap-x-12 gap-y-4">
-                <div className="flex flex-col gap-1">
-                  <p className="text-xs font-medium text-neutral-500">
-                    TOTAL INTERVIEWS
-                  </p>
-                  <p className="text-xl font-bold text-neutral-800">
-                    {statsLoading ? "—" : stats?.total_interviews ?? 0}
-                  </p>
+            <div className="flex min-h-0 flex-1 flex-col gap-5">
+              <div className="flex flex-col gap-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex flex-col gap-1">
+                    <p className="text-xs font-medium text-neutral-500">
+                      TOTAL INTERVIEWS
+                    </p>
+                    <p className="text-2xl font-bold text-neutral-800">
+                      {statsLoading ? "—" : stats?.total_interviews ?? 0}
+                    </p>
+                  </div>
                   {formatPct(stats?.total_interviews_delta_pct) && (
-                    <StatDelta value={formatPct(stats.total_interviews_delta_pct)} label="7d" />
+                    <StatDelta value={formatPct(stats.total_interviews_delta_pct)} label="from past 7 days" />
                   )}
                 </div>
 
-                <div className="flex flex-col gap-1">
-                  <p className="text-xs font-medium text-neutral-500">
-                    AVG. CANDIDATE SCORE
-                  </p>
-                  <p className="text-xl font-bold text-neutral-800">
-                    {statsLoading ? "—" : stats?.average_candidate_score ?? "—"}
-                  </p>
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex flex-col gap-1">
+                    <p className="text-xs font-medium text-neutral-500">
+                      AVERAGE CANDIDATE SCORE
+                    </p>
+                    <p className="text-2xl font-bold text-neutral-800">
+                      {statsLoading ? "—" : stats?.average_candidate_score ?? "—"}
+                    </p>
+                  </div>
                   {formatPct(stats?.average_candidate_score_delta_pct) && (
-                    <StatDelta value={formatPct(stats.average_candidate_score_delta_pct)} label="1mo" />
+                    <StatDelta value={formatPct(stats.average_candidate_score_delta_pct)} label="from last month" />
                   )}
                 </div>
               </div>
 
-              <div className="flex flex-col gap-2">
+              <div className="flex min-h-0 flex-1 flex-col gap-2">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <p className="shrink-0 text-xs font-medium text-neutral-500">
                     SCORE TRENDS
@@ -242,7 +253,7 @@ export default function Profile() {
                   </div>
                 </div>
 
-                <div className="flex h-28 shrink-0 items-end gap-3">
+                <div className="flex min-h-0 flex-1 items-end gap-3">
                   {trend.map((d, i) => (
                     <div key={i} className="relative flex h-full min-w-0 flex-1 flex-col items-center gap-1">
                       {hoveredBar === i && (
@@ -253,18 +264,24 @@ export default function Profile() {
                           </p>
                         </div>
                       )}
+
+                      {/* Label sits directly above the bar (not the column) - grouped
+                          with it via justify-end so it tracks the bar's own height. */}
                       <div
-                        className="flex min-h-0 w-full flex-1 cursor-default items-end justify-center"
+                        className="flex min-h-0 w-full flex-1 cursor-default flex-col items-center justify-end gap-1"
                         onMouseEnter={() => setHoveredBar(i)}
                         onMouseLeave={() => setHoveredBar(null)}
                       >
+                        <p className={`shrink-0 text-xs font-semibold ${trendValueColor(d.avg_score)}`}>
+                          {d.avg_score != null ? d.avg_score.toFixed(1) : ""}
+                        </p>
                         <div
                           className={`w-8 rounded-t-md transition-colors ${trendBarColor(d.avg_score)}`}
                           style={{ height: `${d.avg_score != null ? Math.max((d.avg_score / 10) * 100, 4) : 4}%` }}
                         />
                       </div>
 
-                      <p className="shrink-0 text-xs text-neutral-600">
+                      <p className={`shrink-0 text-xs ${d.label === "Now" ? "font-semibold text-primary-500" : "text-neutral-600"}`}>
                         {d.label}
                       </p>
                     </div>
