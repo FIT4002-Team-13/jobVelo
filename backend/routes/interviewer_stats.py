@@ -253,19 +253,35 @@ async def get_interviewer_stats(
     return await _compute_interviewer_stats(db, user, comp_id, stat_range=range, offset=offset)
 
 
+_TREND_HEADINGS: dict[StatRange, str] = {
+    "month": "This Month's Score Trend",
+    "6months": "6-Month Score Trend",
+    "year": "Past Year Score Trend",
+}
+
+
 @router.get("/report")
 async def get_interviewer_stats_report(
+    range: StatRange = Query("6months", alias="range"),
+    offset: int = Query(0, ge=0, le=200),
     db: AsyncIOMotorDatabase = Depends(get_db),
     user: dict = Depends(get_current_user),
     comp_id: ObjectId = Depends(get_current_comp_id),
 ) -> Response:
+    """Same range/offset as GET /api/interviewer-stats, so the downloaded
+    PDF matches whatever the interviewer currently has the chart set to
+    (This month / Past 6 months / Past year, at whatever page they're on)."""
     from services.report_pdf import build_interviewer_stats_pdf
 
-    stats = await _compute_interviewer_stats(db, user, comp_id)
+    stats = await _compute_interviewer_stats(db, user, comp_id, stat_range=range, offset=offset)
     interviewer_name = (
         user.get("full_name") or user.get("username") or user.get("email") or "Interviewer"
     )
-    pdf_bytes = build_interviewer_stats_pdf(interviewer_name=interviewer_name, stats=stats)
+    pdf_bytes = build_interviewer_stats_pdf(
+        interviewer_name=interviewer_name,
+        stats=stats,
+        trend_heading=_TREND_HEADINGS[range],
+    )
 
     stamp = datetime.now(timezone.utc).strftime("%Y-%m-%d-%H%M")
     filename = f"interview-stats-{stamp}.pdf"

@@ -587,9 +587,13 @@ def build_interview_report_pdf(
     return bytes(pdf.output())
 
 
-def build_interviewer_stats_pdf(*, interviewer_name: str, stats: dict) -> bytes:
+def build_interviewer_stats_pdf(
+    *, interviewer_name: str, stats: dict, trend_heading: str = "Score Trend"
+) -> bytes:
     """One-page export of the "My Profile" stats card (US35): total
-    interviews, average candidate score, and the 6-month score trend."""
+    interviews, average candidate score, and the score trend - `trend_heading`
+    names whichever range/page the interviewer had the chart set to
+    (e.g. "This Month's Score Trend", "Past Year Score Trend")."""
     pdf = _ReportPDF()
     pdf.set_auto_page_break(True, margin=18)
     pdf.set_margins(16, 16, 16)
@@ -624,7 +628,13 @@ def build_interviewer_stats_pdf(*, interviewer_name: str, stats: dict) -> bytes:
 
     trend = stats.get("score_trend") or []
     if trend:
-        _heading(pdf, "6-Month Score Trend")
+        _heading(pdf, trend_heading)
+        range_label = stats.get("score_trend_range_label")
+        if range_label:
+            pdf.set_font("Helvetica", "I", 9)
+            pdf.set_text_color(*_MUTED)
+            pdf.cell(0, 5, _latin(range_label), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+            pdf.ln(1)
         for point in trend:
             label = point.get("label") or ""
             value = point.get("avg_score")

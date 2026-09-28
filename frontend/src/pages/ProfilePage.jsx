@@ -84,7 +84,8 @@ export default function Profile() {
     setExportingStats(true);
     setStatsExportError("");
     try {
-      await downloadFileWithAuth("/api/interviewer-stats/report", "my-interview-stats.pdf");
+      const params = new URLSearchParams({ range: trendRange, offset: String(trendOffset) });
+      await downloadFileWithAuth(`/api/interviewer-stats/report?${params}`, "my-interview-stats.pdf");
     } catch (e) {
       setStatsExportError(e?.message || "Could not export statistics.");
     } finally {
