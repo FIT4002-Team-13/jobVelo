@@ -257,7 +257,7 @@ export const api = {
     }),
 
   // ---------- interviewer stats (total interviews / average score) ---------
-  getInterviewerStats: () => request('/interviewer-stats', { auth: true }),
+  getInterviewerStats: (params = {}) => request(`/interviewer-stats${qs(params)}`, { auth: true }),
 
   // ---------- companies --------------------------------------------------
   getCompany:    (comp_id)          => request(`/companies/${comp_id}`,  { auth: true }),

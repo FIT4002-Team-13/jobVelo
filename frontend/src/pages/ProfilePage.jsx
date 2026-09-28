@@ -19,6 +19,9 @@ export default function Profile() {
   const [statsLoading, setStatsLoading] = useState(true);
   const [exportingStats, setExportingStats] = useState(false);
   const [statsExportError, setStatsExportError] = useState('');
+  const [trendRange, setTrendRange] = useState('6months');
+  const [trendOffset, setTrendOffset] = useState(0);
+  const [hoveredBar, setHoveredBar] = useState(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -31,12 +34,13 @@ export default function Profile() {
 
   useEffect(() => {
     let cancelled = false;
-    api.getInterviewerStats()
+    setStatsLoading(true);
+    api.getInterviewerStats({ range: trendRange, offset: trendOffset })
       .then((d) => { if (!cancelled) setStats(d); })
       .catch(() => {})
       .finally(() => { if (!cancelled) setStatsLoading(false); });
     return () => { cancelled = true; };
-  }, []);
+  }, [trendRange, trendOffset]);
 
   if (!user) return <div>Loading...</div>;
 
@@ -51,18 +55,23 @@ export default function Profile() {
         .join(' ')
     : '';
 
-  // Score trend bars: rank the scored months low/mid/high so the chart
-  // reads the same red/blue/green way the original mock did. Months with
-  // no scored interviews render as a flat, uncoloured bar.
   const trend = stats?.score_trend || [];
-  const scoredTrend = trend.filter((d) => d.avg_score != null);
-  const sortedTrend = [...scoredTrend].sort((a, b) => a.avg_score - b.avg_score);
-  const trendColorMap = new Map();
-  sortedTrend.slice(0, Math.ceil(sortedTrend.length / 3)).forEach((d) => trendColorMap.set(d.label, "bg-red-200"));
-  sortedTrend.slice(Math.ceil(sortedTrend.length / 3), Math.ceil((2 * sortedTrend.length) / 3)).forEach((d) => trendColorMap.set(d.label, "bg-blue-200"));
-  sortedTrend.slice(Math.ceil((2 * sortedTrend.length) / 3)).forEach((d) => trendColorMap.set(d.label, "bg-green-200"));
+
+  // Bar colour reflects the score itself, not its rank among other bars:
+  // below expectation / good / excellent, matching the app's rating bands.
+  function trendBarColor(avgScore) {
+    if (avgScore == null) return "bg-neutral-100";
+    if (avgScore < 3) return "bg-red-200";
+    if (avgScore < 7) return "bg-blue-200";
+    return "bg-green-200";
+  }
 
   const formatPct = (pct) => (pct == null ? null : `${pct >= 0 ? "+" : ""}${pct}%`);
+
+  function handleTrendRangeChange(e) {
+    setTrendRange(e.target.value);
+    setTrendOffset(0);
+  }
 
   async function handleExportStats() {
     setExportingStats(true);
@@ -142,8 +151,8 @@ export default function Profile() {
           </div>
         </div>
 
-        <div className="bg-white border rounded-xl p-3">
-            <div className="mb-3 flex shrink-0 items-center justify-between gap-2">
+        <div className="bg-white border rounded-xl p-5">
+            <div className="mb-4 flex shrink-0 flex-wrap items-center justify-between gap-2">
               <h2 className="text-lg font-semibold text-neutral-800">Performance Stats</h2>
               <button
                 type="button"
@@ -163,8 +172,8 @@ export default function Profile() {
               <p className="mb-2 shrink-0 text-xs text-coral-500">{statsExportError}</p>
             )}
 
-            <div className="flex flex-col gap-4">
-              <div className="grid grid-cols-2 gap-3">
+            <div className="flex flex-col gap-5">
+              <div className="flex flex-wrap gap-x-12 gap-y-4">
                 <div className="flex flex-col gap-1">
                   <p className="text-xs font-medium text-neutral-500">
                     TOTAL INTERVIEWS
@@ -191,16 +200,66 @@ export default function Profile() {
               </div>
 
               <div className="flex flex-col gap-2">
-                <p className="shrink-0 text-xs font-medium text-neutral-500">
-                  SCORE TRENDS
-                </p>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="shrink-0 text-xs font-medium text-neutral-500">
+                    SCORE TRENDS
+                  </p>
+
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setTrendOffset((o) => o + 1)}
+                      className="rounded-md p-1 text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-neutral-600"
+                      aria-label="Show older period"
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M15 18l-6-6 6-6" />
+                      </svg>
+                    </button>
+                    <span className="whitespace-nowrap text-[11px] text-neutral-400">
+                      {stats?.score_trend_range_label || ""}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setTrendOffset((o) => Math.max(0, o - 1))}
+                      disabled={trendOffset === 0}
+                      className="rounded-md p-1 text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-neutral-600 disabled:opacity-30 disabled:hover:bg-transparent"
+                      aria-label="Show newer period"
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M9 6l6 6-6 6" />
+                      </svg>
+                    </button>
+                    <select
+                      value={trendRange}
+                      onChange={handleTrendRangeChange}
+                      className="rounded-md border border-neutral-200 bg-white px-2 py-1 text-xs font-medium text-neutral-600 focus:outline-none focus:ring-1 focus:ring-primary-300"
+                    >
+                      <option value="month">This month</option>
+                      <option value="6months">Past 6 months</option>
+                      <option value="year">Past year</option>
+                    </select>
+                  </div>
+                </div>
 
                 <div className="flex h-28 shrink-0 items-end gap-3">
-                  {trend.map((d) => (
-                    <div key={d.label} className="flex h-full min-w-0 flex-1 flex-col items-center gap-1">
-                      <div className="flex min-h-0 w-full flex-1 items-end justify-center">
+                  {trend.map((d, i) => (
+                    <div key={i} className="relative flex h-full min-w-0 flex-1 flex-col items-center gap-1">
+                      {hoveredBar === i && (
+                        <div className="pointer-events-none absolute bottom-full left-1/2 z-10 mb-1.5 w-max -translate-x-1/2 rounded-lg bg-neutral-800 px-2.5 py-1.5 text-xs shadow-lg">
+                          <p className="font-semibold text-white">{d.tooltip_label}</p>
+                          <p className="text-neutral-300">
+                            {d.avg_score != null ? `${d.avg_score}/10 avg score` : "No scored interviews"}
+                          </p>
+                        </div>
+                      )}
+                      <div
+                        className="flex min-h-0 w-full flex-1 cursor-default items-end justify-center"
+                        onMouseEnter={() => setHoveredBar(i)}
+                        onMouseLeave={() => setHoveredBar(null)}
+                      >
                         <div
-                          className={`w-8 rounded-t-md ${d.avg_score != null ? trendColorMap.get(d.label) : "bg-neutral-100"}`}
+                          className={`w-8 rounded-t-md transition-colors ${trendBarColor(d.avg_score)}`}
                           style={{ height: `${d.avg_score != null ? Math.max((d.avg_score / 10) * 100, 4) : 4}%` }}
                         />
                       </div>
