@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import Sidebar from '../components/common/Sidebar'
 import { page, card, modal } from '../styles/layout'
 import { useAuth } from '../lib/AuthContext.jsx'
-import { authedFetch } from '../lib/api.js'
+import { api } from '../lib/api.js'
+import { useAsync } from '../hooks/useAsync.js'
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -150,32 +151,17 @@ export default function SchedulesPage() {
   const [year, setYear] = useState(today.getFullYear())
   const [month, setMonth] = useState(today.getMonth())
 
-  const [rows, setRows] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState('')
   // Day whose full schedule is open in the overflow modal - null = closed.
   // Set by clicking "+N more" on a crowded day cell.
   const [dayDetail, setDayDetail] = useState(null)
 
-  useEffect(() => {
-    async function load() {
-      try {
-        setLoading(true)
-        setError('')
-        const res = await authedFetch(
-          `/api/applications?user_id=${encodeURIComponent(user?.userid || '')}`
-        )
-        if (!res.ok) throw new Error('Failed to load your interview schedule.')
-        const data = await res.json()
-        setRows(Array.isArray(data) ? data : [])
-      } catch (err) {
-        setError(err.message || 'Something went wrong.')
-      } finally {
-        setLoading(false)
-      }
-    }
-    if (user?.userid) load()
-  }, [user?.userid])
+  // `fn` is null until the auth context resolves a userid, so the page
+  // keeps showing its loading state instead of firing an unscoped request.
+  const { data, loading, error } = useAsync(
+    user?.userid ? () => api.listApplications({ user_id: user.userid }) : null,
+    [user?.userid]
+  )
+  const rows = Array.isArray(data) ? data : []
 
   // Interviews with a real datetime, bucketed per local day and sorted by
   // time within the day.

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import { LayoutDashboard, CalendarDays, Briefcase, Users, Search } from 'lucide-react'
-import { authedFetch } from '../../lib/api.js'
+import { api } from '../../lib/api.js'
 import { useAuth } from '../../lib/AuthContext.jsx'
 
 // Global quick-nav (Ctrl+K / Cmd+K). Searches jobs, candidates and pages in
@@ -62,19 +62,15 @@ export default function CommandPalette() {
     setTimeout(() => inputRef.current?.focus(), 0)
 
     if (jobs === null) {
-      authedFetch('/api/jobs')
-        .then(async (r) => {
-          const data = r.ok ? await r.json().catch(() => []) : []
-          setJobs(Array.isArray(data) ? data : [])
-        })
+      api
+        .listJobs()
+        .then((data) => setJobs(Array.isArray(data) ? data : []))
         .catch(() => setJobs([]))
     }
     if (apps === null && user?.userid) {
-      authedFetch(`/api/applications?user_id=${encodeURIComponent(user.userid)}`)
-        .then(async (r) => {
-          const data = r.ok ? await r.json().catch(() => []) : []
-          setApps(Array.isArray(data) ? data : [])
-        })
+      api
+        .listApplications({ user_id: user.userid })
+        .then((data) => setApps(Array.isArray(data) ? data : []))
         .catch(() => setApps([]))
     }
   }, [open, jobs, apps, user?.userid])

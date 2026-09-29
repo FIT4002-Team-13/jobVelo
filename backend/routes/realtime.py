@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from typing import Any
+from uuid import uuid4
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
@@ -10,13 +11,15 @@ from services.deepgram_service import DeepgramSession
 from services.openai_service import check_bias
 
 logger = logging.getLogger(__name__)
-router = APIRouter()
+# No prefix: the WS path is hard-coded below. tags= only groups it in /docs.
+router = APIRouter(tags=["realtime"])
 
 
 @router.websocket("/api/realtime/transcribe")
 async def realtime_transcribe(websocket: WebSocket, role: str | None = None) -> None:
     await websocket.accept()
     transcript_queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
+    stream_id = uuid4().hex
 
     # `role` is a plain, client-supplied query param with no validation
     # beyond the strict "interviewer" check below. That's fine here: this
@@ -52,7 +55,18 @@ async def realtime_transcribe(websocket: WebSocket, role: str | None = None) -> 
         if is_final and role == "interviewer":
             spawn_bias_check(text)
 
-    session = DeepgramSession(on_transcript)
+    async def on_diarization(groups: list[dict], is_final: bool) -> None:
+        await transcript_queue.put(
+            {
+                "type": "diarized_transcript",
+                "stream_id": stream_id,
+                "groups": groups,
+                "is_final": is_final,
+            }
+        )
+
+    session = DeepgramSession(on_transcript, on_diarization=on_diarization)
+
     try:
         await session.open()
     except Exception:

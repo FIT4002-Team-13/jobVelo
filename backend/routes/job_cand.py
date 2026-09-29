@@ -12,21 +12,81 @@ Cross-tenant safety:
 
 from __future__ import annotations
 
+import json
+import logging
 from datetime import datetime, timezone
 
 from bson import ObjectId
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 
 from database import get_db
 from dependencies import get_current_comp_id
 from models.job_candidate import (
     JobCandidateCreate,
+    JobCandidateFlatOut,
     JobCandidateOut,
     JobCandidatePlanUpdate,
     JobCandidateScoreUpdate,
 )
+from routes._scoping import link_in_company
+from services.openai_service import generate_interview_plan
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/job-candidates", tags=["job_candidates"])
+
+
+async def _auto_generate_plan(jobcand_id: str, job_id: str, cand_id: str) -> None:
+    """Background: generate and persist an interview plan for a new job-candidate link."""
+    try:
+        db = get_db()
+        job = (
+            await db.jobs.find_one({"_id": ObjectId(job_id)})
+            if ObjectId.is_valid(job_id)
+            else None
+        )
+        cand = (
+            await db.candidates.find_one({"_id": ObjectId(cand_id)})
+            if ObjectId.is_valid(cand_id)
+            else None
+        )
+        jc = (
+            await db.job_candidates.find_one({"_id": ObjectId(jobcand_id)})
+            if ObjectId.is_valid(jobcand_id)
+            else None
+        )
+
+        job_title = (job or {}).get("title", "the role")
+        job_description = (job or {}).get("description")
+        candidate_name = (cand or {}).get("cand_full_name", "the candidate")
+
+        cv_analysis = None
+        if jc:
+            raw = jc.get("cv_analysis")
+            if isinstance(raw, str):
+                try:
+                    cv_analysis = json.loads(raw)
+                except json.JSONDecodeError:
+                    pass
+            elif isinstance(raw, dict):
+                cv_analysis = raw
+
+        sections = await generate_interview_plan(
+            job_title, job_description, candidate_name, cv_analysis
+        )
+        if sections:
+            await db.job_candidates.update_one(
+                {"_id": ObjectId(jobcand_id)},
+                {
+                    "$set": {
+                        "plan_sections": sections,
+                        "updated_at": datetime.now(timezone.utc),
+                    }
+                },
+            )
+    except Exception:
+        logger.warning(
+            "Interview plan generation failed for jobcand %s", jobcand_id, exc_info=True
+        )
 
 
 def job_candidate_helper(job_candidate: dict) -> JobCandidateOut:
@@ -56,6 +116,7 @@ def _validate_oid(value: str, what: str) -> ObjectId:
 @router.post("", response_model=JobCandidateOut, status_code=status.HTTP_201_CREATED)
 async def create_job_candidate(
     payload: JobCandidateCreate,
+    background_tasks: BackgroundTasks,
     comp_id: ObjectId = Depends(get_current_comp_id),
 ) -> JobCandidateOut:
     """Link an existing candidate to an existing job.
@@ -109,20 +170,20 @@ async def create_job_candidate(
             detail="Failed to create job-candidate link.",
         )
 
+    background_tasks.add_task(
+        _auto_generate_plan,
+        str(result.inserted_id),
+        payload.job_id,
+        payload.cand_id,
+    )
+
     return job_candidate_helper(created_job_candidate)
 
 
-# Helper: confirm a job_candidates link belongs to the caller's company by
-# walking link -> job -> comp_id. Used by the per-link read/update routes so
-# they can't be used to read or score another company's candidates.
-async def _link_in_company(db, link: dict, comp_id: ObjectId) -> bool:
-    job_id = link.get("job_id")
-    if not job_id or not ObjectId.is_valid(job_id):
-        return False
-    job = await db.jobs.find_one(
-        {"_id": ObjectId(job_id), "comp_id": comp_id}, {"_id": 1}
-    )
-    return job is not None
+# Confirm a job_candidates link belongs to the caller's company (walks
+# link -> job -> comp_id). Lives in routes/_scoping.py now; aliased so the
+# per-link read/update routes below don't churn.
+_link_in_company = link_in_company
 
 
 @router.get("/by-job/{job_id}", response_model=list[JobCandidateOut])
@@ -142,10 +203,10 @@ async def list_job_candidates_by_job(
     return [job_candidate_helper(doc) for doc in job_candidates]
 
 
-@router.get("")
+@router.get("", response_model=list[JobCandidateFlatOut])
 async def list_job_candidates_flat(
     comp_id: ObjectId = Depends(get_current_comp_id),
-) -> list[dict]:
+) -> list[JobCandidateFlatOut]:
     """Flat enumeration of the CALLER'S company's job-candidate links,
     joined with the job title + candidate name.
 
@@ -194,21 +255,21 @@ async def list_job_candidates_flat(
         )
     }
 
-    out: list[dict] = []
+    out: list[JobCandidateFlatOut] = []
     for link in links:
         job = jobs_by_id.get(str(link["job_id"]))
         cand = cands_by_id.get(str(link["cand_id"]))
         out.append(
-            {
-                "jobcand_id": str(link["_id"]),
-                "job_id": str(link["job_id"]),
-                "cand_id": str(link["cand_id"]),
-                "job_title": (job or {}).get("title", "(missing job)"),
-                "cand_full_name": (cand or {}).get("cand_full_name")
+            JobCandidateFlatOut(
+                jobcand_id=str(link["_id"]),
+                job_id=str(link["job_id"]),
+                cand_id=str(link["cand_id"]),
+                job_title=(job or {}).get("title", "(missing job)"),
+                cand_full_name=(cand or {}).get("cand_full_name")
                 or (cand or {}).get("name", "(unknown candidate)"),
-                "status": link.get("status"),
-                "has_analysis": str(link["_id"]) in analysed_ids,
-            }
+                status=link.get("status"),
+                has_analysis=str(link["_id"]) in analysed_ids,
+            )
         )
     return out
 

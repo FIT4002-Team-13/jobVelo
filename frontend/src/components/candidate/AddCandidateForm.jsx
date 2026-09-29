@@ -1,82 +1,10 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { modal, form, flex, button } from '../../styles/layout'
 import { useAuth } from '../../lib/AuthContext.jsx'
-import { api, authedFetch } from '../../lib/api.js'
+import { api } from '../../lib/api.js'
 import { isEmail, isPhone, isFullName, isFutureDateTime } from '../../lib/validators.js'
 import InterviewerCombobox from './InterviewerCombobox.jsx'
-
-function FileDropzone({
-  label,
-  file,
-  onFileChange,
-  onRemove,
-}) {
-  const inputRef = useRef(null)
-  const [dragging, setDragging] = useState(false)
-
-  function handlePick(fileList) {
-    const picked = fileList?.[0]
-    if (!picked) return
-    onFileChange(picked)
-  }
-
-  return (
-    <div>
-      <label className={form.label}>{label}</label>
-
-      {file ? (
-        <div className="flex items-center gap-2 pt-2">
-          <span className="text-coral-500 text-base">📄</span>
-          <span className="truncate text-sm text-primary-500 underline underline-offset-2">
-            {file.name}
-          </span>
-          <button
-            type="button"
-            onClick={onRemove}
-            className="ml-1 text-base text-neutral-500 hover:text-neutral-800"
-          >
-            ×
-          </button>
-        </div>
-      ) : (
-        <>
-          <input
-            ref={inputRef}
-            type="file"
-            accept=".pdf"
-            className="hidden"
-            onChange={(e) => handlePick(e.target.files)}
-          />
-
-          <button
-            type="button"
-            onClick={() => inputRef.current?.click()}
-            onDragOver={(e) => {
-              e.preventDefault()
-              setDragging(true)
-            }}
-            onDragLeave={() => setDragging(false)}
-            onDrop={(e) => {
-              e.preventDefault()
-              setDragging(false)
-              handlePick(e.dataTransfer.files)
-            }}
-            className={`flex h-[130px] w-full flex-col items-center justify-center rounded-lg border border-dashed text-center transition-colors ${
-              dragging
-                ? 'border-primary-500 bg-primary-50'
-                : 'border-neutral-300 bg-white'
-            }`}
-          >
-            <p className="text-sm text-neutral-400">
-              Drag & drop or click to upload
-            </p>
-            <p className="text-sm text-neutral-300">.PDF only</p>
-          </button>
-        </>
-      )}
-    </div>
-  )
-}
+import FileDropzone from './FileDropzone.jsx'
 
 // `fixedJobId` locks the form to one job (used from the Job Detail page, which
 // is already scoped to a single role): the "Assign to Job" picker is hidden and
@@ -106,9 +34,7 @@ export default function AddCandidateForm({ jobs = [], fixedJobId = null, onClose
     async function loadInterviewers() {
       if (!user?.comp_id) return
       try {
-        const res = await authedFetch(`/api/users?role=interviewer`)
-        if (!res.ok) throw new Error()
-        const data = await res.json()
+        const data = await api.listInterviewers()
         setInterviewers(Array.isArray(data) ? data : [])
       } catch {
         setInterviewers([])
@@ -151,10 +77,9 @@ export default function AddCandidateForm({ jobs = [], fixedJobId = null, onClose
     setSubmitting(true)
 
     try {
-      const res = await authedFetch(`/api/candidates/create-for-job`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      let saved
+      try {
+        saved = await api.createCandidateForJob({
           cand_full_name: formState.name.trim(),
           cand_email: formState.email.trim().toLowerCase(),
           cand_phone: formState.phone.trim() || null,
@@ -166,20 +91,15 @@ export default function AddCandidateForm({ jobs = [], fixedJobId = null, onClose
           job_id: formState.job_id,
           interviewer_user_id: formState.interviewer_user_id || null,
           scheduled_at: formState.scheduled_at || null,
-        }),
-      })
-
-      if (!res.ok) {
-        const data = await res.json().catch(() => null)
-        const detail = data?.detail
-        const message =
-          typeof detail === 'string' ? detail
-          : Array.isArray(detail) ? detail.map((d) => `${d.loc?.slice(1).join('.')}: ${d.msg}`).join(' • ')
-          : 'Failed to add candidate.'
-        throw new Error(message)
+        })
+      } catch (err) {
+        const detail = err?.detail
+        throw new Error(
+          Array.isArray(detail)
+            ? detail.map((d) => `${d.loc?.slice(1).join('.')}: ${d.msg}`).join(' • ')
+            : err?.message || 'Failed to add candidate.'
+        )
       }
-
-      const saved = await res.json()
 
       // Candidate added with a CV → hand it to the analyser right away
       // (the cover letter rides along). The POST returns as soon as the

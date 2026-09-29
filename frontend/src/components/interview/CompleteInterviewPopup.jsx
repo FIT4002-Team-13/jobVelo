@@ -1,3 +1,4 @@
+//TODO: delete? i think its not utilised.
 const SCORE_COLORS = {
   technical_skills: "bg-coral-400",
   communication: "bg-sky-400",

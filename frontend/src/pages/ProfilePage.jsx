@@ -4,6 +4,7 @@ import commentIcon from '../assets/icons/comment.png'
 import StatDelta from '../components/common/StatDelta';
 import { useEffect, useRef, useState } from "react";
 import { api } from "../lib/api";
+import { initials } from "../utils/avatar";
 
 export default function Profile() {
   const { user } = useAuth();  
@@ -13,15 +14,7 @@ export default function Profile() {
 
   const displayName =  user?.full_name || user?.name || user?.username || '';
 
-  const initials = displayName
-    ? displayName
-        .split(' ')
-        .filter(Boolean)
-        .map(n => n[0])
-        .join('')
-        .slice(0, 2)
-        .toUpperCase()
-    : '?';
+  const avatarInitials = initials(displayName);
 
   const roleLabel = user?.role
     ? user.role
@@ -88,7 +81,7 @@ export default function Profile() {
         <div className="bg-white border p-4 rounded-xl">
           <div className="flex flex-col items-center text-center">
             <div className="w-16 h-16 rounded-pill bg-primary-500 flex items-center justify-center text-white font-bold text-2xl">
-              {initials}
+              {avatarInitials}
             </div>
             <h2 className="mt-2 text-2xl font-bold tracking-tight text-neutral-800">
               {user.full_name}

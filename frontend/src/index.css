@@ -72,26 +72,23 @@
   display: none;
 }
 
-/* Breathing glow that marks a freshly-generated follow-up question so the
-   interviewer's eye is drawn to it. Primary-blue to match the app; the card
-   clears the class after a few seconds (see QuestionCard) so it breathes,
-   then settles. */
+/* A light, brief glow marking a newly generated question. Uses only the border
+   plus a soft INSET highlight (no outer shadow) so it isn't clipped by the
+   deck's overflow-hidden, and runs just twice before the card clears the class
+   (see QuestionCard) so it's a quick nudge rather than a constant pulse. */
 @keyframes newQuestionGlow {
   0%,
   100% {
-    box-shadow: 0 0 0 0 rgba(93, 137, 233, 0);
-    border-color: rgba(93, 137, 233, 0.4);
+    border-color: rgba(93, 137, 233, 0.3);
+    box-shadow: inset 0 0 0 0 rgba(93, 137, 233, 0);
   }
-
   50% {
-    box-shadow:
-      0 0 0 4px rgba(93, 137, 233, 0.28),
-      0 0 22px rgba(93, 137, 233, 0.45);
-    border-color: rgba(93, 137, 233, 0.95);
+    border-color: rgba(93, 137, 233, 0.85);
+    box-shadow: inset 0 0 10px 0 rgba(93, 137, 233, 0.18);
   }
 }
 
 .new-question-glow {
-  animation: newQuestionGlow 1.7s ease-in-out infinite;
-  border-color: rgba(93, 137, 233, 0.7);
+  animation: newQuestionGlow 1.2s ease-in-out 2;
+  border-color: rgba(93, 137, 233, 0.5);
 }

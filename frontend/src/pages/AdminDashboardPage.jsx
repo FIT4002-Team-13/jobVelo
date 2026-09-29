@@ -4,15 +4,7 @@ import Sidebar from '../components/common/Sidebar'
 import { api, ApiError } from '../lib/api.js'
 import { useToast } from '../components/common/ToastContext.jsx'
 import { button, card, modal, page } from '../styles/layout'
-
-// Roles an admin can assign to a new invitation. "admin" deliberately
-// absent - admin status only comes from creating a company. Kept in sync
-// with NonAdminRole in backend/models/user.py.
-const ROLE_OPTIONS = [
-  { value: 'interviewer',    label: 'Interviewer' },
-  { value: 'hiring_manager', label: 'Hiring Manager' },
-  { value: 'recruiter',      label: 'Recruiter' },
-]
+import { ROLE_OPTIONS } from '../utils/constants.js'
 
 function formatRole(role) {
   const found = ROLE_OPTIONS.find((r) => r.value === role)

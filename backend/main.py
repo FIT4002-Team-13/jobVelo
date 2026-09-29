@@ -23,6 +23,7 @@ from routes import (
     invitations,
     job_cand,
     jobs,
+    jobs_candidates,
     realtime,
     user_interview,
     users,
@@ -69,6 +70,7 @@ app.include_router(invitations.router)
 app.include_router(files.router)
 app.include_router(dashboard.router)
 app.include_router(jobs.router)
+app.include_router(jobs_candidates.router)
 app.include_router(cand.router)
 app.include_router(job_cand.router)
 app.include_router(realtime.router)

@@ -7,17 +7,16 @@ response hardcoded status "SCHEDULED". The endpoint now keys off
 the interview + interview_users link, and returns the same flat row shape
 as GET /{job_id}/candidates so the optimistic table row matches a refresh.
 
-jobs.py resolves the DB via Depends(get_db), so these tests override the
-dependency instead of patching the module attribute.
+jobs.py resolves the DB with a body-level `db = get_db()`, so these tests
+patch `routes.jobs.get_db` for the duration of the request.
 """
 
 from datetime import datetime, timezone
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from bson import ObjectId
 
-from database import get_db
 from dependencies import get_current_user
 from main import app
 
@@ -136,7 +135,8 @@ def test_add_with_interviewer_creates_interview_and_returns_real_status(authed):
         return_value={"intv_id": str(ids["intv"]), "user_id": str(interviewer_oid)}
     )
 
-    app.dependency_overrides[get_db] = lambda: db
+    _db_patch = patch("routes.jobs.get_db", return_value=db)
+    _db_patch.start()
     try:
         response = client.post(
             f"/api/jobs/{job_oid}/candidates",
@@ -146,7 +146,7 @@ def test_add_with_interviewer_creates_interview_and_returns_real_status(authed):
             ),
         )
     finally:
-        del app.dependency_overrides[get_db]
+        _db_patch.stop()
 
     assert response.status_code == 201, response.text
     row = response.json()["candidate"]
@@ -170,11 +170,12 @@ def test_add_without_interviewer_is_not_scheduled_and_creates_no_interview(authe
     db, _ = _base_db(comp_id, job_oid)
     db.interviews.find = MagicMock(side_effect=[_cursor([]), _cursor([])])
 
-    app.dependency_overrides[get_db] = lambda: db
+    _db_patch = patch("routes.jobs.get_db", return_value=db)
+    _db_patch.start()
     try:
         response = client.post(f"/api/jobs/{job_oid}/candidates", json=_payload())
     finally:
-        del app.dependency_overrides[get_db]
+        _db_patch.stop()
 
     assert response.status_code == 201, response.text
     row = response.json()["candidate"]
@@ -192,14 +193,15 @@ def test_add_with_garbage_interviewer_id_is_400_and_creates_nothing(authed):
     job_oid = ObjectId()
     db, _ = _base_db(comp_id, job_oid)
 
-    app.dependency_overrides[get_db] = lambda: db
+    _db_patch = patch("routes.jobs.get_db", return_value=db)
+    _db_patch.start()
     try:
         response = client.post(
             f"/api/jobs/{job_oid}/candidates",
             json=_payload(interviewer_user_id="not-an-objectid"),
         )
     finally:
-        del app.dependency_overrides[get_db]
+        _db_patch.stop()
 
     assert response.status_code == 400
     db.candidates.insert_one.assert_not_called()
@@ -215,14 +217,15 @@ def test_add_with_foreign_interviewer_is_404_and_creates_nothing(authed):
     db, _ = _base_db(comp_id, job_oid)
     db.users.find_one = AsyncMock(return_value=None)  # comp filter excludes them
 
-    app.dependency_overrides[get_db] = lambda: db
+    _db_patch = patch("routes.jobs.get_db", return_value=db)
+    _db_patch.start()
     try:
         response = client.post(
             f"/api/jobs/{job_oid}/candidates",
             json=_payload(interviewer_user_id=str(ObjectId())),
         )
     finally:
-        del app.dependency_overrides[get_db]
+        _db_patch.stop()
 
     assert response.status_code == 404
     db.candidates.insert_one.assert_not_called()
@@ -269,11 +272,12 @@ def test_add_existing_link_returns_current_status_not_hardcoded_scheduled(authed
     db.interviews.find = MagicMock(return_value=_cursor([completed]))
     db.interview_users.find_one = AsyncMock(return_value=None)
 
-    app.dependency_overrides[get_db] = lambda: db
+    _db_patch = patch("routes.jobs.get_db", return_value=db)
+    _db_patch.start()
     try:
         response = client.post(f"/api/jobs/{job_oid}/candidates", json=_payload())
     finally:
-        del app.dependency_overrides[get_db]
+        _db_patch.stop()
 
     assert response.status_code == 201, response.text
     row = response.json()["candidate"]
