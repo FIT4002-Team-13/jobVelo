@@ -10,7 +10,6 @@ from __future__ import annotations
 import math
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
-from typing import Optional
 
 from bson import ObjectId
 from fastapi import APIRouter, Depends, Query
@@ -25,7 +24,7 @@ _VARIANCE_THRESHOLD = 1.5
 
 @router.get("/interview-consistency")
 async def interview_consistency(
-    job_id: Optional[str] = Query(default=None),
+    job_id: str | None = Query(default=None),
     days: int = Query(default=90, ge=0),
     comp_id: ObjectId = Depends(get_current_comp_id),
 ):
