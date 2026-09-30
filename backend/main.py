@@ -13,6 +13,7 @@ from database import (
 from routes import (
     applications,
     auth,
+    behavioural_suggestions,
     cand,
     companies,
     cv_analysis,
@@ -82,6 +83,7 @@ app.include_router(interview_question.router)
 app.include_router(interview.router)
 app.include_router(user_interview.router)
 app.include_router(applications.router)
+app.include_router(behavioural_suggestions.router)
 
 
 @app.get("/api/health")

@@ -249,4 +249,8 @@ export const api = {
   getCompany:    (comp_id)          => request(`/companies/${comp_id}`,  { auth: true }),
   updateCompany: (comp_id, payload) => request(`/companies/${comp_id}`,  { method: 'PUT', body: payload, auth: true }),
   updateCompanyLogo: (comp_id, formData) => request(`/companies/${comp_id}/logo`, { method: 'PATCH', body: formData, auth: true }),
+
+  // ---------- behavioural suggestions---------------------------
+  getBehaviouralSuggestions:        ()  => request('/behavioural-suggestions', { auth: true }),
+  regenerateBehaviouralSuggestions: ()  => request('/behavioural-suggestions/regenerate', { method: 'POST', auth: true }),
 }

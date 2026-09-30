@@ -5,6 +5,7 @@ import StatDelta from '../components/common/StatDelta';
 import { useEffect, useRef, useState } from "react";
 import { api } from "../lib/api";
 import { initials } from "../utils/avatar";
+import BehaviouralSuggestionsPanel from "../components/profile/BehaviouralSuggestionsPanel.jsx";
 
 export default function Profile() {
   const { user } = useAuth();  
@@ -75,7 +76,7 @@ export default function Profile() {
               
   const profileGrid = (
 
-    <div className="grid h-full min-h-0 w-full grid-cols-[minmax(260px,1fr)_minmax(0,2fr)] items-stretch gap-4">
+    <div className="grid w-full grid-cols-[minmax(260px,1fr)_minmax(0,2fr)] items-stretch gap-4">
 
       <div className="grid min-h-0  min-w-0 grid-cols-1 grid-rows-[auto_minmax(0,1fr)] gap-4">
         <div className="bg-white border p-4 rounded-xl">
@@ -96,14 +97,14 @@ export default function Profile() {
         </div>
 
         {/* To be refined in US35. Currently uses hardcoded data for everything. */}
-        <div className="bg-white border rounded-xl p-3  ">
-            <div className="grid h-full min-h-0 grid-rows-[64px_64px_minmax(0,1fr)] gap-3">
+        <div className=" pt-4.5 pb-6 bg-white border rounded-xl px-3  ">
+            <div className="grid h-full min-h-0 grid-rows-[64px_64px_minmax(0,1fr)] gap-6">
               <div className="flex flex-col justify-center">
                 <p className="text-xs font-medium text-neutral-500 pb-1">
                   TOTAL INTERVIEWS
                 </p>
                 <div className="flex items-center justify-between">
-                  <p className="text-xl font-bold text-neutral-800">20</p>
+                  <p className="text-2xl font-bold text-neutral-800">20</p>
                   <StatDelta value="+3%" label="from past 7 days" />
                 </div>
               </div>
@@ -113,7 +114,7 @@ export default function Profile() {
                   AVERAGE CANDIDATE SCORE
                 </p>
                 <div className="flex items-center justify-between">
-                  <p className="text-xl font-bold text-neutral-800">7.4</p>
+                  <p className="text-2xl font-bold text-neutral-800">7.4</p>
                   <StatDelta value="+10%" label="from last month" />
                 </div>
               </div>
@@ -145,10 +146,10 @@ export default function Profile() {
       </div>
 
 
-      <div className="grid min-h-0 min-w-0 grid-cols-1 grid-rows-2 gap-4">
+      <div className="grid min-w-0 grid-cols-1 grid-rows-[290px_290px_290px] gap-4">
         {/* To be refined in US34. Currently uses hardcoded data and comment function does not work. */}
         <div className="min-h-0 overflow-hidden bg-white border rounded-xl p-3 flex flex-col ">
-          <h2 className="text-lg font-semibold text-neutral-800 mb-3">
+          <h2 className="text-md font-semibold text-neutral-800 mb-3">
             Strengths
           </h2>
 
@@ -180,7 +181,7 @@ export default function Profile() {
 
         {/* To be refined in US34. Currently uses hardcoded data and comment function does not work. */}
         <div className="flex min-h-0 flex-col overflow-hidden bg-white border rounded-xl p-3">
-          <h2 className="text-lg font-semibold text-neutral-800 mb-3">
+          <h2 className="text-md font-semibold text-neutral-800 mb-3">
             Improvements
           </h2>
 
@@ -199,9 +200,9 @@ export default function Profile() {
                   </p>
                 </div>
                 <div className="flex items-center justify-center">
-                  <img 
-                    src={commentIcon} 
-                    alt="Comment" 
+                  <img
+                    src={commentIcon}
+                    alt="Comment"
                     className="w-4 h-4 opacity-40 hover:opacity-90 transition shrink-0"
                   />
                 </div>
@@ -209,6 +210,7 @@ export default function Profile() {
             ))}
           </div>
         </div>
+        <BehaviouralSuggestionsPanel />
       </div>
     </div>
   );
@@ -421,7 +423,7 @@ export default function Profile() {
             </p>
           </header>
 
-          <section className="min-h-0 flex-1 overflow-hidden p-6">
+          <section className="min-h-0 flex-1 overflow-y-auto p-6 scrollbar-primary">
             {profileGrid}
           </section>
         </main>
@@ -467,7 +469,7 @@ export default function Profile() {
           </button>
         </div>
 
-        <section className="min-h-0 flex-1 overflow-hidden p-5">
+        <section className="min-h-0 flex-1 overflow-y-auto p-5 scrollbar-primary">
           {activeTab === 'profile' && profileGrid}
 
           {activeTab === 'company' && (
