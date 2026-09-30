@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from bson import ObjectId
 from fastapi import APIRouter, Depends, HTTPException, Response, status
@@ -620,6 +620,7 @@ async def _generate_reports(
     interviewer_label: str,
     candidate_label: str,
     duration_seconds: int | None,
+    interruption_analysis: dict,
 ) -> tuple[CandidateRatings, InterviewFeedback, InterviewFeedback]:
     """Call the LLM to produce both reports and candidate ratings.
 
@@ -637,6 +638,7 @@ async def _generate_reports(
             interviewer_speaker_label=interviewer_label,
             candidate_speaker_label=candidate_label,
             candidate_speech_detected=candidate_speech_detected,
+            interruption_analysis=interruption_analysis,
         )
 
         if not result:
@@ -752,6 +754,67 @@ async def _persist_completion(
     )
 
 
+async def _detect_interruptions(
+    entries: list[dict],
+) -> dict:
+    """Detect interviewer speech that starts before the candidate finishes.
+
+    Transcript entries come from two separate audio streams:
+      - source="mic"    -> interviewer
+      - source="screen" -> candidate/shared audio
+
+    Deepgram timestamps are relative to each stream, so this assumes both
+    streams use the same interview timer / recording clock.
+    """
+
+    interviewer_entries = [
+        entry
+        for entry in entries
+        if entry.get("source") == "mic"
+        and entry.get("start") is not None
+        and entry.get("end") is not None
+    ]
+
+    candidate_entries = [
+        entry
+        for entry in entries
+        if entry.get("source") == "screen"
+        and entry.get("start") is not None
+        and entry.get("end") is not None
+    ]
+
+    interruptions = []
+
+    for interviewer in interviewer_entries:
+        interviewer_start = float(interviewer["start"])
+
+        # Find the candidate utterance that was active when the interviewer
+        # started speaking.
+        for candidate in candidate_entries:
+            candidate_start = float(candidate["start"])
+            candidate_end = float(candidate["end"])
+
+            if candidate_start <= interviewer_start < candidate_end:
+                overlap = candidate_end - interviewer_start
+
+                interruptions.append(
+                    {
+                        "timestamp": interviewer.get("timestamp", ""),
+                        "interviewer_text": interviewer.get("text", ""),
+                        "candidate_text": candidate.get("text", ""),
+                        "overlap_seconds": round(overlap, 2),
+                    }
+                )
+                break
+
+    count = len(interruptions)
+
+    return {
+        "count": count,
+        "frequent": count >= 3,
+        "evidence": interruptions,
+    }
+
 @router.post(
     "/{intv_id}/complete",
     response_model=InterviewCompleteOut,
@@ -847,13 +910,36 @@ async def complete_interview(
 
     # Concurrency claim: atomically mark the interview as "generating" so a
     # second simultaneous click doesn't trigger a duplicate LLM run.
+    now = datetime.now(timezone.utc)
+    stale_before = now - timedelta(minutes=10)
+
     claimed = await db.interviews.find_one_and_update(
-        {"_id": ObjectId(intv_id), "intv_report_state": {"$ne": "generating"}},
-        {"$set": {"intv_report_state": "generating"}},
+        {
+            "_id": ObjectId(intv_id),
+            "$or": [
+                {"intv_report_state": {"$ne": "generating"}},
+                {
+                    "intv_report_state": "generating",
+                    "intv_report_started_at": {"$lt": stale_before},
+                },
+                {
+                    "intv_report_state": "generating",
+                    "intv_report_started_at": {"$exists": False},
+                },
+            ],
+        },
+        {
+            "$set": {
+                "intv_report_state": "generating",
+                "intv_report_started_at": now,
+            }
+        },
     )
+
     if claimed is None:
         raise HTTPException(
-            status_code=409, detail="Report generation already in progress."
+            status_code=409,
+            detail="Report generation already in progress.",
         )
 
     # Prefer the transcript sent with the click (freshest); fall back to
@@ -871,6 +957,7 @@ async def complete_interview(
     ]
     final_entries = [TranscriptEntry.model_validate(entry) for entry in entries]
     transcript_text = _transcript_to_text(entries)
+    interruption_analysis = await _detect_interruptions(entries)
 
     # Fetch CV context (only completed analyses are useful; processing/failed
     # docs carry empty sections).
@@ -888,27 +975,41 @@ async def complete_interview(
         entries, {"interviewer", interviewer_label.strip().casefold()}
     )
 
-    if not final_entries:
-        ratings, candidate_report, interviewer_report = _no_transcript_result()
-    else:
-        ratings, candidate_report, interviewer_report = await _generate_reports(
-            db=db,
-            intv_id=intv_id,
-            final_entries=final_entries,
-            transcript_text=transcript_text,
-            job=job,
-            candidate=candidate,
-            cv_context=cv_context,
-            candidate_speech_detected=candidate_speech_detected,
-            interviewer_label=interviewer_label,
-            candidate_label=candidate_label,
-            duration_seconds=(
-                payload.duration_seconds
-                if payload.duration_seconds is not None
-                else interview.get("intv_duration_seconds")
-            ),
-        )
+    try:
+        if not final_entries:
+            ratings, candidate_report, interviewer_report = _no_transcript_result()
+        else:
+            ratings, candidate_report, interviewer_report = await _generate_reports(
+                db=db,
+                intv_id=intv_id,
+                final_entries=final_entries,
+                transcript_text=transcript_text,
+                job=job,
+                candidate=candidate,
+                cv_context=cv_context,
+                candidate_speech_detected=candidate_speech_detected,
+                interviewer_label=interviewer_label,
+                candidate_label=candidate_label,
+                duration_seconds=(
+                    payload.duration_seconds
+                    if payload.duration_seconds is not None
+                    else interview.get("intv_duration_seconds")
+                ),
+                interruption_analysis=interruption_analysis,
+            )
 
+    except Exception:
+        await db.interviews.update_one(
+            {
+                "_id": ObjectId(intv_id),
+                "intv_report_state": "generating",
+            },
+            {
+                "$set": {"intv_report_state": "failed"},
+                "$unset": {"intv_report_started_at": ""},
+            },
+        )
+        raise
     # Bias incidents the live checker flagged, sent up with the completion
     # click. Stored verbatim on the interview so the report (now and on any
     # later re-open) always shows the full list, not just the last 3 the live
