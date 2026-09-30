@@ -11,6 +11,7 @@ from database import (
     seed_mock_data,
 )
 from routes import (
+    analytics,
     applications,
     auth,
     cand,
@@ -82,6 +83,7 @@ app.include_router(interview_question.router)
 app.include_router(interview.router)
 app.include_router(user_interview.router)
 app.include_router(applications.router)
+app.include_router(analytics.router)
 
 
 @app.get("/api/health")

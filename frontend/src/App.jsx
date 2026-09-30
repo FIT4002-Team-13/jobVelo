@@ -18,6 +18,7 @@ import InterviewPage from './pages/InterviewPage'
 import CandidatePage from './pages/CandidatePage.jsx'
 import CandidateDetailPage from './pages/CandidateDetailPage.jsx'
 import ApplicationsPage from './pages/ApplicationsPage.jsx'
+import InterviewConsistencyPage from './pages/InterviewConsistencyPage.jsx'
 import ErrorPage, { AppErrorBoundary } from './pages/ErrorPage.jsx'
 
 export default function App() {
@@ -129,6 +130,14 @@ export default function App() {
             element={
               <RequireAuth>
                 <ApplicationsPage />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/interview-consistency"
+            element={
+              <RequireAuth>
+                <InterviewConsistencyPage />
               </RequireAuth>
             }
           />
