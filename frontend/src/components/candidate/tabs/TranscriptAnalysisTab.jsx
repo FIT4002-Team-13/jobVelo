@@ -3,6 +3,7 @@ import { flex } from "../../../styles/layout";
 import { SECTION_COLORS } from "../../../utils/constants.js";
 import { formatTimer, parseTimestamp } from "../../../utils/time.js";
 import ReportSections from "../../interview/ReportSections.jsx";
+import QuestioningPatternsPanel from "../QuestioningPatternsPanel.jsx";
 
 const SCORE_COLORS = {
   Communication: "bg-primary-500",
@@ -474,7 +475,10 @@ export default function TranscriptAnalysisTab({
 
             {activeTab === "interviewer" && (
               report?.interviewer_report ? (
-                <ReportSections report={report.interviewer_report} showRequirements={false} variant="stack" />
+                <div className={`${flex.col} gap-5`}>
+                  <ReportSections report={report.interviewer_report} showRequirements={false} variant="stack" />
+                  <QuestioningPatternsPanel data={report.interviewer_report.questioning_patterns} />
+                </div>
               ) : (
                 <p className="text-sm text-neutral-400 text-center mt-8">No interviewer report available.</p>
               )

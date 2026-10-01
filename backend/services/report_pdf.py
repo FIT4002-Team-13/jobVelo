@@ -301,6 +301,62 @@ def _bias_section(pdf: _ReportPDF, incidents: list[dict]) -> None:
         pdf.ln(2)
 
 
+def _questioning_patterns_section(pdf: _ReportPDF, qp) -> None:
+    """Interviewer-report only: open/closed mix, topic coverage vs plan, and
+    plan adherence. No-op when the report has no analysis (older reports)."""
+    if not isinstance(qp, dict):
+        return
+
+    _heading(pdf, "Questioning Patterns")
+
+    summary = qp.get("summary")
+    if summary:
+        _body(pdf, summary)
+
+    open_q = int(qp.get("open_questions") or 0)
+    closed_q = int(qp.get("closed_questions") or 0)
+    if open_q or closed_q:
+        _body(pdf, f"Question mix: {open_q} open-ended, {closed_q} closed.")
+
+    coverage = qp.get("topic_coverage") or []
+    if coverage:
+        pdf.ln(1)
+        pdf.set_font("Helvetica", "B", 10)
+        pdf.set_text_color(*_INK)
+        pdf.multi_cell(
+            0, 5.5, _latin("Topic coverage"), new_x=XPos.LMARGIN, new_y=YPos.NEXT
+        )
+        for t in coverage:
+            if not isinstance(t, dict):
+                continue
+            covered = bool(t.get("covered"))
+            tag = "[COVERED]" if covered else "[MISSED]"
+            pdf.set_font("Helvetica", "B", 10)
+            pdf.set_text_color(*(_MINT if covered else _CORAL))
+            pdf.cell(pdf.get_string_width(_latin(tag)) + 3, 5.5, _latin(tag))
+            pdf.set_font("Helvetica", "", 10)
+            pdf.set_text_color(*_INK)
+            topic = t.get("topic") or ""
+            note = t.get("note")
+            pdf.multi_cell(
+                0,
+                5.5,
+                _latin(f"{topic} - {note}" if note else topic),
+                new_x=XPos.LMARGIN,
+                new_y=YPos.NEXT,
+            )
+        pdf.ln(0.5)
+
+    adherence = qp.get("plan_adherence")
+    if adherence:
+        pdf.set_font("Helvetica", "B", 10)
+        pdf.set_text_color(*_INK)
+        pdf.multi_cell(
+            0, 5.5, _latin("Plan adherence"), new_x=XPos.LMARGIN, new_y=YPos.NEXT
+        )
+        _body(pdf, adherence)
+
+
 def build_interview_report_pdf(
     *,
     kind: str,  # "candidate" | "interviewer"
@@ -446,6 +502,10 @@ def build_interview_report_pdf(
             if not (req.get("evidence") or addressed) and req.get("justification"):
                 _justification(pdf, req.get("justification"))
             pdf.ln(0.5)
+    # ── Questioning patterns (interviewer report only) ───────────────────
+    if kind == "interviewer":
+        _questioning_patterns_section(pdf, report.get("questioning_patterns"))
+
     # ── Bias log (interviewer report only - it's the interviewer's conduct)
     if kind == "interviewer":
         _bias_section(pdf, bias_incidents or [])
