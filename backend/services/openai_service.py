@@ -604,6 +604,8 @@ async def generate_interview_reports(
         frequent_interruptions = bool(
             interruption_analysis.get("frequent", False)
         )
+        interruption_rate = interruption_analysis.get("rate_per_minute")
+        interruption_duration = interruption_analysis.get("duration_seconds")
         interruption_evidence = interruption_analysis.get("evidence", [])
 
         if frequent_interruptions:
@@ -621,6 +623,11 @@ async def generate_interview_reports(
             context_parts.append(
                 "INTERVIEWER INTERRUPTION ANALYSIS:\n"
                 f"Potential interruptions detected: {interruption_count}\n"
+                f"Interview duration used for frequency analysis: "
+                f"{interruption_duration or 'unknown'} seconds\n"
+                f"Potential interruption rate: "
+                f"{interruption_rate if interruption_rate is not None else 'unknown'} "
+                "per minute\n"
                 "Frequent interruptions: yes\n"
                 "This analysis is based on timestamped audio data and is the "
                 "source of truth for interruption feedback.\n"
@@ -636,6 +643,11 @@ async def generate_interview_reports(
             context_parts.append(
                 "INTERVIEWER INTERRUPTION ANALYSIS:\n"
                 f"Potential interruptions detected: {interruption_count}\n"
+                f"Interview duration used for frequency analysis: "
+                f"{interruption_duration or 'unknown'} seconds\n"
+                f"Potential interruption rate: "
+                f"{interruption_rate if interruption_rate is not None else 'unknown'} "
+                "per minute\n"
                 "Frequent interruptions: no\n"
                 "Do NOT create an interruption-related strength or improvement."
             )
