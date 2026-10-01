@@ -77,8 +77,10 @@ async function mockCandidatePage(page, interviewOverride = {}) {
       body: JSON.stringify([{ jobcand_id: JOBCAND, job_id: JOB_ID, cand_id: CAND_ID, ratings: FAKE_RATINGS }]),
     })
   )
+  // Strip intv_id so CandidateDetailPage does not redirect to /interview/:id
+  const { intv_id: _stripped, ...interviewForList } = interview
   await page.route(`**/api/interviews**`, (route) =>
-    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([interview]) })
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([interviewForList]) })
   )
   await page.route(`**/api/jobs/${JOB_ID}`, (route) =>
     route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(FAKE_JOB) })
@@ -111,28 +113,28 @@ test('US25 - Scores panel heading is visible on the candidate detail page', asyn
   await seedAuth(page)
   await mockCandidatePage(page)
   await goToCandidatePage(page)
-  await expect(page.getByRole('heading', { name: 'Scores' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Interview Rating' })).toBeVisible()
 })
 
 test('US25 - Communication score bar is rendered', async ({ page }) => {
   await seedAuth(page)
   await mockCandidatePage(page)
   await goToCandidatePage(page)
-  await expect(page.getByText('Communication')).toBeVisible()
+  await expect(page.getByText('COMMUNICATION')).toBeVisible()
 })
 
 test('US25 - Technical Skills score bar is rendered', async ({ page }) => {
   await seedAuth(page)
   await mockCandidatePage(page)
   await goToCandidatePage(page)
-  await expect(page.getByText('Technical Skills')).toBeVisible()
+  await expect(page.getByText('TECHNICAL SKILLS')).toBeVisible()
 })
 
 test('US25 - Problem Solving score bar is rendered', async ({ page }) => {
   await seedAuth(page)
   await mockCandidatePage(page)
   await goToCandidatePage(page)
-  await expect(page.getByText('Problem Solving')).toBeVisible()
+  await expect(page.getByText('PROBLEM SOLVING')).toBeVisible()
 })
 
 test('US25 - overall FINAL SCORE label is shown', async ({ page }) => {
