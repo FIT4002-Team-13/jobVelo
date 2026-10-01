@@ -10,7 +10,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from bson import ObjectId
 
-from database import get_db
 from dependencies import get_current_user
 from main import app
 
@@ -62,12 +61,12 @@ def test_company_profile_update_succeeds_for_admin(client):
     mock_db.companies.find_one = AsyncMock(return_value=updated_doc)
 
     app.dependency_overrides[get_current_user] = lambda: _admin_user(comp_id)
-    app.dependency_overrides[get_db] = lambda: mock_db
 
-    response = client.put(
-        f"/api/companies/{comp_id}",
-        json={"comp_name": "New Name"},
-    )
+    with patch("routes.companies.get_db", return_value=mock_db):
+        response = client.put(
+            f"/api/companies/{comp_id}",
+            json={"comp_name": "New Name"},
+        )
 
     assert response.status_code == 200
     assert response.json()["comp_name"] == "New Name"
@@ -92,9 +91,9 @@ def test_company_profile_update_persists_all_allowed_fields(client):
     mock_db.companies.find_one = AsyncMock(return_value=updated_doc)
 
     app.dependency_overrides[get_current_user] = lambda: _admin_user(comp_id)
-    app.dependency_overrides[get_db] = lambda: mock_db
 
-    response = client.put(f"/api/companies/{comp_id}", json=payload)
+    with patch("routes.companies.get_db", return_value=mock_db):
+        response = client.put(f"/api/companies/{comp_id}", json=payload)
 
     assert response.status_code == 200
     # Confirm all six fields reached the $set dict in the update call.
@@ -110,12 +109,12 @@ def test_company_profile_update_blocked_for_non_admin(client):
 
     mock_db = MagicMock()
     app.dependency_overrides[get_current_user] = lambda: non_admin
-    app.dependency_overrides[get_db] = lambda: mock_db
 
-    response = client.put(
-        f"/api/companies/{comp_id}",
-        json={"comp_name": "Should Fail"},
-    )
+    with patch("routes.companies.get_db", return_value=mock_db):
+        response = client.put(
+            f"/api/companies/{comp_id}",
+            json={"comp_name": "Should Fail"},
+        )
 
     assert response.status_code == 403
 
@@ -128,12 +127,12 @@ def test_company_profile_update_returns_400_for_no_valid_fields(client):
     mock_db.companies.update_one = AsyncMock()
 
     app.dependency_overrides[get_current_user] = lambda: _admin_user(comp_id)
-    app.dependency_overrides[get_db] = lambda: mock_db
 
-    response = client.put(
-        f"/api/companies/{comp_id}",
-        json={"_id": "hack", "unknown_field": "value"},
-    )
+    with patch("routes.companies.get_db", return_value=mock_db):
+        response = client.put(
+            f"/api/companies/{comp_id}",
+            json={"_id": "hack", "unknown_field": "value"},
+        )
 
     assert response.status_code == 400
     mock_db.companies.update_one.assert_not_called()
@@ -145,12 +144,12 @@ def test_company_profile_update_returns_400_for_invalid_comp_id(client):
 
     mock_db = MagicMock()
     app.dependency_overrides[get_current_user] = lambda: _admin_user(comp_id)
-    app.dependency_overrides[get_db] = lambda: mock_db
 
-    response = client.put(
-        "/api/companies/not-an-objectid",
-        json={"comp_name": "Whatever"},
-    )
+    with patch("routes.companies.get_db", return_value=mock_db):
+        response = client.put(
+            "/api/companies/not-an-objectid",
+            json={"comp_name": "Whatever"},
+        )
 
     assert response.status_code == 400
     mock_db.companies.update_one.assert_not_called()
@@ -170,12 +169,12 @@ def test_company_logo_rejects_unsupported_file_format(client):
 
     mock_db = MagicMock()
     app.dependency_overrides[get_current_user] = lambda: _admin_user(comp_id)
-    app.dependency_overrides[get_db] = lambda: mock_db
 
-    response = client.patch(
-        f"/api/companies/{comp_id}/logo",
-        files={"logo": ("logo.txt", b"not an image at all", "text/plain")},
-    )
+    with patch("routes.companies.get_db", return_value=mock_db):
+        response = client.patch(
+            f"/api/companies/{comp_id}/logo",
+            files={"logo": ("logo.txt", b"not an image at all", "text/plain")},
+        )
 
     assert response.status_code == 415
 
@@ -186,14 +185,14 @@ def test_company_logo_rejects_executable_format(client):
 
     mock_db = MagicMock()
     app.dependency_overrides[get_current_user] = lambda: _admin_user(comp_id)
-    app.dependency_overrides[get_db] = lambda: mock_db
 
-    response = client.patch(
-        f"/api/companies/{comp_id}/logo",
-        files={
-            "logo": ("malware.exe", b"\x4d\x5a\x90\x00", "application/octet-stream")
-        },
-    )
+    with patch("routes.companies.get_db", return_value=mock_db):
+        response = client.patch(
+            f"/api/companies/{comp_id}/logo",
+            files={
+                "logo": ("malware.exe", b"\x4d\x5a\x90\x00", "application/octet-stream")
+            },
+        )
 
     assert response.status_code == 415
 
@@ -205,12 +204,12 @@ def test_company_logo_update_blocked_for_non_admin(client):
 
     mock_db = MagicMock()
     app.dependency_overrides[get_current_user] = lambda: non_admin
-    app.dependency_overrides[get_db] = lambda: mock_db
 
-    response = client.patch(
-        f"/api/companies/{comp_id}/logo",
-        files={"logo": ("logo.png", b"\x89PNG\r\n", "image/png")},
-    )
+    with patch("routes.companies.get_db", return_value=mock_db):
+        response = client.patch(
+            f"/api/companies/{comp_id}/logo",
+            files={"logo": ("logo.png", b"\x89PNG\r\n", "image/png")},
+        )
 
     assert response.status_code == 403
 
@@ -226,9 +225,11 @@ def test_company_logo_update_succeeds_for_valid_png(client):
     mock_db.companies.find_one = AsyncMock(return_value=updated_doc)
 
     app.dependency_overrides[get_current_user] = lambda: _admin_user(comp_id)
-    app.dependency_overrides[get_db] = lambda: mock_db
 
-    with patch("routes.companies.save_upload", new_callable=AsyncMock) as mock_save:
+    with (
+        patch("routes.companies.get_db", return_value=mock_db),
+        patch("routes.companies.save_upload", new_callable=AsyncMock) as mock_save,
+    ):
         mock_save.return_value = logo_path
 
         response = client.patch(
