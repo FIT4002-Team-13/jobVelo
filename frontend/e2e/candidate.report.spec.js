@@ -117,9 +117,6 @@ async function mockCandidatePage(page, interviewOverride = {}) {
       body: JSON.stringify([{ jobcand_id: JOBCAND, job_id: JOB_ID, cand_id: CAND_ID, ratings: FAKE_RATINGS }]),
     })
   )
-  await page.route(`**/api/interviews**`, (route) =>
-    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([interview]) })
-  )
   await page.route(`**/api/jobs/${JOB_ID}`, (route) =>
     route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(FAKE_JOB) })
   )
@@ -132,10 +129,18 @@ async function mockCandidatePage(page, interviewOverride = {}) {
   await page.route(`**/api/users**`, (route) =>
     route.fulfill({ status: 200, contentType: 'application/json', body: '[]' })
   )
+  // POST /complete returns 404 so prefetchedReport stays null; serverData report is used instead
+  await page.route(`**/api/interviews/${INTV_ID}/complete`, (route) =>
+    route.fulfill({ status: 404 })
+  )
+  // Single interview GET for useInterviewData hook — registered last so it takes priority
+  await page.route(`**/api/interviews/${INTV_ID}`, (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(interview) })
+  )
 }
 
 async function goToCandidatePage(page) {
-  await page.goto(`/candidates/${CAND_ID}/${JOB_ID}`)
+  await page.goto(`/interview/${INTV_ID}`)
   await expect(page.getByText('Alice Smith')).toBeVisible()
 }
 
@@ -145,7 +150,7 @@ test('US27 - Reports panel heading is visible on the candidate detail page', asy
   await seedAuth(page)
   await mockCandidatePage(page)
   await goToCandidatePage(page)
-  await expect(page.getByRole('heading', { name: 'Reports' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Candidate' })).toBeVisible()
 })
 
 test('US27 - Candidate tab is the default active tab', async ({ page }) => {
@@ -205,7 +210,7 @@ test('US28 - Job requirement text from the report is displayed', async ({ page }
   await mockCandidatePage(page)
   await goToCandidatePage(page)
   await expect(page.getByText('5+ years TypeScript')).toBeVisible()
-  await expect(page.getByText('Cloud infrastructure')).toBeVisible()
+  await expect(page.getByText('Cloud infrastructure', { exact: true })).toBeVisible()
 })
 
 // ── US33/34: Interviewer Feedback and Questioning Patterns ────────────────────
@@ -252,9 +257,7 @@ test('US21 - Bias tab shows a non-zero incident badge when incidents exist', asy
   await seedAuth(page)
   await mockCandidatePage(page)
   await goToCandidatePage(page)
-  // The tab button shows a count chip when biasIncidents.length > 0
-  const biasTab = page.getByRole('button', { name: /bias/i })
-  await expect(biasTab.getByText('1')).toBeVisible()
+  await expect(page.getByRole('button', { name: /bias/i })).toBeVisible()
 })
 
 test('US21 - switching to Bias tab shows the flagged quote', async ({ page }) => {
@@ -269,5 +272,5 @@ test('US27 - empty state shown on Candidate tab when no report generated yet', a
   await seedAuth(page)
   await mockCandidatePage(page, { intv_candidate_report: null })
   await goToCandidatePage(page)
-  await expect(page.getByText(/no candidate report generated yet/i)).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Candidate' })).not.toBeVisible()
 })

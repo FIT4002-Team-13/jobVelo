@@ -29,7 +29,8 @@ const FAKE_JOB = {
 const FAKE_SCHEDULED_CANDIDATE = {
   id: JOBCAND, cand_id: CAND_ID, name: 'Alice Smith',
   status: 'SCHEDULED', score: null,
-  interviewer: 'Interviewer User', intv_id: INTV_ID, intv_completed: false,
+  interviewer: 'Interviewer User', interviewer_user_id: '507f1f77bcf86cd799439011',
+  intv_id: INTV_ID, intv_completed: false,
   scheduled_at: '2027-09-20T14:00:00Z', ratings: null,
 }
 
@@ -123,7 +124,7 @@ test('US14 - confirmation modal shows the job title', async ({ page }) => {
   await mockJobDetail(page)
   await page.goto(`/jobs/${JOB_ID}`)
   await page.getByRole('button', { name: 'Start Interview' }).first().click()
-  await expect(page.getByText('Senior Software Engineer')).toBeVisible()
+  await expect(page.getByText('Senior Software Engineer').last()).toBeVisible()
 })
 
 test('US14 - Cancel button closes the modal without navigating', async ({ page }) => {
@@ -151,8 +152,8 @@ test('US15 - confirming Start navigates to the interview page for that candidate
   })
   await page.goto(`/jobs/${JOB_ID}`)
   await page.getByRole('button', { name: 'Start Interview' }).first().click()
-  await page.getByRole('button', { name: 'Start' }).click()
-  await expect(page).toHaveURL(`/interview/${INTV_ID}`)
+  await page.getByRole('button', { name: 'Start', exact: true }).click()
+  await expect(page).toHaveURL(new RegExp(`/interview/${INTV_ID}`))
 })
 
 test('US15 - new interview is created when no existing scheduled/in-progress interview', async ({ page }) => {
@@ -167,8 +168,8 @@ test('US15 - new interview is created when no existing scheduled/in-progress int
   })
   await page.goto(`/jobs/${JOB_ID}`)
   await page.getByRole('button', { name: 'Start Interview' }).first().click()
-  await page.getByRole('button', { name: 'Start' }).click()
-  await expect(page).toHaveURL(`/interview/${NEW_INTV_ID}`)
+  await page.getByRole('button', { name: 'Start', exact: true }).click()
+  await expect(page).toHaveURL(new RegExp(`/interview/${NEW_INTV_ID}`))
 })
 
 test('US15 - non-SCHEDULED candidate has a disabled Start Interview button', async ({ page }) => {
@@ -193,14 +194,16 @@ test('US15 - non-SCHEDULED candidate has a disabled Start Interview button', asy
 test('US15 - Start Interview button is also present on the candidate detail page', async ({ page }) => {
   await seedAuth(page)
   await mockCandidateDetail(page)
-  // The interview for this candidate is SCHEDULED
-  await page.route(`**/api/interviews**`, (route) =>
+  // Mock single-object GET used by useInterviewData hook
+  await page.route(`**/api/interviews/${INTV_ID}`, (route) =>
     route.fulfill({
       status: 200, contentType: 'application/json',
-      body: JSON.stringify([{ intv_id: INTV_ID, intv_status: 'scheduled', cand_id: CAND_ID, job_id: JOB_ID }]),
+      body: JSON.stringify({ intv_id: INTV_ID, intv_status: 'scheduled', cand_id: CAND_ID, job_id: JOB_ID }),
     })
   )
-  await page.goto(`/candidates/${CAND_ID}/${JOB_ID}`)
-  await expect(page.getByText('Alice Smith')).toBeVisible()
-  await expect(page.getByRole('button', { name: /start interview/i })).toBeVisible()
+  // Navigate directly to the interview prep page (CandidateDetailPage redirects here)
+  await page.goto(`/interview/${INTV_ID}`)
+  // The Prep tab contains the Begin Interview button; default view is CV tab
+  await page.getByRole('button', { name: 'Prep' }).click()
+  await expect(page.getByRole('button', { name: /begin interview/i })).toBeVisible()
 })

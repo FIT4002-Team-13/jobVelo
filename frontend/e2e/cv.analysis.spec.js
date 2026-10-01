@@ -26,14 +26,14 @@ const FAKE_ANALYSIS = {
     soft_skills:         8.8,
   },
   key_strengths: [
-    'Strong TypeScript proficiency',
-    'Experience with distributed systems',
+    { title: 'Strong TypeScript proficiency', detail: 'Demonstrates deep TypeScript expertise.' },
+    { title: 'Experience with distributed systems', detail: 'Large-scale distributed architecture experience.' },
   ],
   improvements: [
-    'Limited cloud infrastructure exposure',
+    { title: 'Limited cloud infrastructure exposure', detail: 'Needs hands-on cloud platform development.' },
   ],
   inconsistencies: [
-    'Gap between 2022 and 2023 not explained',
+    { title: 'Gap between 2022 and 2023 not explained', detail: 'Resume shows unexplained employment gap.' },
   ],
   interview_questions: [
     { question: 'Describe your experience with distributed systems.', category: 'technical', rationale: 'Relevant to role' },
@@ -89,9 +89,10 @@ test('US10 - score values from the API are displayed', async ({ page }) => {
   await seedAuth(page)
   await goToAnalysis(page)
   // Values are formatted to one decimal place (e.g. 8.2, 7.5, 8.8)
-  await expect(page.getByText('8.2')).toBeVisible()
-  await expect(page.getByText('7.5')).toBeVisible()
-  await expect(page.getByText('8.8')).toBeVisible()
+  // exact: true prevents matching the FitVerdict chip which shows "8.2/10"
+  await expect(page.getByText('8.2', { exact: true })).toBeVisible()
+  await expect(page.getByText('7.5', { exact: true })).toBeVisible()
+  await expect(page.getByText('8.8', { exact: true })).toBeVisible()
 })
 
 test('US10 - fit verdict chip is shown (Strong fit for avg >= 7.5)', async ({ page }) => {

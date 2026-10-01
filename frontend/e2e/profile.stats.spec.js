@@ -34,7 +34,7 @@ async function seedAuth(page) {
 test('US35 - profile page loads with the interviewer name displayed', async ({ page }) => {
   await seedAuth(page)
   await page.goto('/profile')
-  await expect(page.getByText('Interviewer User')).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Interviewer User' })).toBeVisible()
 })
 
 test('US35 - TOTAL INTERVIEWS stat label is shown', async ({ page }) => {
@@ -107,7 +107,7 @@ test('US35 - role label is displayed correctly on the profile card', async ({ pa
   await seedAuth(page)
   await page.goto('/profile')
   // "interviewer" → formatted as "Interviewer"
-  await expect(page.getByText('Interviewer')).toBeVisible()
+  await expect(page.getByRole('main').getByText('Interviewer', { exact: true })).toBeVisible()
 })
 
 test('US35 - user email is displayed on the profile card', async ({ page }) => {

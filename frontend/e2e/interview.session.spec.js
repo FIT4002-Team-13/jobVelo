@@ -109,6 +109,10 @@ async function goToLiveSession(page) {
   await page.goto(`/interview/${INTV_ID}`)
   // Wait for the candidate name to appear (confirms the interview data loaded)
   await expect(page.getByText('Alice Smith')).toBeVisible()
+  // In webkit the Recording Setup modal (fixed inset-0 z-50) appears when
+  // getUserMedia is mocked to fail. Injecting a CSS rule ensures the overlay
+  // does not intercept clicks on transcript elements (persists through re-renders).
+  await page.addStyleTag({ content: '.fixed.inset-0.z-50 { pointer-events: none !important; }' })
 }
 
 // ── US16: Real-Time Transcription ─────────────────────────────────────────────
@@ -134,8 +138,8 @@ test('US16 - speaker labels distinguish interviewer from candidate', async ({ pa
   await seedAuth(page)
   await mockInterviewSession(page)
   await goToLiveSession(page)
-  await expect(page.getByText('Interviewer User')).toBeVisible()
-  await expect(page.getByText('Candidate')).toBeVisible()
+  await expect(page.getByText('Interviewer User').first()).toBeVisible()
+  await expect(page.getByText('Candidate').first()).toBeVisible()
 })
 
 test('US16 - timestamps are shown alongside each transcript entry', async ({ page }) => {
@@ -161,7 +165,7 @@ test('US22 - section cards render for each section in the interview plan', async
   await goToLiveSession(page)
   await expect(page.getByText('Introduction')).toBeVisible()
   await expect(page.getByText('Technical Assessment')).toBeVisible()
-  await expect(page.getByText('Behavioural')).toBeVisible()
+  await expect(page.getByText('Behavioural').first()).toBeVisible()
 })
 
 test('US22 - section timer display (MM:SS format) is shown on the active section card', async ({ page }) => {
@@ -190,7 +194,7 @@ test('US20 - suggested questions panel is visible in the live workspace', async 
   await mockInterviewSession(page)
   await goToLiveSession(page)
   // Questions panel heading
-  await expect(page.getByText(/suggested questions/i)).toBeVisible()
+  await expect(page.getByText(/suggested questions/i).first()).toBeVisible()
 })
 
 test('US20 - question cards render after the API returns questions', async ({ page }) => {
@@ -205,8 +209,8 @@ test('US20 - question cards are labelled with their category (Technical / Behavi
   await seedAuth(page)
   await mockInterviewSession(page)
   await goToLiveSession(page)
-  await expect(page.getByText('Technical')).toBeVisible()
-  await expect(page.getByText('Behavioural')).toBeVisible()
+  await expect(page.getByText('Technical', { exact: true })).toBeVisible()
+  await expect(page.getByText('Behavioural', { exact: true }).first()).toBeVisible()
 })
 
 test('US20 - Ignore button is visible on question cards', async ({ page }) => {
@@ -243,18 +247,16 @@ test('US26 - clicking the note button reveals an inline note editor', async ({ p
 })
 
 test('US26 - typing a note and saving sends a PATCH to the interviews endpoint', async ({ page }) => {
-  let patchCalled = false
   await seedAuth(page)
-  await mockInterviewSession(page)
-  await page.route(`**/api/interviews/${INTV_ID}`, (route) => {
-    if (route.request().method() === 'PATCH') patchCalled = true
-    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(FAKE_INTERVIEW) })
-  })
+  // Use a completed interview — handleNoteChange only patches when isCompleted
+  await mockInterviewSession(page, { intv_status: 'completed' })
   await goToLiveSession(page)
   await page.getByTitle('Add note').first().click()
-  await page.getByPlaceholder('Add a note…').fill('Good answer on concurrency.')
-  await page.getByRole('button', { name: 'Save note' }).click()
-  expect(patchCalled).toBe(true)
+  // fill triggers onChange which immediately calls handleNoteChange → PATCH
+  await Promise.all([
+    page.waitForRequest(r => r.url().includes(`/api/interviews/${INTV_ID}`) && r.method() === 'PATCH'),
+    page.getByPlaceholder('Add a note…').fill('Good answer on concurrency.'),
+  ])
 })
 
 test('US26 - after saving, the button title updates to "Edit note"', async ({ page }) => {

@@ -110,8 +110,8 @@ test('US7 - candidate status pills are shown for each row', async ({ page }) => 
   await seedAuth(page)
   await mockJobDetail(page)
   await page.goto(`/jobs/${JOB_ID}`)
-  await expect(page.getByText('SCHEDULED')).toBeVisible()
-  await expect(page.getByText('NOT SCHEDULED')).toBeVisible()
+  await expect(page.locator('table tbody').getByText('SCHEDULED', { exact: true })).toBeVisible()
+  await expect(page.locator('table tbody').getByText('NOT SCHEDULED', { exact: true })).toBeVisible()
 })
 
 test('US7 - search input filters candidates by name', async ({ page }) => {
@@ -149,7 +149,7 @@ test('US7 - Interview Status panel shows total candidate count', async ({ page }
   await page.goto(`/jobs/${JOB_ID}`)
   // InterviewStatusPanel: "Total Candidates" label + count
   await expect(page.getByText('Total Candidates')).toBeVisible()
-  await expect(page.getByText('2')).toBeVisible()
+  await expect(page.getByText('2', { exact: true }).first()).toBeVisible()
 })
 
 // ── US8: Organise Candidates by Job ──────────────────────────────────────────
