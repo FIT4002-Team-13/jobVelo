@@ -4,12 +4,15 @@ import { isEmail, isPhone, isFullName, isFutureDateTime } from '../../lib/valida
 import { useAuth } from '../../lib/AuthContext.jsx'
 import { api, authedFetch } from '../../lib/api.js'
 import InterviewerCombobox from './InterviewerCombobox.jsx'
-import FileDropzone from './FileDropzone.jsx'
 
-function getFileName(value = '') {
-  if (!value) return ''
-  if (typeof value !== 'string') return ''
-  return value.split('/').pop() || value
+// Turn an ApiError (or any error) into a user-facing message, expanding
+// FastAPI's `detail` array into `field: message` bullets when present.
+function messageFromError(err, fallback) {
+  const detail = err?.detail
+  if (Array.isArray(detail)) {
+    return detail.map((d) => `${d.loc?.slice(1).join('.')}: ${d.msg}`).join(' • ')
+  }
+  return err?.message || fallback
 }
 
 export default function EditCandidateForm({
@@ -17,6 +20,7 @@ export default function EditCandidateForm({
   initialData,
   onClose,
   onSaved,
+  noOverlay = false,
 }) {
   const { user } = useAuth()
 
@@ -36,12 +40,6 @@ export default function EditCandidateForm({
     scheduled_at: initialScheduledAt,
   })
 
-  const [cvFile, setCvFile] = useState(null)
-  const [coverLetterFile, setCoverLetterFile] = useState(null)
-  const [existingCvName, setExistingCvName] = useState(getFileName(initialData?.cv_url))
-  const [existingCoverLetterName, setExistingCoverLetterName] = useState(
-    getFileName(initialData?.cover_letter_url)
-  )
   const [interviewers, setInterviewers] = useState([])
   const [interviewerOpen, setInterviewerOpen] = useState(false)
 
@@ -50,18 +48,28 @@ export default function EditCandidateForm({
 
   useEffect(() => {
     async function loadInterviewers() {
-      if (!user?.comp_id) return
+      if (!user?.comp_id || !['recruiter', 'admin'].includes(user?.role)) return
       try {
-        const res = await authedFetch(`/api/users?role=interviewer`)
-        if (!res.ok) throw new Error()
-        const data = await res.json()
-        setInterviewers(Array.isArray(data) ? data : [])
-      } catch {
+        const [interviewerRes, hiringManagerRes] = await Promise.all([
+          authedFetch('/api/users?role=interviewer'),
+          authedFetch('/api/users?role=hiring_manager'),
+        ])
+        if (!interviewerRes.ok || !hiringManagerRes.ok) throw new Error()
+
+        const interviewerData = await interviewerRes.json()
+        const hiringManagerData = await hiringManagerRes.json()
+
+        setInterviewers([
+          ...(Array.isArray(interviewerData) ? interviewerData : []),
+          ...(Array.isArray(hiringManagerData) ? hiringManagerData : []),
+        ])
+      } catch (err) {
+        console.error('Failed to load interviewers:', err)
         setInterviewers([])
       }
     }
     loadInterviewers()
-  }, [user?.comp_id])
+  }, [user?.comp_id, user?.role])
 
   function setField(key, value) {
     setFormState((prev) => ({ ...prev, [key]: value }))
@@ -108,73 +116,29 @@ export default function EditCandidateForm({
 
     try {
       // 1. Update candidate profile. Document URLs are deliberately NOT
-      //    sent here - a new upload sets them server-side via the
-      //    CV-analysis endpoint (step 3), and sending null used to wipe
-      //    the existing CV link on every save.
-      const candRes = await authedFetch(`/api/candidates/${formState.cand_id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      //    sent here - CV/cover letter are uploaded separately (the
+      //    candidate page's CV/Cover Letter tabs), and sending null used to
+      //    wipe the existing links on every save.
+      try {
+        await api.updateCandidate(formState.cand_id, {
           cand_full_name: formState.name.trim(),
           cand_email: formState.email.trim().toLowerCase(),
           cand_phone: formState.phone.trim() || null,
-        }),
-      })
-
-      if (!candRes.ok) {
-        const data = await candRes.json().catch(() => null)
-        const detail = data?.detail
-        const message =
-          typeof detail === 'string' ? detail
-          : Array.isArray(detail) ? detail.map((d) => `${d.loc?.slice(1).join('.')}: ${d.msg}`).join(' • ')
-          : 'Failed to update candidate.'
-        throw new Error(message)
+        })
+      } catch (err) {
+        throw new Error(messageFromError(err, 'Failed to update candidate.'))
       }
 
       // 2. Update application/job/interview side
-      const appRes = await authedFetch(`/api/applications/${formState.application_id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      let saved
+      try {
+        saved = await api.updateApplication(formState.application_id, {
           job_id: formState.job_id,
           interviewer_user_id: formState.interviewer_user_id || null,
           scheduled_at: formState.scheduled_at || null,
-        }),
-      })
-
-      if (!appRes.ok) {
-        const data = await appRes.json().catch(() => null)
-        const detail = data?.detail
-        const message =
-          typeof detail === 'string' ? detail
-          : Array.isArray(detail) ? detail.map((d) => `${d.loc?.slice(1).join('.')}: ${d.msg}`).join(' • ')
-          : 'Failed to update application.'
-        throw new Error(message)
-      }
-
-      const saved = await appRes.json()
-
-      // 3. A newly attached CV kicks off (or replaces) the analysis for
-      //    this application - the cover letter rides along when present.
-      //    The backend returns as soon as the file is stored
-      //    (status=processing) and finishes in the background - the
-      //    candidate page's "View" button polls until it's ready.
-      //    A cover letter added WITHOUT a new CV doesn't involve the
-      //    analyser, so it goes through the standalone document upload.
-      try {
-        if (cvFile && formState.application_id) {
-          const fd = new FormData()
-          fd.append('jobcand_id', formState.application_id)
-          fd.append('cv', cvFile)
-          if (coverLetterFile) fd.append('cover_letter', coverLetterFile)
-          await api.analyseCv(fd)
-        } else if (coverLetterFile && formState.cand_id) {
-          const fd = new FormData()
-          fd.append('cover_letter', coverLetterFile)
-          await api.uploadCandidateCoverLetter(formState.cand_id, fd)
-        }
+        })
       } catch (err) {
-        console.warn('Document upload failed:', err)
+        throw new Error(messageFromError(err, 'Failed to update application.'))
       }
 
       onSaved(saved)
@@ -185,9 +149,8 @@ export default function EditCandidateForm({
     }
   }
 
-  return (
-    <div className={modal.overlay}>
-      <div className={`${modal.panel} scrollbar-primary max-w-2xl max-h-[90vh] overflow-y-auto transition-[padding] ${interviewerOpen ? 'pb-52' : ''}`}>
+  const panel = (
+    <div className={`${modal.panel} scrollbar-primary max-w-2xl max-h-[90vh] overflow-y-auto transition-[padding] ${interviewerOpen ? 'pb-52' : ''}`}>
         <button
           type="button"
           onClick={onClose}
@@ -247,64 +210,35 @@ export default function EditCandidateForm({
               </select>
             </div>
           </div>
+            {(user?.role === 'recruiter' || user?.role === 'admin') && (            
+              <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className={form.label}>Interviewer</label>
+                <InterviewerCombobox
+                  value={{
+                    label: formState.interviewer,
+                    userId: formState.interviewer_user_id,
+                  }}
+                  onChange={({ label, userId }) => {
+                    setField('interviewer', label)
+                    setField('interviewer_user_id', userId)
+                  }}
+                  options={interviewers}
+                  onOpenChange={setInterviewerOpen}
+                />
+              </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <FileDropzone
-              label="Resume / CV"
-              existingName={existingCvName}
-              file={cvFile}
-              onFileChange={(file) => {
-                setCvFile(file)
-                setExistingCvName('')
-              }}
-              onRemove={() => {
-                setCvFile(null)
-                setExistingCvName('')
-              }}
-            />
-
-            <FileDropzone
-              label="Cover Letter"
-              existingName={existingCoverLetterName}
-              file={coverLetterFile}
-              onFileChange={(file) => {
-                setCoverLetterFile(file)
-                setExistingCoverLetterName('')
-              }}
-              onRemove={() => {
-                setCoverLetterFile(null)
-                setExistingCoverLetterName('')
-              }}
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className={form.label}>Interviewer</label>
-              <InterviewerCombobox
-                value={{
-                  label: formState.interviewer,
-                  userId: formState.interviewer_user_id,
-                }}
-                onChange={({ label, userId }) => {
-                  setField('interviewer', label)
-                  setField('interviewer_user_id', userId)
-                }}
-                options={interviewers}
-                onOpenChange={setInterviewerOpen}
-              />
+              <div>
+                <label className={form.label}>Interview Date</label>
+                <input
+                  type="datetime-local"
+                  value={formState.scheduled_at}
+                  onChange={(e) => setField('scheduled_at', e.target.value)}
+                  className={form.input}
+                />
+              </div>
             </div>
-
-            <div>
-              <label className={form.label}>Interview Date</label>
-              <input
-                type="datetime-local"
-                value={formState.scheduled_at}
-                onChange={(e) => setField('scheduled_at', e.target.value)}
-                className={form.input}
-              />
-            </div>
-          </div>
+          )}
 
           {error && <p className={form.error}>{error}</p>}
 
@@ -327,6 +261,7 @@ export default function EditCandidateForm({
           </div>
         </form>
       </div>
-    </div>
   )
+
+  return noOverlay ? panel : <div className={modal.overlay}>{panel}</div>
 }

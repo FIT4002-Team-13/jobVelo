@@ -93,18 +93,26 @@ def _evidence_lines(pdf: _ReportPDF, evidence: list[dict]) -> None:
         if not quote:
             continue
         ts = (ev.get("timestamp") or "").strip()
-        prefix = f'[{ts}] ' if ts else ""
+        prefix = f"[{ts}] " if ts else ""
         pdf.set_x(pdf.l_margin + 5)
         pdf.set_font("Helvetica", "I", 9)
         pdf.set_text_color(*_MUTED)
-        pdf.multi_cell(0, 4.8, _latin(f'{prefix}"{quote}"'), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+        pdf.multi_cell(
+            0, 4.8, _latin(f'{prefix}"{quote}"'), new_x=XPos.LMARGIN, new_y=YPos.NEXT
+        )
 
 
 def _bullets(pdf: _ReportPDF, items: list) -> None:
     for item in items:
         pdf.set_font("Helvetica", "", 10)
         pdf.set_text_color(*_INK)
-        pdf.multi_cell(0, 5.5, _latin(f"-  {_point_text(item)}"), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+        pdf.multi_cell(
+            0,
+            5.5,
+            _latin(f"-  {_point_text(item)}"),
+            new_x=XPos.LMARGIN,
+            new_y=YPos.NEXT,
+        )
         _evidence_lines(pdf, _evidence_of(item))
         pdf.ln(0.5)
 
@@ -147,6 +155,76 @@ def _score_bar(pdf: _ReportPDF, label: str, value: float, colour: tuple) -> None
     pdf.set_xy(bar_x + bar_w + 4, y)
     pdf.set_font("Helvetica", "B", 10)
     pdf.cell(0, 6, f"{value:.1f}/10", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+
+
+_SKILL_LABELS = {
+    "communication": "Communication",
+    "technical_skills": "Technical Skills",
+    "problem_solving": "Problem Solving",
+}
+
+
+def _rating_evidence_lines(pdf: _ReportPDF, evidence: list[dict]) -> None:
+    """Same layout as _evidence_lines, but for SkillRating.evidence entries,
+    which carry `text` + `speaker` rather than `quote`."""
+    for ev in evidence:
+        if not isinstance(ev, dict):
+            continue
+        quote = (ev.get("text") or "").strip()
+        if not quote:
+            continue
+        speaker = (ev.get("speaker") or "").strip()
+        ts = (ev.get("timestamp") or "").strip()
+        meta = " - ".join(p for p in (speaker, ts) if p)
+        prefix = f"[{meta}] " if meta else ""
+        pdf.set_x(pdf.l_margin + 5)
+        pdf.set_font("Helvetica", "I", 9)
+        pdf.set_text_color(*_MUTED)
+        pdf.multi_cell(
+            0, 4.8, _latin(f'{prefix}"{quote}"'), new_x=XPos.LMARGIN, new_y=YPos.NEXT
+        )
+
+
+def _skill_evidence_section(pdf: _ReportPDF, ratings: dict) -> None:
+    """Per-skill explanation + supporting transcript quotes backing each
+    score - the same content as the app's "Score & Evidence" popup, so the
+    justification travels with the downloaded report instead of staying
+    behind in the UI."""
+    _heading(pdf, "Score Evidence")
+    for key, label in _SKILL_LABELS.items():
+        rating = ratings.get(key)
+        if not isinstance(rating, dict):
+            continue
+
+        score = rating.get("score")
+        pdf.set_font("Helvetica", "B", 10)
+        pdf.set_text_color(*_INK)
+        heading = (
+            f"{label} - {score:.1f}/10" if isinstance(score, (int, float)) else label
+        )
+        pdf.cell(0, 6, _latin(heading), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+
+        explanation = (rating.get("explanation") or "").strip()
+        if explanation:
+            _justification(pdf, explanation)
+
+        evidence = (
+            rating.get("evidence") if isinstance(rating.get("evidence"), list) else []
+        )
+        if evidence:
+            _rating_evidence_lines(pdf, evidence)
+        else:
+            pdf.set_x(pdf.l_margin + 5)
+            pdf.set_font("Helvetica", "I", 9)
+            pdf.set_text_color(*_FAINT)
+            pdf.multi_cell(
+                0,
+                4.8,
+                _latin("No supporting transcript evidence."),
+                new_x=XPos.LMARGIN,
+                new_y=YPos.NEXT,
+            )
+        pdf.ln(2)
 
 
 def _bias_section(pdf: _ReportPDF, incidents: list[dict]) -> None:
@@ -223,6 +301,62 @@ def _bias_section(pdf: _ReportPDF, incidents: list[dict]) -> None:
         pdf.ln(2)
 
 
+def _questioning_patterns_section(pdf: _ReportPDF, qp) -> None:
+    """Interviewer-report only: open/closed mix, topic coverage vs plan, and
+    plan adherence. No-op when the report has no analysis (older reports)."""
+    if not isinstance(qp, dict):
+        return
+
+    _heading(pdf, "Questioning Patterns")
+
+    summary = qp.get("summary")
+    if summary:
+        _body(pdf, summary)
+
+    open_q = int(qp.get("open_questions") or 0)
+    closed_q = int(qp.get("closed_questions") or 0)
+    if open_q or closed_q:
+        _body(pdf, f"Question mix: {open_q} open-ended, {closed_q} closed.")
+
+    coverage = qp.get("topic_coverage") or []
+    if coverage:
+        pdf.ln(1)
+        pdf.set_font("Helvetica", "B", 10)
+        pdf.set_text_color(*_INK)
+        pdf.multi_cell(
+            0, 5.5, _latin("Topic coverage"), new_x=XPos.LMARGIN, new_y=YPos.NEXT
+        )
+        for t in coverage:
+            if not isinstance(t, dict):
+                continue
+            covered = bool(t.get("covered"))
+            tag = "[COVERED]" if covered else "[MISSED]"
+            pdf.set_font("Helvetica", "B", 10)
+            pdf.set_text_color(*(_MINT if covered else _CORAL))
+            pdf.cell(pdf.get_string_width(_latin(tag)) + 3, 5.5, _latin(tag))
+            pdf.set_font("Helvetica", "", 10)
+            pdf.set_text_color(*_INK)
+            topic = t.get("topic") or ""
+            note = t.get("note")
+            pdf.multi_cell(
+                0,
+                5.5,
+                _latin(f"{topic} - {note}" if note else topic),
+                new_x=XPos.LMARGIN,
+                new_y=YPos.NEXT,
+            )
+        pdf.ln(0.5)
+
+    adherence = qp.get("plan_adherence")
+    if adherence:
+        pdf.set_font("Helvetica", "B", 10)
+        pdf.set_text_color(*_INK)
+        pdf.multi_cell(
+            0, 5.5, _latin("Plan adherence"), new_x=XPos.LMARGIN, new_y=YPos.NEXT
+        )
+        _body(pdf, adherence)
+
+
 def build_interview_report_pdf(
     *,
     kind: str,  # "candidate" | "interviewer"
@@ -234,6 +368,8 @@ def build_interview_report_pdf(
     duration_seconds: int | None,
     status: str | None,
     scores: dict | None,  # {communication, skill, problem_solving} for candidate kind
+    skill_evidence: dict
+    | None = None,  # full CandidateRatings dump, candidate kind only
     transcript: list[dict] | None = None,  # [{speaker, timestamp, text}, ...]
     bias_incidents: list[dict] | None = None,  # interviewer kind only
 ) -> bytes:
@@ -310,6 +446,10 @@ def build_interview_report_pdf(
                 new_y=YPos.NEXT,
             )
 
+    # ── Score evidence (candidate variant only) ──────────────────────────
+    if kind == "candidate" and skill_evidence:
+        _skill_evidence_section(pdf, skill_evidence)
+
     # ── Report body ──────────────────────────────────────────────────────
     _heading(pdf, "Summary")
     _body(pdf, report.get("summary") or "No summary generated.")
@@ -348,11 +488,24 @@ def build_interview_report_pdf(
             pdf.cell(pdf.get_string_width(_latin(tag)) + 3, 5.5, _latin(tag))
             pdf.set_font("Helvetica", "", 10)
             pdf.set_text_color(*_INK)
-            pdf.multi_cell(0, 5.5, _latin(req.get("requirement") or ""), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
-            _evidence_lines(pdf, req.get("evidence") if isinstance(req.get("evidence"), list) else [])
+            pdf.multi_cell(
+                0,
+                5.5,
+                _latin(req.get("requirement") or ""),
+                new_x=XPos.LMARGIN,
+                new_y=YPos.NEXT,
+            )
+            _evidence_lines(
+                pdf,
+                req.get("evidence") if isinstance(req.get("evidence"), list) else [],
+            )
             if not (req.get("evidence") or addressed) and req.get("justification"):
                 _justification(pdf, req.get("justification"))
             pdf.ln(0.5)
+    # ── Questioning patterns (interviewer report only) ───────────────────
+    if kind == "interviewer":
+        _questioning_patterns_section(pdf, report.get("questioning_patterns"))
+
     # ── Bias log (interviewer report only - it's the interviewer's conduct)
     if kind == "interviewer":
         _bias_section(pdf, bias_incidents or [])

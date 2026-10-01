@@ -1,9 +1,10 @@
 import { useState, useRef, useEffect } from "react";
-import { authedFetch } from "../lib/api.js";
+import { api } from "../lib/api.js";
 
-export function useInterviewSections(id, { serverData, timerRef, intvStatus }) {
+export function useInterviewSections(id, { serverData, timerRef, intvStatus, isMicActive }) {
   const [sections, setSections] = useState([]);
   const [sectionStates, setSectionStates] = useState([]);
+  const [startPending, setStartPending] = useState(false);
 
   const sectionIntervals = useRef([]);
   const sectionsScrollRef = useRef(null);
@@ -37,11 +38,7 @@ export function useInterviewSections(id, { serverData, timerRef, intvStatus }) {
     const startAt = timerRef.current;
     setSections((prev) => {
       const updated = prev.map((s, j) => (j === i && s.start_at == null ? { ...s, start_at: startAt } : s));
-      authedFetch(`/api/interviews/${id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ intv_sections: updated }),
-      }).catch(() => {});
+      api.updateInterview(id, { intv_sections: updated }).catch(() => {});
       return updated;
     });
 
@@ -118,29 +115,28 @@ export function useInterviewSections(id, { serverData, timerRef, intvStatus }) {
       setSections(intv_sections);
       setSectionStates(intv_sections.map(() => ({ status: "idle", elapsed: 0 })));
       sectionIntervals.current = new Array(intv_sections.length).fill(null);
-      if (!completed) startSection(0);
+      if (!completed) setStartPending(true);
     } else if (!completed) {
-      authedFetch("/api/interviews/generate-plan", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ job_id, cand_id }),
-      })
-        .then((r) => r.json())
+      api
+        .generatePlan({ job_id, cand_id })
         .then((plan) => {
           if (!Array.isArray(plan) || !plan.length) return;
           setSections(plan);
           setSectionStates(plan.map(() => ({ status: "idle", elapsed: 0 })));
           sectionIntervals.current = new Array(plan.length).fill(null);
-          startSection(0);
-          authedFetch(`/api/interviews/${id}`, {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ intv_sections: plan }),
-          }).catch(() => {});
+          setStartPending(true);
+          api.updateInterview(id, { intv_sections: plan }).catch(() => {});
         })
         .catch(() => {});
     }
   }, [serverData, intvStatus]);
+
+  useEffect(() => {
+    if (isMicActive && startPending) {
+      setStartPending(false);
+      startSection(0);
+    }
+  }, [isMicActive, startPending]);
 
   return {
     sections,

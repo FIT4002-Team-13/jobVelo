@@ -32,18 +32,28 @@ export default function AddCandidateForm({ jobs = [], fixedJobId = null, onClose
 
   useEffect(() => {
     async function loadInterviewers() {
-      if (!user?.comp_id) return
+    if (!user?.comp_id || !['recruiter', 'admin'].includes(user?.role)) return
       try {
-        const res = await authedFetch(`/api/users?role=interviewer`)
-        if (!res.ok) throw new Error()
-        const data = await res.json()
-        setInterviewers(Array.isArray(data) ? data : [])
+        const [interviewerRes, hiringManagerRes] = await Promise.all([
+          authedFetch(`/api/users?role=interviewer`),
+          authedFetch(`/api/users?role=hiring_manager`),
+        ])
+
+        if (!interviewerRes.ok || !hiringManagerRes.ok) throw new Error()
+
+        const interviewerData = await interviewerRes.json()
+        const hiringManagerData = await hiringManagerRes.json()
+
+        setInterviewers([
+          ...(Array.isArray(interviewerData) ? interviewerData : []),
+          ...(Array.isArray(hiringManagerData) ? hiringManagerData : []),
+        ])
       } catch {
         setInterviewers([])
       }
     }
     loadInterviewers()
-  }, [user?.comp_id])
+  }, [user?.comp_id, user?.role]);
 
   function setField(key, value) {
     setFormState((prev) => ({ ...prev, [key]: value }))
@@ -79,10 +89,9 @@ export default function AddCandidateForm({ jobs = [], fixedJobId = null, onClose
     setSubmitting(true)
 
     try {
-      const res = await authedFetch(`/api/candidates/create-for-job`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      let saved
+      try {
+        saved = await api.createCandidateForJob({
           cand_full_name: formState.name.trim(),
           cand_email: formState.email.trim().toLowerCase(),
           cand_phone: formState.phone.trim() || null,
@@ -94,20 +103,15 @@ export default function AddCandidateForm({ jobs = [], fixedJobId = null, onClose
           job_id: formState.job_id,
           interviewer_user_id: formState.interviewer_user_id || null,
           scheduled_at: formState.scheduled_at || null,
-        }),
-      })
-
-      if (!res.ok) {
-        const data = await res.json().catch(() => null)
-        const detail = data?.detail
-        const message =
-          typeof detail === 'string' ? detail
-          : Array.isArray(detail) ? detail.map((d) => `${d.loc?.slice(1).join('.')}: ${d.msg}`).join(' • ')
-          : 'Failed to add candidate.'
-        throw new Error(message)
+        })
+      } catch (err) {
+        const detail = err?.detail
+        throw new Error(
+          Array.isArray(detail)
+            ? detail.map((d) => `${d.loc?.slice(1).join('.')}: ${d.msg}`).join(' • ')
+            : err?.message || 'Failed to add candidate.'
+        )
       }
-
-      const saved = await res.json()
 
       // Candidate added with a CV → hand it to the analyser right away
       // (the cover letter rides along). The POST returns as soon as the
@@ -235,33 +239,35 @@ export default function AddCandidateForm({ jobs = [], fixedJobId = null, onClose
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className={form.label}>Interviewer</label>
-              <InterviewerCombobox
-                value={{
-                  label: formState.interviewer,
-                  userId: formState.interviewer_user_id,
-                }}
-                onChange={({ label, userId }) => {
-                  setField('interviewer', label)
-                  setField('interviewer_user_id', userId)
-                }}
-                options={interviewers}
-                onOpenChange={setInterviewerOpen}
-              />
-            </div>
+            {(user?.role === 'recruiter' || user?.role === 'admin') && (            
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className={form.label}>Interviewer</label>
+                <InterviewerCombobox
+                  value={{
+                    label: formState.interviewer,
+                    userId: formState.interviewer_user_id,
+                  }}
+                  onChange={({ label, userId }) => {
+                    setField('interviewer', label)
+                    setField('interviewer_user_id', userId)
+                  }}
+                  options={interviewers}
+                  onOpenChange={setInterviewerOpen}
+                />
+              </div>
 
-            <div>
-              <label className={form.label}>Interview Date</label>
-              <input
-                type="datetime-local"
-                value={formState.scheduled_at}
-                onChange={(e) => setField('scheduled_at', e.target.value)}
-                className={form.input}
-              />
+              <div>
+                <label className={form.label}>Interview Date</label>
+                <input
+                  type="datetime-local"
+                  value={formState.scheduled_at}
+                  onChange={(e) => setField('scheduled_at', e.target.value)}
+                  className={form.input}
+                />
+              </div>
             </div>
-          </div>
+          )}
 
           {error && <p className={form.error}>{error}</p>}
 

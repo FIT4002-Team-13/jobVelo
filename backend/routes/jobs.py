@@ -19,11 +19,10 @@ from datetime import datetime, timezone
 
 from bson import ObjectId
 from fastapi import APIRouter, Depends, HTTPException, Response, status
-from motor.motor_asyncio import AsyncIOMotorDatabase
 from pydantic import BaseModel, EmailStr, Field
 
 from database import get_db
-from dependencies import get_current_comp_id
+from dependencies import get_current_comp_id, get_current_user
 from models.job import JobCreate, JobOut, JobUpdate
 from services.file_storage import delete_upload
 
@@ -175,7 +174,6 @@ async def _job_stats(db, job_ids: list[str]) -> dict[str, dict]:
 
 @router.get("", response_model=list[JobOut])
 async def list_jobs(
-    db: AsyncIOMotorDatabase = Depends(get_db),
     comp_id: ObjectId = Depends(get_current_comp_id),
 ) -> list[JobOut]:
     """List jobs in the caller's company. Newest-update first.
@@ -187,6 +185,7 @@ async def list_jobs(
     job_candidates link table - the field on the job doc itself is just
     a placeholder (`[]` from create_job).
     """
+    db = get_db()
     jobs = await (
         db.jobs.find({"comp_id": comp_id})
         .sort("job_last_update_datetime", -1)
@@ -206,33 +205,13 @@ async def list_jobs(
     ]
 
 
-# @router.get("/{job_id}", response_model=JobOut)
-# async def get_job(
-#     job_id: str,
-#     db: AsyncIOMotorDatabase = Depends(get_db),
-# ) -> JobOut:
-#     oid = _validate_oid(job_id)
-#     job = await db.jobs.find_one({"_id": oid})
-#     if job is None:
-#         raise HTTPException(status_code=404, detail="Job not found")
 
-
-#     # Count + interviewers both computed on read so a deleted candidate
-#     # row (or a dropped collection) doesn't leave the counter stale.
-#     count = await db.job_candidates.count_documents({"job_id": job_id})
-#     raw = await db.job_candidates.distinct("interviewer", {"job_id": job_id})
-#     interviewers = [n for n in raw if n]
-#     return _serialize({
-#         **job,
-#         "interviewers": interviewers,
-#         "candidates_filled": count,
-#     })
 @router.get("/{job_id}", response_model=JobOut)
 async def get_job(
     job_id: str,
-    db: AsyncIOMotorDatabase = Depends(get_db),
     comp_id: ObjectId = Depends(get_current_comp_id),
 ) -> JobOut:
+    db = get_db()
     oid = _validate_oid(job_id)
     # Filter by comp_id so jobs in another company return 404 (not 403) -
     # we don't reveal the existence of records the caller can't see.
@@ -250,16 +229,32 @@ async def get_job(
         }
     )
 
+async def require_job_manager(
+    user: dict = Depends(get_current_user),
+) -> dict:
+    if user.get("role") not in ("admin", "recruiter"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only recruiters and admins can manage jobs.",
+        )
+    return user
 
 @router.post("", response_model=JobOut, status_code=status.HTTP_201_CREATED)
 async def create_job(
     payload: JobCreate,
-    db: AsyncIOMotorDatabase = Depends(get_db),
     comp_id: ObjectId = Depends(get_current_comp_id),
+    user: dict = Depends(require_job_manager),
 ) -> JobOut:
+    
+    db = get_db()
     """Create a job in the caller's company. Any comp_id in the body is
     IGNORED - we substitute the JWT one so a user can't create jobs in a
     company they don't belong to."""
+    if user.get("role") not in ("admin", "recruiter"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only recruiters and admins can manage jobs.",
+        )
     now = datetime.now(timezone.utc)
     body = payload.model_dump()
     body["comp_id"] = comp_id  # JWT-derived; ignore whatever the client sent
@@ -281,9 +276,16 @@ async def create_job(
 async def update_job(
     job_id: str,
     payload: JobUpdate,
-    db: AsyncIOMotorDatabase = Depends(get_db),
     comp_id: ObjectId = Depends(get_current_comp_id),
+    user: dict = Depends(require_job_manager),
 ) -> JobOut:
+    
+    db = get_db()
+    if user.get("role") not in ("admin", "recruiter"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only recruiters and admins can manage jobs.",
+        )
     oid = _validate_oid(job_id)
 
     updates = {k: v for k, v in payload.model_dump().items() if v is not None}
@@ -324,9 +326,11 @@ async def update_job(
 )
 async def delete_job(
     job_id: str,
-    db: AsyncIOMotorDatabase = Depends(get_db),
     comp_id: ObjectId = Depends(get_current_comp_id),
+    user: dict = Depends(require_job_manager),
 ):
+    
+    db = get_db()
     """Delete the job AND everything hanging off it: job_candidates links,
     interviews (+ interviewer links), and cv_analyses docs/files. The
     candidate docs themselves are NOT deleted - candidates are shared
@@ -335,6 +339,12 @@ async def delete_job(
     Without the full cascade, orphaned interviews kept feeding the
     dashboard status rollup (pinning candidates at "SCHEDULED" forever)
     and analysis PDFs accumulated on disk unreachably."""
+    
+    if user.get("role") not in ("admin", "recruiter"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only recruiters and admins can manage jobs.",
+        )
     oid = _validate_oid(job_id)
 
     # Collect the dependent ids BEFORE deleting anything.
@@ -452,7 +462,6 @@ async def _link_row(
 async def add_candidate_to_job(
     job_id: str,
     payload: AddCandidateToJob,
-    db: AsyncIOMotorDatabase = Depends(get_db),
     comp_id: ObjectId = Depends(get_current_comp_id),
 ):
     """Create-or-reuse a candidate AND link them to this job in one call.
@@ -468,6 +477,7 @@ async def add_candidate_to_job(
     Returns the joined shape the JobDetailPage table expects:
       { candidate: {flat shape with name/email/etc.}, job: <updated job> }
     """
+    db = get_db()
     oid = _validate_oid(job_id)
     job = await db.jobs.find_one({"_id": oid, "comp_id": comp_id})
     if job is None:
@@ -484,7 +494,7 @@ async def add_candidate_to_job(
         if not ObjectId.is_valid(payload.interviewer_user_id):
             raise HTTPException(status_code=400, detail="Invalid interviewer_user_id")
         interviewer_user = await db.users.find_one(
-            {"_id": ObjectId(payload.interviewer_user_id), "comp_id": comp_id},
+            {"_id": ObjectId(payload.interviewer_user_id), "comp_id": comp_id, "role": {"$in": ["interviewer", "hiring_manager"]}},
             {"_id": 1},
         )
         if interviewer_user is None:

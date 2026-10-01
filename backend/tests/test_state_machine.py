@@ -13,7 +13,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from bson import ObjectId
 
-from database import get_db
 from dependencies import get_current_user
 from main import app
 from routes.interview import _TRANSCRIPT_CHAR_BUDGET, _transcript_to_text
@@ -105,7 +104,6 @@ def _complete_db(interview_doc, claim_result="claimed"):
     mock_db.job_candidates.update_one = AsyncMock()
     return mock_db
 
-
 @pytest.fixture()
 def authed(client):
     user = {
@@ -119,13 +117,26 @@ def authed(client):
     app.dependency_overrides.clear()
 
 
+@pytest.fixture()
+def authed_recruiter(client):
+    user = {
+        "_id": ObjectId(),
+        "comp_id": ObjectId(),
+        "role": "recruiter",
+        "full_name": "Test Recruiter",
+    }
+    app.dependency_overrides[get_current_user] = lambda: user
+    yield user["comp_id"], client
+    app.dependency_overrides.clear()
+
+
 # ── 3.3 create-for-job: completed interviews are immutable ───────────────────
 
 
-def test_create_for_job_leaves_completed_interview_untouched(authed):
+def test_create_for_job_leaves_completed_interview_untouched(authed_recruiter):
     """Re-submitting the add-candidate popup for a candidate whose interview
     is COMPLETED must not reschedule it or replace its interviewer links."""
-    comp_id, client = authed
+    comp_id, client = authed_recruiter
     job_id = ObjectId()
     cand_id = ObjectId()
     candidate = {
@@ -181,8 +192,8 @@ def test_create_for_job_leaves_completed_interview_untouched(authed):
 # ── 3.1 delete cascades ──────────────────────────────────────────────────────
 
 
-def test_delete_job_cascades_interviews_links_and_analyses(authed):
-    _, client = authed
+def test_delete_job_cascades_interviews_links_and_analyses(authed_recruiter):
+    _, client = authed_recruiter
     job_id = ObjectId()
     link_id, intv_id = ObjectId(), ObjectId()
 
@@ -200,8 +211,10 @@ def test_delete_job_cascades_interviews_links_and_analyses(authed):
     mock_db.interview_users.delete_many = AsyncMock()
     mock_db.interviews.delete_many = AsyncMock()
 
-    app.dependency_overrides[get_db] = lambda: mock_db
-    with patch("routes.jobs.delete_upload") as fake_delete:
+    with (
+        patch("routes.jobs.get_db", return_value=mock_db),
+        patch("routes.jobs.delete_upload") as fake_delete,
+    ):
         response = client.delete(f"/api/jobs/{job_id}")
 
     assert response.status_code == 204
@@ -236,8 +249,10 @@ def test_remove_candidate_from_job_cascades_cv_analysis(authed):
     mock_db.cv_analyses.delete_many = AsyncMock()
     mock_db.interviews.find.return_value = _cursor([])
 
-    app.dependency_overrides[get_db] = lambda: mock_db
-    with patch("routes.jobs.delete_upload") as fake_delete:
+    with (
+        patch("routes.jobs_candidates.get_db", return_value=mock_db),
+        patch("routes.jobs.delete_upload") as fake_delete,
+    ):
         response = client.delete(f"/api/jobs/{job_id}/candidates/{link_id}")
 
     assert response.status_code == 204
