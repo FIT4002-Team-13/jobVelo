@@ -753,9 +753,24 @@ async def _persist_completion(
         {"_id": ObjectId(intv_id)}, {"$set": interview_updates}
     )
 
+INTERRUPTION_ACKNOWLEDGEMENTS = {
+    "yeah",
+    "yes",
+    "yep",
+    "yup",
+    "okay",
+    "ok",
+    "right",
+    "mm-hmm",
+    "mm hmm",
+    "uh-huh",
+    "uh huh",
+}
+
 
 async def _detect_interruptions(
     entries: list[dict],
+    duration_seconds: int | None,
 ) -> dict:
     """Detect interviewer speech that starts before the candidate finishes.
 
@@ -765,6 +780,15 @@ async def _detect_interruptions(
 
     Deepgram timestamps are relative to each stream, so this assumes both
     streams use the same interview timer / recording clock.
+    
+    An overlap is treated as a potential interruption when the interviewer
+    starts speaking while the candidate is still speaking. Short
+    acknowledgement responses (e.g. "yeah", "okay", "right") are ignored
+    because they are more likely to be active-listening responses than
+    interruptions.
+
+    Frequency is normalised by interview duration so the same number of
+    interruptions is not treated equally in a short and long interview.
     """
 
     interviewer_entries = [
@@ -788,6 +812,13 @@ async def _detect_interruptions(
     for interviewer in interviewer_entries:
         interviewer_start = float(interviewer["start"])
 
+        interviewer_text = str(interviewer.get("text") or "").strip()
+        normalised_text = " ".join(interviewer_text.casefold().split())
+
+        # Ignore common active-listening acknowledgements.
+        if normalised_text in INTERRUPTION_ACKNOWLEDGEMENTS:
+            continue
+
         # Find the candidate utterance that was active when the interviewer
         # started speaking.
         for candidate in candidate_entries:
@@ -808,10 +839,50 @@ async def _detect_interruptions(
                 break
 
     count = len(interruptions)
+    effective_duration_seconds = None
+
+    if duration_seconds is not None:
+        try:
+            parsed_duration = float(duration_seconds)
+            if parsed_duration > 0:
+                effective_duration_seconds = parsed_duration
+        except (TypeError, ValueError):
+            pass
+
+    if effective_duration_seconds is None:
+        all_end_times = [
+            float(entry["end"])
+            for entry in entries
+            if entry.get("end") is not None
+        ]
+        if all_end_times:
+            effective_duration_seconds = max(all_end_times)
+
+    rate_per_minute = (
+        count / (effective_duration_seconds / 60)
+        if effective_duration_seconds and effective_duration_seconds > 0
+        else None
+    )
+
+    # Three or more interruptions per 10 minutes is treated as frequent.
+    frequent = (
+        rate_per_minute is not None
+        and rate_per_minute >= 0.3
+    )
 
     return {
         "count": count,
-        "frequent": count >= 3,
+        "rate_per_minute": (
+            round(rate_per_minute, 2)
+            if rate_per_minute is not None
+            else None
+        ),
+        "duration_seconds": (
+            round(effective_duration_seconds, 2)
+            if effective_duration_seconds is not None
+            else None
+        ),
+        "frequent": frequent,
         "evidence": interruptions,
     }
 
@@ -957,7 +1028,12 @@ async def complete_interview(
     ]
     final_entries = [TranscriptEntry.model_validate(entry) for entry in entries]
     transcript_text = _transcript_to_text(entries)
-    interruption_analysis = await _detect_interruptions(entries)
+    duration_seconds = (
+        payload.duration_seconds
+        if payload.duration_seconds is not None
+        else interview.get("intv_duration_seconds")
+    )
+    interruption_analysis = await _detect_interruptions(entries, duration_seconds)
 
     # Fetch CV context (only completed analyses are useful; processing/failed
     # docs carry empty sections).
