@@ -37,8 +37,6 @@ jobs:
 
   backend-db-integration:
     runs-on: ubuntu-latest
-    # Only runs when the secret is available — skipped on forks or if not configured
-    if: ${{ secrets.MONGODB_URI != '' }}
     steps:
       - uses: actions/checkout@v4
 
