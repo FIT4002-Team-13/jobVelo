@@ -3,7 +3,7 @@ import Sidebar from '../components/common/Sidebar'
 import StatDelta from '../components/common/StatDelta';
 import FeedbackItemRow from '../components/profile/FeedbackItemRow';
 import { useEffect, useRef, useState } from "react";
-import { api } from "../lib/api";
+import { api, downloadFileWithAuth } from "../lib/api";
 import { initials } from "../utils/avatar";
 
 export default function Profile() {
@@ -15,6 +15,14 @@ export default function Profile() {
   const [regenerating, setRegenerating] = useState(false);
   const [fbError, setFbError] = useState('');
 
+  const [stats, setStats] = useState(null);
+  const [statsLoading, setStatsLoading] = useState(true);
+  const [exportingStats, setExportingStats] = useState(false);
+  const [statsExportError, setStatsExportError] = useState('');
+  const [trendRange, setTrendRange] = useState('6months');
+  const [trendOffset, setTrendOffset] = useState(0);
+  const [hoveredBar, setHoveredBar] = useState(null);
+
   useEffect(() => {
     let cancelled = false;
     api.getInterviewerFeedback()
@@ -23,6 +31,16 @@ export default function Profile() {
       .finally(() => { if (!cancelled) setFbLoading(false); });
     return () => { cancelled = true; };
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    setStatsLoading(true);
+    api.getInterviewerStats({ range: trendRange, offset: trendOffset })
+      .then((d) => { if (!cancelled) setStats(d); })
+      .catch(() => {})
+      .finally(() => { if (!cancelled) setStatsLoading(false); });
+    return () => { cancelled = true; };
+  }, [trendRange, trendOffset]);
 
   if (!user) return <div>Loading...</div>;
 
@@ -37,20 +55,43 @@ export default function Profile() {
         .join(' ')
     : '';
 
-  // Note: Stats are hardcoded for now but will be created by US35
-  const stats = [
-    { m: "Jan", v: 1.1},
-    { m: "Feb", v: 2.7 },
-    { m: "Mar", v: 5.2 },
-    { m: "Apr", v: 8.2 },
-    { m: "May", v: 6.8 },
-    { m: "Now", v: 7.4 },
-  ];
-  const sorted = [...stats].sort((a, b) => a.v - b.v);
-  const colorMap = new Map();
-  sorted.slice(0, 2).forEach(d => colorMap.set(d.m, "bg-red-200"));
-  sorted.slice(2, 4).forEach(d => colorMap.set(d.m, "bg-blue-200"));
-  sorted.slice(4).forEach(d => colorMap.set(d.m, "bg-green-200"));
+  const trend = stats?.score_trend || [];
+
+  // Bar colour reflects the score itself, not its rank among other bars:
+  // below expectation / good / excellent, matching the app's rating bands.
+  function trendBarColor(avgScore) {
+    if (avgScore == null) return "bg-neutral-100";
+    if (avgScore < 3) return "bg-red-200";
+    if (avgScore < 7) return "bg-blue-200";
+    return "bg-green-200";
+  }
+
+  function trendValueColor(avgScore) {
+    if (avgScore == null) return "text-neutral-300";
+    if (avgScore < 3) return "text-coral-500";
+    if (avgScore < 7) return "text-primary-500";
+    return "text-mint-600";
+  }
+
+  const formatPct = (pct) => (pct == null ? null : `${pct >= 0 ? "+" : ""}${pct}%`);
+
+  function handleTrendRangeChange(e) {
+    setTrendRange(e.target.value);
+    setTrendOffset(0);
+  }
+
+  async function handleExportStats() {
+    setExportingStats(true);
+    setStatsExportError("");
+    try {
+      const params = new URLSearchParams({ range: trendRange, offset: String(trendOffset) });
+      await downloadFileWithAuth(`/api/interviewer-stats/report?${params}`, "my-interview-stats.pdf");
+    } catch (e) {
+      setStatsExportError(e?.message || "Could not export statistics.");
+    } finally {
+      setExportingStats(false);
+    }
+  }
 
   const hasFeedback = Boolean(feedback?.feedback_id);
   const feedbackUpdated = feedback?.generated_at
@@ -118,46 +159,131 @@ export default function Profile() {
           </div>
         </div>
 
-        {/* To be refined in US35. Currently uses hardcoded data for everything. */}
-        <div className="bg-white border rounded-xl p-3  ">
-            <div className="grid h-full min-h-0 grid-rows-[64px_64px_minmax(0,1fr)] gap-3">
-              <div className="flex flex-col justify-center">
-                <p className="text-xs font-medium text-neutral-500 pb-1">
-                  TOTAL INTERVIEWS
-                </p>
-                <div className="flex items-center justify-between">
-                  <p className="text-xl font-bold text-neutral-800">20</p>
-                  <StatDelta value="+3%" label="from past 7 days" />
+        <div className="flex h-full min-h-0 flex-col bg-white border rounded-xl p-5">
+            <div className="mb-4 flex shrink-0 flex-wrap items-center justify-between gap-2">
+              <h2 className="text-lg font-semibold text-neutral-800">Performance Stats</h2>
+              <button
+                type="button"
+                onClick={handleExportStats}
+                disabled={exportingStats}
+                className="flex items-center gap-1.5 rounded-lg bg-primary-500 px-2.5 py-1 text-xs font-semibold text-white transition-colors hover:bg-primary-600 disabled:opacity-50"
+              >
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 3v12" />
+                  <path d="m7 10 5 5 5-5" />
+                  <path d="M5 21h14" />
+                </svg>
+                {exportingStats ? "Exporting…" : "Export PDF"}
+              </button>
+            </div>
+            {statsExportError && (
+              <p className="mb-2 shrink-0 text-xs text-coral-500">{statsExportError}</p>
+            )}
+
+            <div className="flex min-h-0 flex-1 flex-col gap-5">
+              <div className="flex flex-col gap-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex flex-col gap-1">
+                    <p className="text-xs font-medium text-neutral-500">
+                      TOTAL INTERVIEWS
+                    </p>
+                    <p className="text-2xl font-bold text-neutral-800">
+                      {statsLoading ? "—" : stats?.total_interviews ?? 0}
+                    </p>
+                  </div>
+                  {formatPct(stats?.total_interviews_delta_pct) && (
+                    <StatDelta value={formatPct(stats.total_interviews_delta_pct)} label="from past 7 days" />
+                  )}
+                </div>
+
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex flex-col gap-1">
+                    <p className="text-xs font-medium text-neutral-500">
+                      AVERAGE CANDIDATE SCORE
+                    </p>
+                    <p className="text-2xl font-bold text-neutral-800">
+                      {statsLoading ? "—" : stats?.average_candidate_score ?? "—"}
+                    </p>
+                  </div>
+                  {formatPct(stats?.average_candidate_score_delta_pct) && (
+                    <StatDelta value={formatPct(stats.average_candidate_score_delta_pct)} label="from last month" />
+                  )}
                 </div>
               </div>
 
-              <div className="flex flex-col justify-center">
-                <p className="text-xs font-medium text-neutral-500 pb-1">
-                  AVERAGE CANDIDATE SCORE
-                </p>
-                <div className="flex items-center justify-between">
-                  <p className="text-xl font-bold text-neutral-800">7.4</p>
-                  <StatDelta value="+10%" label="from last month" />
+              <div className="flex min-h-0 flex-1 flex-col gap-2">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="shrink-0 text-xs font-medium text-neutral-500">
+                    SCORE TRENDS
+                  </p>
+
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setTrendOffset((o) => o + 1)}
+                      className="rounded-md p-1 text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-neutral-600"
+                      aria-label="Show older period"
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M15 18l-6-6 6-6" />
+                      </svg>
+                    </button>
+                    <span className="whitespace-nowrap text-[11px] text-neutral-400">
+                      {stats?.score_trend_range_label || ""}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setTrendOffset((o) => Math.max(0, o - 1))}
+                      disabled={trendOffset === 0}
+                      className="rounded-md p-1 text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-neutral-600 disabled:opacity-30 disabled:hover:bg-transparent"
+                      aria-label="Show newer period"
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M9 6l6 6-6 6" />
+                      </svg>
+                    </button>
+                    <select
+                      value={trendRange}
+                      onChange={handleTrendRangeChange}
+                      className="rounded-md border border-neutral-200 bg-white px-2 py-1 text-xs font-medium text-neutral-600 focus:outline-none focus:ring-1 focus:ring-primary-300"
+                    >
+                      <option value="month">This month</option>
+                      <option value="6months">Past 6 months</option>
+                      <option value="year">Past year</option>
+                    </select>
+                  </div>
                 </div>
-              </div>
 
-              <div className="flex min-h-0 flex-col gap-2">
-                <p className="shrink-0 text-xs font-medium text-neutral-500">
-                  SCORE TRENDS
-                </p>
+                <div className="flex min-h-0 flex-1 items-end gap-3">
+                  {trend.map((d, i) => (
+                    <div key={i} className="relative flex h-full min-w-0 flex-1 flex-col items-center gap-1">
+                      {hoveredBar === i && (
+                        <div className="pointer-events-none absolute bottom-full left-1/2 z-10 mb-1.5 w-max -translate-x-1/2 rounded-lg bg-neutral-800 px-2.5 py-1.5 text-xs shadow-lg">
+                          <p className="font-semibold text-white">{d.tooltip_label}</p>
+                          <p className="text-neutral-300">
+                            {d.avg_score != null ? `${d.avg_score}/10 avg score` : "No scored interviews"}
+                          </p>
+                        </div>
+                      )}
 
-                <div className="flex min-h-0 flex-1 gap-3">
-                  {stats.map((d) => (
-                    <div key={d.m} className="flex h-full min-w-0 flex-1 flex-col items-center gap-1">
-                      <div className="flex min-h-0 w-full flex-1 items-end justify-center">
+                      {/* Label sits directly above the bar (not the column) - grouped
+                          with it via justify-end so it tracks the bar's own height. */}
+                      <div
+                        className="flex min-h-0 w-full flex-1 cursor-default flex-col items-center justify-end gap-1"
+                        onMouseEnter={() => setHoveredBar(i)}
+                        onMouseLeave={() => setHoveredBar(null)}
+                      >
+                        <p className={`shrink-0 text-xs font-semibold ${trendValueColor(d.avg_score)}`}>
+                          {d.avg_score != null ? d.avg_score.toFixed(1) : ""}
+                        </p>
                         <div
-                          className={`w-8 rounded-t-md ${colorMap.get(d.m)}`}
-                          style={{ height: `${(d.v / 10) * 100}%` }}
+                          className={`w-8 rounded-t-md transition-colors ${trendBarColor(d.avg_score)}`}
+                          style={{ height: `${d.avg_score != null ? Math.max((d.avg_score / 10) * 100, 4) : 4}%` }}
                         />
                       </div>
 
-                      <p className="shrink-0 text-xs text-neutral-600">
-                        {d.m}
+                      <p className={`shrink-0 text-xs ${d.label === "Now" ? "font-semibold text-primary-500" : "text-neutral-600"}`}>
+                        {d.label}
                       </p>
                     </div>
                   ))}
