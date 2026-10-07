@@ -267,4 +267,9 @@ export const api = {
   // ---------- behavioural suggestions---------------------------
   getBehaviouralSuggestions:        ()  => request('/behavioural-suggestions', { auth: true }),
   regenerateBehaviouralSuggestions: ()  => request('/behavioural-suggestions/regenerate', { method: 'POST', auth: true }),
+  // Acknowledge toggle / reflection-note save for one suggestion (mirrors updateFeedbackItem so FeedbackItemRow can be reused).
+  updateBehaviouralSuggestion: (itemId, patch) =>
+    request(`/behavioural-suggestions/items/${encodeURIComponent(itemId)}`, {
+      method: 'PATCH', body: patch, auth: true,
+    }),
 }

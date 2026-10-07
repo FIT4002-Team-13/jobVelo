@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { api, ApiError } from "../../lib/api.js";
 
-export default function BehaviouralSuggestionsPanel() {
+export default function BehaviouralSuggestionsPanel({ embedded = false } = {}) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [regenerating, setRegenerating] = useState(false);
@@ -40,11 +40,16 @@ export default function BehaviouralSuggestionsPanel() {
         year: "numeric",
       }) : null;
 
+  const outerClass = embedded
+    ? "min-h-0 min-w-0 flex flex-col overflow-hidden mt-2"
+    : "min-h-0 min-w-0 flex flex-col overflow-hidden bg-white border rounded-xl p-3";
+
   return (
-    <div className="min-h-0 min-w-0 flex flex-col overflow-hidden bg-white border rounded-xl p-3">
+    <div className={outerClass}>
+      {embedded && <div className="mb-2 border-t border-neutral-200" />}
       <div className="mb-3 flex shrink-0 items-center justify-between gap-2">
         <div className="min-w-0">
-          <h2 className="text-md font-semibold text-neutral-800">
+          <h2 className={embedded ? "text-xs font-bold uppercase tracking-wide text-neutral-500" : "text-md font-semibold text-neutral-800"}>
             Behavioural questioning
           </h2>
         </div>

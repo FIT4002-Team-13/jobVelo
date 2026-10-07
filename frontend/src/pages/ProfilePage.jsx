@@ -5,7 +5,6 @@ import FeedbackItemRow from '../components/profile/FeedbackItemRow';
 import { useEffect, useRef, useState } from "react";
 import { api, downloadFileWithAuth } from "../lib/api";
 import { initials } from "../utils/avatar";
-import BehaviouralSuggestionsPanel from "../components/profile/BehaviouralSuggestionsPanel.jsx";
 
 export default function Profile() {
   const { user } = useAuth();
@@ -15,6 +14,7 @@ export default function Profile() {
   const [fbLoading, setFbLoading] = useState(true);
   const [regenerating, setRegenerating] = useState(false);
   const [fbError, setFbError] = useState('');
+  const [behavioural, setBehavioural] = useState(null);
 
   const [stats, setStats] = useState(null);
   const [statsLoading, setStatsLoading] = useState(true);
@@ -30,6 +30,14 @@ export default function Profile() {
       .then((d) => { if (!cancelled) setFeedback(d); })
       .catch(() => {})
       .finally(() => { if (!cancelled) setFbLoading(false); });
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    api.getBehaviouralSuggestions()
+      .then((d) => { if (!cancelled) setBehavioural(d); })
+      .catch(() => {});
     return () => { cancelled = true; };
   }, []);
 
@@ -109,12 +117,21 @@ export default function Profile() {
     setFeedback(updated);
   }
 
+  async function handleUpdateBehaviouralItem(itemId, patch) {
+    const updated = await api.updateBehaviouralSuggestion(itemId, patch);
+    setBehavioural(updated);
+  }
+
   async function handleRegenerateFeedback() {
     setRegenerating(true);
     setFbError("");
     try {
-      const d = await api.regenerateInterviewerFeedback();
+      const [d, b] = await Promise.all([
+        api.regenerateInterviewerFeedback(),
+        api.regenerateBehaviouralSuggestions().catch(() => null),
+      ]);
       setFeedback(d);
+      if (b) setBehavioural(b);
     } catch (e) {
       setFbError(e?.message || "Could not generate feedback.");
     } finally {
@@ -137,10 +154,22 @@ export default function Profile() {
       <FeedbackItemRow key={it.id} item={it} onUpdate={handleUpdateFeedbackItem} />
     ));
   }
-              
+  function renderBehaviouralSuggestions() {
+    const items = behavioural?.suggestions ?? [];
+    if (!items.length) return null;
+    return items.map((s) => (
+      <FeedbackItemRow
+        key={s.id}
+        item={s}
+        onUpdate={handleUpdateBehaviouralItem}
+        tag={{ label: "Behavioural", className: "bg-yellow-100 text-yellow-700" }}
+      />
+    ));
+  }
+
   const profileGrid = (
 
-    <div className="grid w-full grid-cols-[minmax(260px,1fr)_minmax(0,2fr)] items-stretch gap-4">
+    <div className="grid h-full min-h-0 w-full grid-cols-[minmax(260px,1fr)_minmax(0,2fr)] items-stretch gap-4">
 
       <div className="grid min-h-0  min-w-0 grid-cols-1 grid-rows-[auto_minmax(0,1fr)] gap-4">
         <div className="bg-white border p-4 rounded-xl">
@@ -196,18 +225,6 @@ export default function Profile() {
                     <StatDelta value={formatPct(stats.total_interviews_delta_pct)} label="from past 7 days" />
                   )}
                 </div>
-        {/* To be refined in US35. Currently uses hardcoded data for everything. */}
-        <div className=" pt-4.5 pb-6 bg-white border rounded-xl px-3  ">
-            <div className="grid h-full min-h-0 grid-rows-[64px_64px_minmax(0,1fr)] gap-6">
-              <div className="flex flex-col justify-center">
-                <p className="text-xs font-medium text-neutral-500 pb-1">
-                  TOTAL INTERVIEWS
-                </p>
-                <div className="flex items-center justify-between">
-                  <p className="text-2xl font-bold text-neutral-800">20</p>
-                  <StatDelta value="+3%" label="from past 7 days" />
-                </div>
-              </div>
 
                 <div className="flex items-center justify-between gap-3">
                   <div className="flex flex-col gap-1">
@@ -221,13 +238,6 @@ export default function Profile() {
                   {formatPct(stats?.average_candidate_score_delta_pct) && (
                     <StatDelta value={formatPct(stats.average_candidate_score_delta_pct)} label="from last month" />
                   )}
-              <div className="flex flex-col justify-center">
-                <p className="text-xs font-medium text-neutral-500 pb-1">
-                  AVERAGE CANDIDATE SCORE
-                </p>
-                <div className="flex items-center justify-between">
-                  <p className="text-2xl font-bold text-neutral-800">7.4</p>
-                  <StatDelta value="+10%" label="from last month" />
                 </div>
               </div>
 
@@ -342,37 +352,6 @@ export default function Profile() {
               </svg>
               {regenerating ? "Generating…" : hasFeedback ? "Regenerate" : "Generate"}
             </button>
-
-      <div className="grid min-w-0 grid-cols-1 grid-rows-[290px_290px_290px] gap-4">
-        {/* To be refined in US34. Currently uses hardcoded data and comment function does not work. */}
-        <div className="min-h-0 overflow-hidden bg-white border rounded-xl p-3 flex flex-col ">
-          <h2 className="text-md font-semibold text-neutral-800 mb-3">
-            Strengths
-          </h2>
-
-          <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto pr-2 scrollbar-primary">
-            {strengths.map((item, idx) => (
-              <div
-                key={idx}
-                className="group shrink-0 bg-neutral-100 rounded-xl px-3 py-2 flex items-center justify-between"
-              >
-                <div className="min-w-0 pr-3">
-                  <p className="text-sm font-bold text-neutral-800">
-                    {item.title}
-                  </p>
-                  <p className="line-clamp-2 text-xs leading-snug text-neutral-500 mt-0.5">
-                    {item.description}
-                  </p>
-                </div>
-                <div className="flex items-center justify-center">
-                  <img 
-                    src={commentIcon} 
-                    alt="Comment" 
-                    className="w-4 h-4 opacity-40 hover:opacity-90 transition shrink-0"
-                  />
-                </div>
-              </div>
-            ))}
           </div>
         </div>
         {fbError && <p className="mb-2 shrink-0 text-xs text-coral-500">{fbError}</p>}
@@ -389,40 +368,10 @@ export default function Profile() {
             <h3 className="text-sm font-semibold text-neutral-700 mb-2 shrink-0">Improvements</h3>
             <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto pr-2 scrollbar-primary">
               {renderFeedbackBody(feedback?.improvements)}
+              {renderBehaviouralSuggestions()}
             </div>
-
-        {/* To be refined in US34. Currently uses hardcoded data and comment function does not work. */}
-        <div className="flex min-h-0 flex-col overflow-hidden bg-white border rounded-xl p-3">
-          <h2 className="text-md font-semibold text-neutral-800 mb-3">
-            Improvements
-          </h2>
-
-          <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto pr-2 scrollbar-primary">
-            {improvements.map((item, idx) => (
-              <div
-                key={idx}
-                className="group shrink-0 bg-neutral-100 rounded-xl px-3 py-2 flex items-center justify-between"
-              >
-                <div className="min-w-0 pr-3">
-                  <p className="text-sm font-bold text-neutral-800">
-                    {item.title}
-                  </p>
-                  <p className="line-clamp-2 text-xs leading-snug text-neutral-500 mt-0.5">
-                    {item.description}
-                  </p>
-                </div>
-                <div className="flex items-center justify-center">
-                  <img
-                    src={commentIcon}
-                    alt="Comment"
-                    className="w-4 h-4 opacity-40 hover:opacity-90 transition shrink-0"
-                  />
-                </div>
-              </div>
-            ))}
           </div>
         </div>
-        <BehaviouralSuggestionsPanel />
       </div>
     </div>
   );
@@ -610,14 +559,14 @@ export default function Profile() {
           <button
             onClick={handleSave}
             disabled={saving}
-            className="bg-primary-500 hover:bg-primary-600 text-white text-sm font-semibold py-2 px-6 rounded-xl transition-colors cursor-pointer"      
+            className="bg-primary-500 hover:bg-primary-600 text-white text-sm font-semibold py-2 px-6 rounded-xl transition-colors cursor-pointer"
             >
             {saving ? 'Saving...' : 'Save Changes'}
           </button>
         </div>
       </div>
     );
-  }  
+  }
 
 
   if (user?.role !== 'admin') {
@@ -635,7 +584,7 @@ export default function Profile() {
             </p>
           </header>
 
-          <section className="min-h-0 flex-1 overflow-y-auto p-6 scrollbar-primary">
+          <section className="min-h-0 flex-1 overflow-hidden p-6">
             {profileGrid}
           </section>
         </main>
@@ -681,7 +630,7 @@ export default function Profile() {
           </button>
         </div>
 
-        <section className="min-h-0 flex-1 overflow-y-auto p-5 scrollbar-primary">
+        <section className="min-h-0 flex-1 overflow-hidden p-5">
           {activeTab === 'profile' && profileGrid}
 
           {activeTab === 'company' && (

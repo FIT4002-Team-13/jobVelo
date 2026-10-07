@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import uuid
 from datetime import datetime, timezone
 
 from bson import ObjectId
@@ -11,6 +12,7 @@ from dependencies import get_current_user
 from models.behavioural_suggestion import (
     BehaviouralSuggestion,
     BehaviouralSuggestionsOut,
+    BehaviouralSuggestionUpdate,
 )
 from services.openai_service import generate_behavioural_suggestions
 
@@ -90,7 +92,29 @@ def _serialise(doc: dict | None) -> BehaviouralSuggestionsOut:
 @router.get("", response_model=BehaviouralSuggestionsOut)
 async def get_latest_suggestions(user: dict = Depends(get_current_user)) -> BehaviouralSuggestionsOut:
     db = get_db()
-    doc = await db.behavioural_suggestions.find_one({"user_id": str(user["_id"])})
+    user_id = str(user["_id"])
+    doc = await db.behavioural_suggestions.find_one({"user_id": user_id})
+
+    if doc and isinstance(doc.get("suggestions"), list):
+        changed = False
+        for s in doc["suggestions"]:
+            if not isinstance(s, dict):
+                continue
+            if not s.get("id"):
+                s["id"] = uuid.uuid4().hex
+                changed = True
+            if "acknowledged" not in s:
+                s["acknowledged"] = False
+                changed = True
+            if "note" not in s:
+                s["note"] = None
+                changed = True
+        if changed:
+            await db.behavioural_suggestions.update_one(
+                {"user_id": user_id},
+                {"$set": {"suggestions": doc["suggestions"]}},
+            )
+
     return _serialise(doc)
 
 
@@ -122,7 +146,14 @@ async def regenerate_suggestions(user: dict = Depends(get_current_user)) -> Beha
         logger.exception("Behavioural suggestion generation failed")
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Could not generate suggestions right now. Please try again.") from e
 
-    suggestions = [s.model_dump() for s in result.suggestions]
+    suggestions = []
+    for s in result.suggestions:
+        row = s.model_dump()
+        row["id"] = uuid.uuid4().hex
+        row["acknowledged"] = False
+        row["note"] = None
+        suggestions.append(row)
+
     now = datetime.now(timezone.utc)
     doc = {
         "user_id": user_id,
@@ -132,4 +163,40 @@ async def regenerate_suggestions(user: dict = Depends(get_current_user)) -> Beha
     }
 
     await db.behavioural_suggestions.replace_one({"user_id": user_id}, doc, upsert=True)
+    return _serialise(doc)
+
+
+@router.patch(
+    "/items/{item_id}",
+    response_model=BehaviouralSuggestionsOut,
+)
+async def update_suggestion_item(
+    item_id: str,
+    payload: BehaviouralSuggestionUpdate,
+    user: dict = Depends(get_current_user),
+) -> BehaviouralSuggestionsOut:
+    """Toggle a suggestion's acknowledged flag or save a reflection note.
+    Mirrors how interviewer_feedback items are updated so the frontend can
+    reuse the same FeedbackItemRow component."""
+    db = get_db()
+    user_id = str(user["_id"])
+
+    update: dict = {}
+    if payload.acknowledged is not None:
+        update["suggestions.$[item].acknowledged"] = payload.acknowledged
+    if payload.note is not None:
+        update["suggestions.$[item].note"] = payload.note or None
+
+    if not update:
+        raise HTTPException(status_code=400, detail="Nothing to update.")
+
+    result = await db.behavioural_suggestions.update_one(
+        {"user_id": user_id, "suggestions.id": item_id},
+        {"$set": update},
+        array_filters=[{"item.id": item_id}],
+    )
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Suggestion not found.")
+
+    doc = await db.behavioural_suggestions.find_one({"user_id": user_id})
     return _serialise(doc)
