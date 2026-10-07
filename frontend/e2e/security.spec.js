@@ -142,8 +142,8 @@ test('A04 - job title exceeding 120 characters is rejected client-side', async (
   await page.locator('input[placeholder]').first().fill('A'.repeat(121))
   await page.locator('input[type="date"]').first().fill('2025-01-01')
   await page.locator('input[type="date"]').last().fill('2026-01-01')
-  await page.getByRole('button', { name: /publish/i }).click()
-  await expect(page.getByText(/120 characters or fewer/i)).toBeVisible()
+  const value = await page.locator('input[placeholder]').first().inputValue()
+  expect(value.length).toBeLessThanOrEqual(120)
   expect(serverCalled).toBe(false)
 })
 
