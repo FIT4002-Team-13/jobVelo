@@ -19,9 +19,14 @@ class BehaviouralSuggestionsOut(BaseModel):
     generated_at: datetime | None = None
     session_count: int = 0
 
+class _GeneratedBehaviouralSuggestion(BaseModel):
+    title: str
+    detail: str
+    examples: list[str] = Field(default_factory=list)
+
 
 class BehaviouralSuggestionsResult(BaseModel):
-    suggestions: list[BehaviouralSuggestion]
+    suggestions: list[_GeneratedBehaviouralSuggestion]
 
 
 class BehaviouralSuggestionUpdate(BaseModel):
