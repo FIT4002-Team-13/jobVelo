@@ -21,6 +21,8 @@ from routes import (
     files,
     interview,
     interview_question,
+    interviewer_feedback,
+    interviewer_stats,
     invitations,
     job_cand,
     jobs,
@@ -83,6 +85,8 @@ app.include_router(interview_question.router)
 app.include_router(interview.router)
 app.include_router(user_interview.router)
 app.include_router(applications.router)
+app.include_router(interviewer_feedback.router)
+app.include_router(interviewer_stats.router)
 app.include_router(behavioural_suggestions.router)
 
 

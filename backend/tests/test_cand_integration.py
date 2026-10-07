@@ -14,7 +14,7 @@ from bson import ObjectId
 from mongomock_motor import AsyncMongoMockClient
 
 import database as db_module
-from dependencies import get_current_comp_id
+from dependencies import get_current_comp_id, get_current_user
 from main import app
 
 
@@ -36,14 +36,22 @@ async def db_client():
             yield c, mock_db
     app.dependency_overrides.clear()
 
-
 @pytest.fixture
 async def authed_db_client(db_client):
-    """db_client + a fake comp_id bypassing JWT auth."""
+    """db_client + a fake recruiter user for authenticated API tests."""
     client, db = db_client
     comp_id = ObjectId()
+
     app.dependency_overrides[get_current_comp_id] = lambda: comp_id
+    app.dependency_overrides[get_current_user] = lambda: {
+        "_id": ObjectId(),
+        "comp_id": comp_id,
+        "role": "recruiter",
+        "full_name": "Test Recruiter",
+    }
+
     yield client, db, comp_id
+    app.dependency_overrides.clear()
 
 
 # ── 1. Status rollup ──────────────────────────────────────────────────────────
