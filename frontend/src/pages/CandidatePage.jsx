@@ -50,6 +50,32 @@ export default function CandidatePage() {
   const [showStartWarning, setShowStartWarning] = useState(false);
   const [showEditMode, setShowEditMode] = useState(false);
   const [profileVisible, setProfileVisible] = useState(true);
+  const [assignedInterviewerName, setAssignedInterviewerName] = useState("");
+  const [assignedInterviewerUserId, setAssignedInterviewerUserId] = useState("");
+  const [interviewerRefreshKey, setInterviewerRefreshKey] = useState(0);
+
+  useEffect(() => {
+    if (!id || !user?.comp_id) return;
+    let cancelled = false;
+    setAssignedInterviewerName("");
+    setAssignedInterviewerUserId("");
+    (async () => {
+      try {
+        const links = await api.getInterviewUsersByInterview(id);
+        const uid = Array.isArray(links) ? links[0]?.user_id : null;
+        if (cancelled || !uid) return;
+        setAssignedInterviewerUserId(uid);
+        const u = await api.getUser(uid).catch(() => null);
+        if (cancelled || !u) return;
+        setAssignedInterviewerName(
+          u.full_name || u.username || u.email || ""
+        );
+      } catch {
+
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [id, user?.comp_id, interviewerRefreshKey]);
 
   function switchProfileView(toEdit) {
     setProfileVisible(false);
@@ -463,12 +489,12 @@ export default function CandidatePage() {
                   email: candidate?.cand_email,
                   phone: candidate?.cand_phone,
                   job_id: jobId,
-                  interviewer: "",
-                  interviewer_user_id: "",
+                  interviewer: assignedInterviewerName,
+                  interviewer_user_id: assignedInterviewerUserId,
                   interview_datetime: intvDateTime ?? null,
                 }}
                 onClose={() => { setShowProfile(false); setShowEditMode(false); setProfileVisible(true); }}
-                onSaved={() => { refreshCandidate(); setShowProfile(false); setShowEditMode(false); setProfileVisible(true); }}
+                onSaved={() => { refreshCandidate(); setInterviewerRefreshKey((k) => k + 1); setShowProfile(false); setShowEditMode(false); setProfileVisible(true); }}
               />
             ) : (
               <CandidateInfoCard

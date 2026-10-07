@@ -7,7 +7,7 @@ from bson import ObjectId
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from database import get_db
-from dependencies import get_current_comp_id, get_current_user
+from dependencies import get_current_comp_id, get_current_user, require_role
 from models.application import ApplicationRowOut, ApplicationUpdate
 
 router = APIRouter(prefix="/api/applications", tags=["applications"])
@@ -243,6 +243,7 @@ async def list_applications(
 async def update_application(
     application_id: str,
     payload: ApplicationUpdate,
+    _user: dict = Depends(require_role("recruiter", "admin")),
     comp_id: ObjectId = Depends(get_current_comp_id),
 ):
     db = get_db()
@@ -370,6 +371,10 @@ async def update_application(
                     "intvuser_updated_at": now,
                 }
             )
+    else:
+        # Unassign: the caller cleared the interviewer in the form. Drop any
+        # existing link so the application table stops showing the old name.
+        await db.interview_users.delete_many({"intv_id": intv_id_str})
 
     return {
         "ok": True,
