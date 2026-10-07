@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import re
 import uuid
 from datetime import datetime, timezone
 
@@ -14,13 +15,61 @@ from models.behavioural_suggestion import (
     BehaviouralSuggestionsOut,
     BehaviouralSuggestionUpdate,
 )
-from services.openai_service import generate_behavioural_suggestions
+from services.gemini_service import generate_behavioural_suggestions
 
 router = APIRouter(prefix="/api/behavioural-suggestions", tags=["behavioural_suggestions"])
 logger = logging.getLogger(__name__)
 
 # How many recent interviews to feed the model
 _MAX_SESSIONS = 5
+_SECTION_CAP = 6
+
+
+def _engaged_suggestions(items: list | None) -> list[dict]:
+    """Items the user has acknowledged or added a note to - these must
+    survive a regenerate so the user's reflections aren't lost."""
+    return [
+        it for it in (items or [])
+        if it.get("acknowledged") or it.get("note")
+    ]
+
+
+def _title_words(text: str | None) -> set[str]:
+    return set(re.findall(r"[a-z0-9]+", (text or "").lower()))
+
+
+def _is_duplicate(title: str, existing: list[dict]) -> bool:
+    """True when a freshly generated suggestion restates one already kept
+    (strong title-word overlap). Cheap Jaccard, same approach as
+    interviewer_feedback._is_duplicate."""
+    words = _title_words(title)
+    if not words:
+        return False
+    for item in existing:
+        other = _title_words(item.get("title"))
+        if other and len(words & other) / len(words | other) >= 0.5:
+            return True
+    return False
+
+
+def _merge_suggestions(kept: list[dict], fresh) -> list[dict]:
+    """Engaged items first (notes/acknowledgements intact), then new
+    non-duplicate suggestions up to _SECTION_CAP."""
+    merged = list(kept)
+    for s in fresh:
+        if len(merged) >= _SECTION_CAP:
+            break
+        if _is_duplicate(s.title, merged):
+            continue
+        merged.append({
+            "id": uuid.uuid4().hex,
+            "title": s.title,
+            "detail": s.detail,
+            "examples": list(s.examples or []),
+            "acknowledged": False,
+            "note": None,
+        })
+    return merged
 
 async def _recent_completed_interview_ids(db, user_id: str) -> list[str]:
 
@@ -146,13 +195,12 @@ async def regenerate_suggestions(user: dict = Depends(get_current_user)) -> Beha
         logger.exception("Behavioural suggestion generation failed")
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Could not generate suggestions right now. Please try again.") from e
 
-    suggestions = []
-    for s in result.suggestions:
-        row = s.model_dump()
-        row["id"] = uuid.uuid4().hex
-        row["acknowledged"] = False
-        row["note"] = None
-        suggestions.append(row)
+    # Carry forward items the user has engaged with (acknowledged or noted)
+    # so their reflections survive a regenerate. Fresh LLM suggestions get
+    # appended after, skipping anything that duplicates a kept item.
+    prev = await db.behavioural_suggestions.find_one({"user_id": user_id})
+    kept = _engaged_suggestions((prev or {}).get("suggestions"))
+    suggestions = _merge_suggestions(kept, result.suggestions)
 
     now = datetime.now(timezone.utc)
     doc = {
