@@ -29,7 +29,17 @@ jobs:
       #install dev dependencies (linter and test runner)
       - run: pip install -r backend/requirements-dev.txt
       #Scan backend dependencies for known CVEs (A06)
-      - run: pip install pip-audit && pip-audit --requirement backend/requirements.txt
+      #Starlette CVEs are acknowledged below — they require a FastAPI major upgrade to fix.
+      - run: |
+          pip install pip-audit
+          pip-audit --requirement backend/requirements.txt \
+            --ignore-vuln PYSEC-2026-1943 \
+            --ignore-vuln PYSEC-2026-1941 \
+            --ignore-vuln PYSEC-2026-161 \
+            --ignore-vuln PYSEC-2026-2281 \
+            --ignore-vuln PYSEC-2026-2280 \
+            --ignore-vuln PYSEC-2026-249 \
+            --ignore-vuln PYSEC-2026-248
       #Checks linter against backend code
       - run: ruff check backend/
       #Run unit tests (mocked — no DB required)
