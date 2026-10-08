@@ -1,55 +1,40 @@
 import React, { useState, useMemo } from 'react'
+import {
+  Activity, AlertTriangle, Briefcase, CalendarDays, CheckCircle2, ChevronRight, ClipboardCheck, Gauge, ShieldAlert, Users,
+} from 'lucide-react'
 import Sidebar from '../components/common/Sidebar.jsx'
-import { page } from '../styles/layout.js'
+import ConsistencyChart from '../components/analytics/ConsistencyChart.jsx'
+import { initials, seriesFor, TEAM_COLOR } from '../components/analytics/chartSeries.js'
+import { card, page } from '../styles/layout.js'
 import { api } from '../lib/api.js'
 import { useAsync } from '../hooks/useAsync.js'
 
 const VARIANCE_THRESHOLD = 1.5
+const DEFAULT_DAYS = 90
 
-const INTERVIEWER_PALETTE = [
-  { color: '#14b8a6', dash: '5 3' },
-  { color: '#f59e0b', dash: '4 4' },
-  { color: '#0ea5e9', dash: '6 3' },
-  { color: '#6d28d9', dash: '3 2' },
-  { color: '#f43f5e', dash: '7 3' },
+const RANGES = [[30, '30 days'], [90, '90 days'], [180, '6 months'], [0, 'All time']]
+
+// Colour meaning on this page: amber = scoring variance, coral = bias flags,
+// mint = healthy. Series colours (see chartSeries.js) never reuse those.
+const SKILLS = [
+  { key: 'technical',       label: 'Technical skills', bar: 'bg-primary-500' },
+  { key: 'communication',   label: 'Communication',    bar: 'bg-mint-500' },
+  { key: 'problem_solving', label: 'Problem solving',  bar: 'bg-sky-400' },
 ]
 
-function paletteFor(idx) {
-  return INTERVIEWER_PALETTE[idx % INTERVIEWER_PALETTE.length]
-}
+const CAT_PILLS = [
+  { key: 'all', label: 'All' },
+  { key: 'technical', label: 'Technical' },
+  { key: 'communication', label: 'Communication' },
+  { key: 'problem_solving', label: 'Problem solving' },
+]
 
-function initials(name) {
-  return (name || '?').split(' ').filter(Boolean).map(w => w[0]).join('').slice(0, 2).toUpperCase()
-}
+const TH = 'whitespace-nowrap text-xs font-semibold uppercase tracking-wide text-neutral-500'
 
-const MONTH_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
-function monthLabel(ym) {
-  const [, m] = (ym || '').split('-')
-  return MONTH_SHORT[parseInt(m, 10) - 1] || ym
-}
-
-function scoreToY(s) {
-  return +(15 + (10 - s) * 12).toFixed(1)
-}
-
-function buildXScale(months) {
-  const n = months.length
-  if (n === 0) return {}
-  if (n === 1) return { [months[0]]: 145 }
-  const out = {}
-  months.forEach((m, i) => { out[m] = Math.round(55 + (i / (n - 1)) * 180) })
-  return out
-}
-
-function seriesPoints(series, xScale) {
-  return series
-    .filter(pt => xScale[pt.month] !== undefined)
-    .map(pt => `${xScale[pt.month]},${scoreToY(pt.value)}`)
-    .join(' ')
-}
+const plural = (n, word) => `${n} ${word}${n !== 1 ? 's' : ''}`
 
 function varianceCls(v) {
-  return v > VARIANCE_THRESHOLD ? 'text-amber-600 font-bold' : 'text-mint-600 font-semibold'
+  return v > VARIANCE_THRESHOLD ? 'text-amber-700' : 'text-mint-700'
 }
 
 function formatBiasTime(ts) {
@@ -63,290 +48,254 @@ function formatBiasTime(ts) {
 }
 
 function biasCategoryCls(cat) {
-  if (!cat) return 'bg-neutral-100 text-neutral-500'
+  if (!cat) return 'bg-neutral-100 text-neutral-600'
   const l = cat.toLowerCase()
-  if (l.includes('gender') || l.includes('race') || l.includes('ethnic')) return 'bg-coral-100 text-coral-500'
+  if (l.includes('gender') || l.includes('race') || l.includes('ethnic')) return 'bg-coral-100 text-coral-700'
   if (l.includes('age')) return 'bg-amber-100 text-amber-700'
-  if (l.includes('edu') || l.includes('school') || l.includes('univer')) return 'bg-sky-100 text-sky-600'
-  if (l.includes('personal') || l.includes('family') || l.includes('marital')) return 'bg-violet-100 text-violet-700'
+  if (l.includes('edu') || l.includes('school') || l.includes('univer')) return 'bg-sky-100 text-sky-700'
+  if (l.includes('personal') || l.includes('family') || l.includes('marital')) return 'bg-primary-100 text-primary-700'
   return 'bg-neutral-100 text-neutral-600'
 }
 
-// ── Small reusable pieces ─────────────────────────────────────────────────────
+// ── Shared building blocks ────────────────────────────────────────────────────
 
-function WarningIcon() {
+function CardHeader({ title, subtitle, children }) {
   return (
-    <svg className="w-3.5 h-3.5 shrink-0" viewBox="0 0 20 20" fill="currentColor">
-      <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-    </svg>
+    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-neutral-100 px-6 py-4">
+      <div>
+        <h2 className="text-base font-bold text-neutral-800">{title}</h2>
+        <p className="mt-0.5 text-xs text-neutral-400">{subtitle}</p>
+      </div>
+      {children}
+    </div>
+  )
+}
+
+function Avatar({ name, idx, size = 'sm' }) {
+  const dims = size === 'md' ? 'h-9 w-9' : 'h-7 w-7'
+  return (
+    <div
+      className={`${dims} flex shrink-0 items-center justify-center rounded-full text-xs font-bold text-white`}
+      style={{ backgroundColor: seriesFor(idx).color }}
+    >
+      {initials(name)}
+    </div>
   )
 }
 
 function StatusBadge({ highVariance }) {
+  const base = 'inline-flex items-center gap-1 whitespace-nowrap rounded-pill px-2.5 py-1 text-xs font-semibold'
   return highVariance
-    ? <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">⚠ High Variance</span>
-    : <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-mint-100 text-mint-700">✓ Consistent</span>
+    ? <span className={`${base} bg-amber-100 text-amber-700`}><AlertTriangle size={12} aria-hidden="true" />High variance</span>
+    : <span className={`${base} bg-mint-100 text-mint-700`}><CheckCircle2 size={12} aria-hidden="true" />Consistent</span>
 }
 
-function ScoreBar({ score, colorCls }) {
+function FlagPill({ count }) {
+  return count > 0
+    ? <span className="rounded-pill border border-coral-100 bg-coral-50 px-2.5 py-1 text-xs font-semibold text-coral-700">{plural(count, 'flag')}</span>
+    : <span className="rounded-pill border border-mint-200 bg-mint-50 px-2.5 py-1 text-xs font-semibold text-mint-700">No flags</span>
+}
+
+function ScoreBar({ score, barCls }) {
   const pct = score != null ? Math.min(100, Math.round((score / 10) * 100)) : 0
   return (
-    <div className="h-1.5 w-full bg-neutral-100 rounded-full overflow-hidden mt-2">
-      <div className={`h-full rounded-full ${colorCls}`} style={{ width: `${pct}%` }} />
+    <div className="mt-2 h-1.5 w-full overflow-hidden rounded-pill bg-neutral-100">
+      <div className={`h-full rounded-pill ${barCls} transition-[width] duration-500 motion-reduce:transition-none`} style={{ width: `${pct}%` }} />
     </div>
   )
 }
 
-function DonutChart({ score }) {
-  const r = 30
-  const circ = 2 * Math.PI * r
-  const filled = ((score || 0) / 10) * circ
+function KpiCard({ icon: Icon, tint, label, value, unit, note, tone }) {
+  const border = tone === 'warn' ? 'border-amber-200' : tone === 'bad' ? 'border-coral-200' : 'border-neutral-200'
+  const noteCls = tone === 'warn' ? 'text-amber-600' : tone === 'bad' ? 'text-coral-600' : 'text-neutral-400'
   return (
-    <div className="relative h-16 w-16 shrink-0">
-      <svg viewBox="0 0 80 80" className="h-full w-full -rotate-90">
-        <circle cx="40" cy="40" r={r} fill="none" strokeWidth="9" className="stroke-neutral-100" />
-        <circle cx="40" cy="40" r={r} fill="none" strokeWidth="9" strokeLinecap="round"
-          strokeDasharray={circ} strokeDashoffset={circ - filled} style={{ stroke: '#6366f1' }} />
-      </svg>
-      <div className="absolute inset-0 flex items-center justify-center">
-        <span className="text-base font-extrabold text-neutral-800">{score ?? 0}</span>
+    <div className={`flex items-center gap-4 rounded-2xl border ${border} bg-neutral-0 px-5 py-5 shadow-sm`}>
+      <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-xl ${tint}`}>
+        <Icon size={22} aria-hidden="true" />
+      </div>
+      <div className="min-w-0">
+        <p className="text-[11px] font-bold uppercase tracking-wider text-neutral-400">{label}</p>
+        <p className="text-3xl font-extrabold leading-tight text-neutral-900 tabular-nums">
+          {value}
+          {unit && <span className="ml-1 text-sm font-medium text-neutral-400">{unit}</span>}
+        </p>
+        <p className={`text-xs font-semibold ${noteCls}`}>{note}</p>
       </div>
     </div>
   )
 }
 
-// ── Skill sub-card (inside expanded table row) ────────────────────────────────
-
-function SkillSubCard({ label, stat, barColorCls, highVariance }) {
-  const border = highVariance ? 'border-amber-200' : 'border-neutral-200'
-  const avgCls = stat.avg != null && stat.avg < 5 ? 'text-coral-500' : 'text-neutral-800'
+function Segmented({ label, options, value, onChange }) {
   return (
-    <div className={`bg-neutral-0 rounded-xl border ${border} px-4 py-3`}>
-      <p className="text-xs text-neutral-400 font-medium mb-1">{label}</p>
-      <div className="flex justify-between">
-        <span className={`text-sm font-bold ${avgCls}`}>{stat.avg ?? '—'}</span>
-        <span className={`text-xs ${varianceCls(stat.variance)}`}>
-          ± {stat.variance}{stat.variance > VARIANCE_THRESHOLD ? ' ⚠' : ''}
-        </span>
-      </div>
-      <ScoreBar score={stat.avg} colorCls={barColorCls} />
+    <div role="group" aria-label={label} className="flex overflow-hidden rounded-xl border border-neutral-200 text-sm font-semibold">
+      {options.map(([key, text]) => (
+        <button
+          key={key}
+          type="button"
+          aria-pressed={value === key}
+          onClick={() => onChange(key)}
+          className={`whitespace-nowrap px-4 py-1.5 transition-colors motion-reduce:transition-none ${
+            value === key ? 'bg-primary-500 text-white' : 'bg-neutral-0 text-neutral-500 hover:bg-neutral-50'
+          }`}
+        >
+          {text}
+        </button>
+      ))}
     </div>
   )
 }
 
-// ── SVG consistency chart ─────────────────────────────────────────────────────
-
-function ConsistencyChart({ interviewers, teamSeries, allMonths, xScale, activeCategory, hoveredId }) {
-  const months = allMonths.filter(m => xScale[m] !== undefined)
-  const teamData = teamSeries[activeCategory] || []
-  const teamOp = hoveredId ? 0.15 : 1
-
-  const yLabels = [
-    { y: 15, label: '10' }, { y: 45, label: '7.5' }, { y: 75, label: '5' }, { y: 105, label: '2.5' },
-  ]
-
-  if (months.length === 0) {
-    return (
-      <div className="flex-1 flex items-center justify-center">
-        <p className="text-xs text-neutral-400">Not enough data to plot trends.</p>
-      </div>
-    )
-  }
-
+function SkillSubCard({ label, stat, barCls, highVariance }) {
+  const avgCls = stat.avg != null && stat.avg < 5 ? 'text-coral-600' : 'text-neutral-800'
   return (
-    <div className="flex-1 flex flex-col">
-      <svg viewBox="0 0 280 140" className="w-full flex-1">
-        {yLabels.map(({ y }) => (
-          <line key={y} x1="30" y1={y} x2="268" y2={y} stroke="#f3f4f6" strokeWidth="1" />
-        ))}
-        {yLabels.map(({ y, label }) => (
-          <text key={y} x="24" y={y + 3} textAnchor="end" fontSize="9" fill="#9ca3af">{label}</text>
-        ))}
-        {months.map(m => (
-          <text key={m} x={xScale[m]} y="128" textAnchor="middle" fontSize="9" fill="#9ca3af">
-            {monthLabel(m)}
-          </text>
-        ))}
-
-        {/* Team average line */}
-        {teamData.length >= 1 && (
-          <g opacity={teamOp} style={{ transition: 'opacity 0.15s' }}>
-            {teamData.length >= 2 && (
-              <polyline
-                points={seriesPoints(teamData, xScale)}
-                fill="none" stroke="#6366f1" strokeWidth="2.5"
-                strokeLinecap="round" strokeLinejoin="round"
-              />
-            )}
-            {teamData.map(pt => xScale[pt.month] != null && (
-              <circle key={pt.month} cx={xScale[pt.month]} cy={scoreToY(pt.value)} r="3" fill="#6366f1" />
-            ))}
-          </g>
-        )}
-
-        {/* Per-interviewer lines */}
-        {interviewers.map((intv, idx) => {
-          const { color, dash } = paletteFor(idx)
-          const series = (intv.series || {})[activeCategory] || []
-          if (series.length < 1) return null
-
-          let op, sw, r
-          if (!hoveredId)                      { op = 0.85; sw = 2;   r = 2.5 }
-          else if (intv.user_id === hoveredId)  { op = 1;    sw = 3;   r = 3.5 }
-          else                                  { op = 0.1;  sw = 1.5; r = 2   }
-
-          return (
-            <g key={intv.user_id} opacity={op} style={{ transition: 'opacity 0.15s' }}>
-              {series.length >= 2 && (
-                <polyline
-                  points={seriesPoints(series, xScale)} fill="none" stroke={color}
-                  strokeWidth={sw} strokeDasharray={dash} strokeLinecap="round"
-                />
-              )}
-              {series.map(pt => xScale[pt.month] != null && (
-                <circle key={pt.month} cx={xScale[pt.month]} cy={scoreToY(pt.value)} r={r} fill={color} />
-              ))}
-            </g>
-          )
-        })}
-      </svg>
-
-      {/* Legend */}
-      <div className="flex flex-wrap gap-x-3 gap-y-1.5 mt-1 pt-1 border-t border-neutral-100">
-        <span className="flex items-center gap-1.5 text-xs text-neutral-500"
-          style={{ opacity: hoveredId ? 0.25 : 1 }}>
-          <span className="inline-block w-4 h-0.5 rounded" style={{ background: '#6366f1' }} />
-          Team Avg
-        </span>
-        {interviewers.map((intv, idx) => {
-          const { color } = paletteFor(idx)
-          const op = !hoveredId ? 1 : intv.user_id === hoveredId ? 1 : 0.25
-          const parts = intv.name.split(' ')
-          const short = parts[0] + (parts[1] ? ` ${parts[1][0]}.` : '')
-          return (
-            <span key={intv.user_id} className="flex items-center gap-1.5 text-xs text-neutral-500"
-              style={{ opacity: op, fontWeight: hoveredId === intv.user_id ? 600 : 400 }}>
-              <span className="inline-block w-4 h-0.5 rounded" style={{ background: color }} />
-              {short}
-            </span>
-          )
-        })}
+    <div className={`rounded-xl border bg-neutral-0 px-4 py-3 ${highVariance ? 'border-amber-200' : 'border-neutral-200'}`}>
+      <p className="mb-1 text-xs font-medium text-neutral-400">{label}</p>
+      <div className="flex justify-between text-sm">
+        <span className={`font-bold tabular-nums ${avgCls}`}>{stat.avg ?? '—'}</span>
+        <span className={`text-xs font-semibold tabular-nums ${varianceCls(stat.variance)}`}>± {stat.variance}</span>
       </div>
+      <ScoreBar score={stat.avg} barCls={barCls} />
     </div>
   )
 }
 
-// ── Table view ────────────────────────────────────────────────────────────────
+// ── Comparison: table + chart ─────────────────────────────────────────────────
+
+// Column widths shared by the table and the team row so they stay aligned.
+function TableCols() {
+  return (
+    <colgroup>
+      <col style={{ width: 40 }} />
+      <col />
+      <col style={{ width: 92 }} />
+      <col style={{ width: 84 }} />
+      <col style={{ width: 84 }} />
+      <col style={{ width: 132 }} />
+    </colgroup>
+  )
+}
 
 function TableView({
-  interviewers, teamSeries, allMonths, xScale,
-  expandedRows, toggleRow, hoveredId, setHoveredId,
-  activeCategory, setActiveCategory, highVarianceInterviewers,
+  interviewers, teamSeries, allMonths, kpis, expandedRows, toggleRow, hoveredId, setHoveredId,
+  hiddenIds, toggleHidden, activeCategory, setActiveCategory,
 }) {
-  const CAT_PILLS = [
-    { key: 'all', label: 'All' },
-    { key: 'technical', label: 'Technical' },
-    { key: 'communication', label: 'Communication' },
-    { key: 'problem_solving', label: 'Problem Solving' },
-  ]
-  const CAT_LABEL = {
-    all: 'All scores', technical: 'Technical',
-    communication: 'Communication', problem_solving: 'Problem Solving',
-  }
-
+  const teamHighVariance = kpis.score_variance > VARIANCE_THRESHOLD
   return (
-    <div className="flex">
-      {/* Expandable table */}
-      <div className="flex-[3] border-r border-neutral-100 min-w-0">
-        <table className="w-full">
-          <thead>
-            <tr className="bg-neutral-50 border-b border-neutral-100">
-              <th className="w-8 px-3 py-3" />
-              <th className="text-left text-xs font-bold text-neutral-400 uppercase tracking-widest px-2 py-3">Interviewer</th>
-              <th className="text-center text-xs font-bold text-neutral-400 uppercase tracking-widest px-3 py-3">Intvs</th>
-              <th className="text-center text-xs font-bold text-neutral-400 uppercase tracking-widest px-3 py-3">Avg</th>
-              <th className="text-center text-xs font-bold text-neutral-400 uppercase tracking-widest px-3 py-3">Variance</th>
-              <th className="text-center text-xs font-bold text-neutral-400 uppercase tracking-widest px-3 py-3">Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            {interviewers.map((intv, idx) => {
-              const { color } = paletteFor(idx)
-              const isExpanded = expandedRows.has(intv.user_id)
-              const isDimmed = hoveredId && hoveredId !== intv.user_id
-              return (
-                <React.Fragment key={intv.user_id}>
-                  <tr
-                    className={`border-b border-neutral-100 hover:bg-neutral-50 transition-opacity ${isDimmed ? 'opacity-40' : ''} ${intv.high_variance ? 'bg-amber-50/40' : ''}`}
-                    onMouseEnter={() => setHoveredId(intv.user_id)}
-                    onMouseLeave={() => setHoveredId(null)}
-                  >
-                    <td className="px-3 py-3.5">
-                      <button
-                        onClick={() => toggleRow(intv.user_id)}
-                        className={`text-xs w-5 h-5 flex items-center justify-center rounded hover:bg-neutral-100 ${intv.high_variance ? 'text-amber-500' : 'text-neutral-300'}`}
-                      >
-                        {isExpanded ? '▼' : '▶'}
-                      </button>
-                    </td>
-                    <td className="px-2 py-3.5">
-                      <div className="flex items-center gap-2">
-                        <div className="w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0"
-                          style={{ backgroundColor: color }}>
-                          {initials(intv.name)}
-                        </div>
-                        <span className="text-sm font-semibold text-neutral-800">{intv.name}</span>
-                      </div>
-                    </td>
-                    <td className="px-3 py-3.5 text-sm text-neutral-600 text-center">{intv.interview_count}</td>
-                    <td className="px-3 py-3.5 text-sm font-bold text-neutral-800 text-center">{intv.overall.avg ?? '—'}</td>
-                    <td className={`px-3 py-3.5 text-sm text-center ${varianceCls(intv.overall.variance)}`}>
-                      ± {intv.overall.variance}
-                    </td>
-                    <td className="px-3 py-3.5 text-center">
-                      <StatusBadge highVariance={intv.high_variance} />
-                    </td>
-                  </tr>
-                  {isExpanded && (
-                    <tr className={`border-b border-neutral-100 ${intv.high_variance ? 'bg-amber-50/20' : 'bg-primary-50/10'}`}>
-                      <td colSpan={6} className="px-5 pb-3 pt-1">
-                        <div className="grid grid-cols-3 gap-3 pl-8">
-                          <SkillSubCard label="Technical Skills" stat={intv.technical}    barColorCls="bg-primary-500" highVariance={intv.high_variance} />
-                          <SkillSubCard label="Communication"    stat={intv.communication} barColorCls="bg-mint-500"    highVariance={intv.high_variance} />
-                          <SkillSubCard label="Problem Solving"  stat={intv.problem_solving} barColorCls="bg-sky-400"  highVariance={intv.high_variance} />
+    <div className="grid grid-cols-1 lg:grid-cols-5">
+      {/* Left: interviewers. The team row is pinned to the bottom so the card
+          has the same top and bottom edges as the chart panel beside it. */}
+      <div className="min-w-0 overflow-x-auto border-neutral-100 lg:col-span-3 lg:border-r">
+        <div className="flex h-full min-w-[580px] flex-col">
+          <table className="w-full table-fixed">
+            <TableCols />
+            <thead>
+              <tr className="h-11 border-b border-neutral-100 bg-neutral-50">
+                <th className="px-3" aria-label="Expand" />
+                <th className={`${TH} px-4 text-left`}>Interviewer</th>
+                <th className={`${TH} px-2 text-center`}>Interviews</th>
+                <th className={`${TH} px-2 text-center`}>Avg score</th>
+                <th className={`${TH} px-2 text-center`}>Variance</th>
+                <th className={`${TH} px-2 text-center`}>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {interviewers.map((intv, idx) => {
+                const isExpanded = expandedRows.has(intv.user_id)
+                const isHover = hoveredId === intv.user_id
+                const isDimmed = hoveredId && !isHover
+                return (
+                  <React.Fragment key={intv.user_id}>
+                    <tr
+                      className={`cursor-pointer border-b border-neutral-100 transition-colors motion-reduce:transition-none ${
+                        isDimmed ? 'opacity-50' : ''
+                      } ${isHover ? 'bg-primary-50' : intv.high_variance ? 'bg-amber-50/40 hover:bg-amber-50' : 'hover:bg-neutral-50'}`}
+                      onClick={() => toggleRow(intv.user_id)}
+                      onMouseEnter={() => setHoveredId(intv.user_id)}
+                      onMouseLeave={() => setHoveredId(null)}
+                    >
+                      <td className="px-3 py-3.5">
+                        <button
+                          type="button"
+                          aria-expanded={isExpanded}
+                          aria-label={`${isExpanded ? 'Hide' : 'Show'} details for ${intv.name}`}
+                          onClick={(e) => { e.stopPropagation(); toggleRow(intv.user_id) }}
+                          onFocus={() => setHoveredId(intv.user_id)}
+                          onBlur={() => setHoveredId(null)}
+                          className="flex h-6 w-6 items-center justify-center rounded-md text-neutral-400 hover:bg-neutral-100 hover:text-neutral-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary-300"
+                        >
+                          <ChevronRight size={16} className={`transition-transform motion-reduce:transition-none ${isExpanded ? 'rotate-90' : ''}`} />
+                        </button>
+                      </td>
+                      <td className="px-4 py-3.5">
+                        <div className="flex items-center gap-2.5">
+                          <Avatar name={intv.name} idx={idx} />
+                          <span className="truncate whitespace-nowrap text-sm font-semibold text-neutral-800">{intv.name}</span>
                         </div>
                       </td>
+                      <td className="px-2 py-3.5 text-center text-sm tabular-nums text-neutral-600">{intv.interview_count}</td>
+                      <td className="px-2 py-3.5 text-center text-sm font-bold tabular-nums text-neutral-800">{intv.overall.avg ?? '—'}</td>
+                      <td className={`px-2 py-3.5 text-center text-sm font-semibold tabular-nums ${varianceCls(intv.overall.variance)}`}>± {intv.overall.variance}</td>
+                      <td className="px-2 py-3.5 text-center"><StatusBadge highVariance={intv.high_variance} /></td>
                     </tr>
-                  )}
-                </React.Fragment>
-              )
-            })}
-          </tbody>
-        </table>
+                    {isExpanded && (
+                      <tr className={`border-b border-neutral-100 ${intv.high_variance ? 'bg-amber-50/20' : 'bg-neutral-50/60'}`}>
+                        <td colSpan={6} className="px-6 pb-4 pt-2">
+                          {intv.high_variance && (
+                            <span className="mb-3 inline-flex items-center gap-1.5 rounded-pill bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-700 sm:ml-9">
+                              <AlertTriangle size={12} aria-hidden="true" />
+                              Scored unevenly across skill categories
+                            </span>
+                          )}
+                          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 sm:pl-9">
+                            {SKILLS.map((s) => (
+                              <SkillSubCard key={s.key} label={s.label} stat={intv[s.key]} barCls={s.bar} highVariance={intv.high_variance} />
+                            ))}
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
+                )
+              })}
+            </tbody>
+          </table>
 
-        {highVarianceInterviewers.length > 0 && (
-          <div className="px-5 py-3 bg-amber-50 border-t border-amber-100 flex items-start gap-2">
-            <WarningIcon />
-            <p className="text-xs text-amber-700">
-              <strong>{highVarianceInterviewers.map(i => i.name).join(', ')}</strong>
-              {' '}— high score variance detected across skill categories.
-            </p>
-          </div>
-        )}
+          <table className="mt-auto w-full table-fixed border-t border-neutral-200 bg-neutral-50">
+            <TableCols />
+            <tbody>
+              <tr className="h-14">
+                <td />
+                <td className="px-4">
+                  <div className="flex items-center gap-2.5">
+                    <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-white" style={{ backgroundColor: TEAM_COLOR }}>
+                      <Users size={14} aria-hidden="true" />
+                    </div>
+                    <span className="whitespace-nowrap text-sm font-semibold text-neutral-800">Team average</span>
+                  </div>
+                </td>
+                <td className="px-2 text-center text-sm tabular-nums text-neutral-600">{kpis.evaluated_count}</td>
+                <td className="px-2 text-center text-sm font-bold tabular-nums text-neutral-800">{kpis.avg_overall_score}</td>
+                <td className={`px-2 text-center text-sm font-semibold tabular-nums ${varianceCls(kpis.score_variance)}`}>± {kpis.score_variance}</td>
+                <td className="px-2 text-center"><StatusBadge highVariance={teamHighVariance} /></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </div>
 
-      {/* Chart panel */}
-      <div className="flex-[2] flex flex-col p-5 min-w-0">
-        {/* Category pills */}
-        <div className="flex gap-1.5 flex-wrap mb-3">
+      {/* Right: chart. Its control band is the same height as the table header. */}
+      <div className="flex min-w-0 flex-col lg:col-span-2">
+        <div className="scrollbar-hide flex h-11 items-center gap-1.5 overflow-x-auto border-b border-neutral-100 bg-neutral-50 px-6" role="group" aria-label="Score category">
           {CAT_PILLS.map(({ key, label }) => (
             <button
               key={key}
+              type="button"
+              aria-pressed={activeCategory === key}
               onClick={() => setActiveCategory(key)}
-              className={`px-3 py-1 rounded-full text-xs font-semibold border transition-colors ${
+              className={`shrink-0 whitespace-nowrap rounded-pill border px-2 py-1 text-xs font-semibold transition-colors motion-reduce:transition-none ${
                 activeCategory === key
-                  ? 'bg-primary-500 text-white border-primary-500'
-                  : 'bg-neutral-0 text-neutral-600 border-neutral-200 hover:bg-neutral-50'
+                  ? 'border-primary-500 bg-primary-500 text-white'
+                  : 'border-neutral-200 bg-neutral-0 text-neutral-600 hover:bg-neutral-100'
               }`}
             >
               {label}
@@ -354,221 +303,174 @@ function TableView({
           ))}
         </div>
 
-        {/* Chart title */}
-        <div className="flex items-center justify-between mb-1">
-          <h3 className="text-xs font-bold text-neutral-500 uppercase tracking-widest">Score Over Time</h3>
-          <span className="text-xs text-neutral-400">
-            {hoveredId
-              ? interviewers.find(i => i.user_id === hoveredId)?.name
-              : 'All interviewers'}
-            {' · '}{CAT_LABEL[activeCategory]}
-          </span>
-        </div>
+        <div className="flex flex-1 flex-col p-6">
+          <div className="mb-2 flex items-baseline justify-between gap-3">
+            <h3 className="text-sm font-semibold text-neutral-800">Score over time</h3>
+            <span className="truncate text-xs text-neutral-400">
+              {hoveredId ? interviewers.find((i) => i.user_id === hoveredId)?.name : 'All interviewers'}
+            </span>
+          </div>
 
-        <ConsistencyChart
-          interviewers={interviewers}
-          teamSeries={teamSeries}
-          allMonths={allMonths}
-          xScale={xScale}
-          activeCategory={activeCategory}
-          hoveredId={hoveredId}
-        />
+          <ConsistencyChart
+            interviewers={interviewers}
+            teamSeries={teamSeries}
+            allMonths={allMonths}
+            activeCategory={activeCategory}
+            hoveredId={hoveredId}
+            setHoveredId={setHoveredId}
+            hiddenIds={hiddenIds}
+            toggleHidden={toggleHidden}
+          />
+        </div>
       </div>
     </div>
   )
 }
-
-// ── Cards view ────────────────────────────────────────────────────────────────
 
 function CardsView({ interviewers }) {
   return (
-    <div className="p-5">
-      <div className="grid grid-cols-3 gap-4">
-        {interviewers.map((intv, idx) => {
-          const { color } = paletteFor(idx)
-          const border = intv.high_variance ? 'border-amber-200' : 'border-neutral-200'
-          const divider = intv.high_variance ? 'border-amber-100' : 'border-neutral-100'
-          return (
-            <div key={intv.user_id} className={`rounded-2xl border ${border} bg-neutral-0 p-5`}>
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center gap-2.5">
-                  <div className="w-9 h-9 rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0"
-                    style={{ backgroundColor: color }}>
-                    {initials(intv.name)}
-                  </div>
-                  <div>
-                    <p className="text-sm font-semibold text-neutral-800">{intv.name}</p>
-                    <p className="text-xs text-neutral-400">
-                      {intv.interview_count} interview{intv.interview_count !== 1 ? 's' : ''}
-                    </p>
-                  </div>
-                </div>
-                <StatusBadge highVariance={intv.high_variance} />
-              </div>
-
-              <div className={`flex items-center justify-between mb-3 pb-3 border-b ${divider}`}>
-                <span className="text-xs font-bold text-neutral-500 uppercase tracking-widest">Overall</span>
-                <div className="flex items-center gap-2">
-                  <span className="text-xl font-extrabold text-neutral-800">{intv.overall.avg ?? '—'}</span>
-                  <span className={`text-xs ${varianceCls(intv.overall.variance)}`}>
-                    ± {intv.overall.variance}{intv.overall.variance > VARIANCE_THRESHOLD ? ' ⚠' : ''}
-                  </span>
+    <div className="grid grid-cols-1 gap-4 p-6 md:grid-cols-2 xl:grid-cols-3">
+      {interviewers.map((intv, idx) => {
+        const divider = intv.high_variance ? 'border-amber-100' : 'border-neutral-100'
+        return (
+          <div
+            key={intv.user_id}
+            className={`rounded-2xl border bg-neutral-0 p-5 transition-[border-color,box-shadow] hover:shadow-sm motion-reduce:transition-none ${
+              intv.high_variance ? 'border-amber-200' : 'border-neutral-200 hover:border-primary-200'
+            }`}
+          >
+            <div className="mb-4 flex items-center justify-between gap-2">
+              <div className="flex min-w-0 items-center gap-2.5">
+                <Avatar name={intv.name} idx={idx} size="md" />
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-semibold text-neutral-800">{intv.name}</p>
+                  <p className="text-xs text-neutral-400">{plural(intv.interview_count, 'interview')}</p>
                 </div>
               </div>
+              <StatusBadge highVariance={intv.high_variance} />
+            </div>
 
-              <div className="flex flex-col gap-3">
-                {[
-                  { key: 'technical',      label: 'Technical Skills', barColorCls: 'bg-primary-500' },
-                  { key: 'communication',  label: 'Communication',    barColorCls: 'bg-mint-500'    },
-                  { key: 'problem_solving', label: 'Problem Solving', barColorCls: 'bg-sky-400'     },
-                ].map(({ key, label, barColorCls }) => {
-                  const stat = intv[key]
-                  const avgCls = stat.avg != null && stat.avg < 5 ? 'text-coral-500' : 'text-neutral-700'
-                  return (
-                    <div key={key}>
-                      <div className="flex justify-between text-xs mb-1.5">
-                        <span className="text-neutral-600 font-medium">{label}</span>
-                        <span className={`font-semibold ${avgCls}`}>
-                          {stat.avg ?? '—'}{' '}
-                          <span className={`font-normal ${varianceCls(stat.variance)}`}>± {stat.variance}</span>
-                        </span>
-                      </div>
-                      <ScoreBar score={stat.avg} colorCls={barColorCls} />
-                    </div>
-                  )
-                })}
-              </div>
-
-              <div className={`mt-3 pt-3 border-t ${divider} flex items-center justify-between`}>
-                <span className="text-xs text-neutral-400">Bias flags</span>
-                {intv.bias_incident_count > 0
-                  ? <span className="text-xs font-semibold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full">{intv.bias_incident_count} flag{intv.bias_incident_count !== 1 ? 's' : ''}</span>
-                  : <span className="text-xs font-semibold text-mint-700 bg-mint-50 px-2 py-0.5 rounded-full">0 — clear</span>
-                }
+            <div className={`mb-3 flex items-center justify-between border-b pb-3 ${divider}`}>
+              <span className="text-sm font-semibold text-neutral-600">Overall</span>
+              <div className="flex items-baseline gap-2">
+                <span className="text-2xl font-extrabold tabular-nums text-neutral-900">{intv.overall.avg ?? '—'}</span>
+                <span className={`text-xs font-semibold tabular-nums ${varianceCls(intv.overall.variance)}`}>± {intv.overall.variance}</span>
               </div>
             </div>
-          )
-        })}
-      </div>
+
+            <div className="flex flex-col gap-3">
+              {SKILLS.map((s) => {
+                const stat = intv[s.key]
+                const avgCls = stat.avg != null && stat.avg < 5 ? 'text-coral-600' : 'text-neutral-800'
+                return (
+                  <div key={s.key}>
+                    <div className="flex justify-between text-sm">
+                      <span className="font-medium text-neutral-600">{s.label}</span>
+                      <span className="tabular-nums">
+                        <span className={`font-semibold ${avgCls}`}>{stat.avg ?? '—'}</span>{' '}
+                        <span className={`text-xs font-semibold ${varianceCls(stat.variance)}`}>± {stat.variance}</span>
+                      </span>
+                    </div>
+                    <ScoreBar score={stat.avg} barCls={s.bar} />
+                  </div>
+                )
+              })}
+            </div>
+
+            <div className={`mt-4 flex items-center justify-between border-t pt-3 ${divider}`}>
+              <span className="text-xs text-neutral-400">Bias flags</span>
+              <FlagPill count={intv.bias_incident_count} />
+            </div>
+          </div>
+        )
+      })}
     </div>
   )
 }
 
-// ── Bias incident card ────────────────────────────────────────────────────────
+// ── Bias incident log ─────────────────────────────────────────────────────────
 
 function BiasIncidentCard({ incident }) {
-  const category   = incident.category   || incident.bias_type     || ''
-  const quote      = incident.quote      || incident.flagged_text   || ''
-  const reason     = incident.reason     || incident.why_flagged    || ''
+  const category   = incident.category   || incident.bias_type   || ''
+  const quote      = incident.quote      || incident.flagged_text || ''
+  const reason     = incident.reason     || incident.why_flagged  || ''
   const suggestion = incident.suggestion || ''
   const ts = formatBiasTime(incident.timestamp)
 
   return (
-    <div className="rounded-xl border border-amber-200 bg-neutral-0 p-4">
-      <div className="flex items-center gap-2 mb-2.5">
-        {ts && (
-          <span className="text-[10px] font-bold bg-neutral-100 text-neutral-500 px-2 py-0.5 rounded-full font-mono">{ts}</span>
-        )}
-        {category && (
-          <span className={`text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full ${biasCategoryCls(category)}`}>
-            {category}
-          </span>
-        )}
+    <div className="rounded-xl border border-coral-200 bg-neutral-0 p-4">
+      <div className="mb-2.5 flex items-center gap-2">
+        {ts && <span className="rounded-pill bg-neutral-100 px-2.5 py-0.5 font-mono text-xs font-semibold text-neutral-600">{ts}</span>}
+        {category && <span className={`rounded-pill px-2.5 py-0.5 text-xs font-semibold ${biasCategoryCls(category)}`}>{category}</span>}
       </div>
       {quote && (
-        <blockquote className="text-sm text-neutral-700 italic border-l-2 border-amber-300 pl-3 mb-3">
-          &ldquo;{quote}&rdquo;
-        </blockquote>
+        <blockquote className="mb-3 border-l-2 border-coral-300 pl-3 text-sm italic text-neutral-700">&ldquo;{quote}&rdquo;</blockquote>
       )}
-      <div className="flex flex-col gap-1.5">
+      <dl className="flex flex-col gap-1.5 text-sm">
         {reason && (
-          <div className="flex gap-2 text-xs">
-            <span className="font-semibold text-neutral-500 w-20 shrink-0">Why flagged</span>
-            <span className="text-neutral-600">{reason}</span>
+          <div className="flex gap-3">
+            <dt className="w-24 shrink-0 font-semibold text-neutral-500">Why flagged</dt>
+            <dd className="text-neutral-600">{reason}</dd>
           </div>
         )}
         {suggestion && (
-          <div className="flex gap-2 text-xs">
-            <span className="font-semibold text-mint-700 w-20 shrink-0">Suggestion</span>
-            <span className="text-neutral-600">{suggestion}</span>
+          <div className="flex gap-3">
+            <dt className="w-24 shrink-0 font-semibold text-mint-700">Suggestion</dt>
+            <dd className="text-neutral-600">{suggestion}</dd>
           </div>
         )}
-      </div>
+      </dl>
     </div>
   )
 }
 
-// ── Bias incident log section ─────────────────────────────────────────────────
-
 function BiasIncidentLog({ interviewers, expandedBias, toggleBias, totalFlags }) {
   return (
-    <div className="rounded-2xl border border-neutral-200 bg-neutral-0 overflow-hidden mb-6">
-      <div className="px-5 py-4 border-b border-neutral-100 flex items-center justify-between">
-        <div>
-          <h2 className="text-sm font-bold text-neutral-700">Bias Incident Log</h2>
-          <p className="text-xs text-neutral-400 mt-0.5">Questions flagged by the live bias checker</p>
-        </div>
-        <span className="text-xs font-semibold text-coral-500 bg-coral-50 px-3 py-1 rounded-full border border-coral-100">
-          {totalFlags} total flag{totalFlags !== 1 ? 's' : ''} this period
+    <section className={`${card.flat} overflow-hidden`}>
+      <CardHeader title="Bias incident log" subtitle="Questions flagged by the live bias checker during interviews">
+        <span className="rounded-pill border border-coral-100 bg-coral-50 px-3 py-1 text-xs font-semibold text-coral-700">
+          {plural(totalFlags, 'flag')} this period
         </span>
-      </div>
+      </CardHeader>
 
       <div className="divide-y divide-neutral-100">
         {interviewers.map((intv, idx) => {
-          const { color } = paletteFor(idx)
           const isExpanded = expandedBias.has(intv.user_id)
           const count = intv.bias_incident_count
           return (
-            <div key={intv.user_id} className={intv.high_variance ? 'bg-amber-50/20' : ''}>
+            <div key={intv.user_id}>
               <button
+                type="button"
+                aria-expanded={isExpanded}
                 onClick={() => toggleBias(intv.user_id)}
-                className={`w-full flex items-center justify-between px-5 py-3.5 text-left ${intv.high_variance ? 'hover:bg-amber-50/40' : 'hover:bg-neutral-50'}`}
+                className="flex w-full items-center justify-between gap-3 px-6 py-3.5 text-left transition-colors hover:bg-neutral-50 focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary-300 motion-reduce:transition-none"
               >
-                <div className="flex items-center gap-3">
-                  <div className="w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0"
-                    style={{ backgroundColor: color }}>
-                    {initials(intv.name)}
-                  </div>
-                  <span className="text-sm font-semibold text-neutral-800">{intv.name}</span>
-                  <span className="text-xs text-neutral-400">{intv.interview_count} interviews</span>
+                <div className="flex min-w-0 items-center gap-3">
+                  <Avatar name={intv.name} idx={idx} />
+                  <span className="truncate text-sm font-semibold text-neutral-800">{intv.name}</span>
+                  <span className="shrink-0 text-xs text-neutral-400">{plural(intv.interview_count, 'interview')}</span>
                 </div>
-                <div className="flex items-center gap-3">
-                  {count === 0
-                    ? <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-mint-50 text-mint-700 border border-mint-200">0 flags — clear</span>
-                    : <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-coral-50 text-coral-500 border border-coral-100">{count} flag{count !== 1 ? 's' : ''}</span>
-                  }
-                  <span className={`text-xs ${count > 0 ? 'text-amber-500' : 'text-neutral-300'}`}>
-                    {isExpanded ? '▼' : '▶'}
-                  </span>
+                <div className="flex shrink-0 items-center gap-3">
+                  <FlagPill count={count} />
+                  <ChevronRight size={16} aria-hidden="true" className={`text-neutral-400 transition-transform motion-reduce:transition-none ${isExpanded ? 'rotate-90' : ''}`} />
                 </div>
               </button>
               {isExpanded && (
-                <div className="px-5 pb-4 pt-1">
-                  {count === 0
-                    ? <p className="text-xs text-neutral-400 pl-10">No bias incidents flagged during this period.</p>
-                    : (
-                      <div className="pl-10 flex flex-col gap-3">
-                        {(intv.bias_incidents || []).map((incident, i) => (
-                          <BiasIncidentCard key={i} incident={incident} />
-                        ))}
-                      </div>
-                    )
-                  }
+                <div className="px-6 pb-4 pt-1 sm:pl-16">
+                  {count === 0 ? (
+                    <p className="text-sm text-neutral-400">No bias incidents flagged in this period.</p>
+                  ) : (
+                    <div className="flex flex-col gap-3">
+                      {(intv.bias_incidents || []).map((incident, i) => <BiasIncidentCard key={i} incident={incident} />)}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
           )
         })}
       </div>
-
-      <div className="px-5 py-3 border-t border-neutral-100 bg-neutral-50">
-        <p className="text-xs text-neutral-400">
-          Bias incidents sourced from{' '}
-          <code className="bg-neutral-200 px-1 rounded text-neutral-600 text-[10px]">intv_bias_incidents</code>
-          {' '}— flagged live during sessions by the bias checker.
-        </p>
-      </div>
-    </div>
+    </section>
   )
 }
 
@@ -583,212 +485,175 @@ export default function InterviewConsistencyPage() {
   const [expandedRows, setExpandedRows]     = useState(new Set())
   const [expandedBias, setExpandedBias]     = useState(new Set())
   const [hoveredId, setHoveredId]           = useState(null)
+  const [hiddenIds, setHiddenIds]           = useState(new Set())
   const [activeCategory, setActiveCategory] = useState('all')
 
-  const { data: jobsData }             = useAsync(() => api.listJobs(), [])
-  const { data, loading, error }       = useAsync(
+  const { data: jobsData }       = useAsync(() => api.listJobs(), [])
+  const { data, loading, error } = useAsync(
     () => api.getInterviewConsistency({ job_id: jobFilter || undefined, days }),
     [jobFilter, days],
   )
 
-  const jobs        = Array.isArray(jobsData) ? jobsData : []
-  const kpis        = data?.kpis        || { avg_overall_score: 0, score_variance: 0, evaluated_count: 0, bias_flag_count: 0 }
+  const jobs         = Array.isArray(jobsData) ? jobsData : []
+  const kpis         = data?.kpis         || { avg_overall_score: 0, score_variance: 0, evaluated_count: 0, bias_flag_count: 0 }
   const interviewers = data?.interviewers || []
-  const teamSeries  = data?.team_series  || { all: [], technical: [], communication: [], problem_solving: [] }
+  const teamSeries   = data?.team_series  || { all: [], technical: [], communication: [], problem_solving: [] }
 
   const allMonths = useMemo(() => {
     const s = new Set()
-    Object.values(teamSeries).forEach(series => series.forEach(pt => s.add(pt.month)))
-    interviewers.forEach(intv =>
-      Object.values(intv.series || {}).forEach(series => series.forEach(pt => s.add(pt.month)))
+    Object.values(teamSeries).forEach((series) => series.forEach((pt) => s.add(pt.month)))
+    interviewers.forEach((intv) =>
+      Object.values(intv.series || {}).forEach((series) => series.forEach((pt) => s.add(pt.month)))
     )
     return Array.from(s).sort()
   }, [teamSeries, interviewers])
 
-  const xScale = useMemo(() => buildXScale(allMonths), [allMonths])
+  const biasInterviewerCount = interviewers.filter((i) => i.bias_incident_count > 0).length
+  const overThreshold = kpis.score_variance > VARIANCE_THRESHOLD
 
-  const highVarianceInterviewers = interviewers.filter(i => i.high_variance)
-
-  function toggleRow(uid) {
-    setExpandedRows(prev => {
+  const toggleIn = (setter) => (uid) =>
+    setter((prev) => {
       const next = new Set(prev)
       next.has(uid) ? next.delete(uid) : next.add(uid)
       return next
     })
-  }
+  const toggleRow = toggleIn(setExpandedRows)
+  const toggleBias = toggleIn(setExpandedBias)
+  const toggleHidden = toggleIn(setHiddenIds)
 
-  function toggleBias(uid) {
-    setExpandedBias(prev => {
-      const next = new Set(prev)
-      next.has(uid) ? next.delete(uid) : next.add(uid)
-      return next
-    })
-  }
-
-  if (loading) {
-    return (
-      <div className={page.loading}>
-        <div className="text-neutral-400 text-sm">Loading analytics…</div>
-      </div>
-    )
-  }
-
-  if (error) {
-    return (
-      <div className={page.shell}>
-        <Sidebar />
-        <div className="flex-1 flex items-center justify-center">
-          <p className="text-sm text-coral-500">{error.message || 'Failed to load analytics.'}</p>
-        </div>
-      </div>
-    )
-  }
-
-  const biasInterviewerCount = interviewers.filter(i => i.bias_incident_count > 0).length
+  const firstLoad = loading && !data
+  const filtersActive = jobFilter !== '' || days !== DEFAULT_DAYS
+  const resetFilters = () => { setJobFilter(''); setDays(DEFAULT_DAYS) }
 
   return (
     <div className={page.shell}>
       <Sidebar />
-      <div className="flex-1 flex flex-col overflow-hidden">
-
-        {/* Header */}
-        <header className="bg-neutral-0 border-b border-neutral-200 px-10 py-5 shrink-0">
-          <div className="flex justify-between items-center">
-            <div>
-              <p className="text-xs font-bold text-neutral-400 uppercase tracking-widest mb-0.5">Analytics</p>
-              <h1 className="text-2xl font-bold text-neutral-800">Interview Consistency</h1>
-              <p className="text-sm text-neutral-400 mt-0.5">Scoring alignment &amp; bias patterns across interviewers</p>
-            </div>
-            <div className="flex items-center gap-3">
-              <select
-                value={jobFilter}
-                onChange={e => setJobFilter(e.target.value)}
-                className="text-sm border border-neutral-200 rounded-xl px-3 py-2 text-neutral-600 bg-neutral-0 focus:outline-none focus:ring-2 focus:ring-primary-300"
-              >
-                <option value="">All Jobs</option>
-                {jobs.map(j => (
-                  <option key={j._id} value={j._id}>{j.title || j.job_title || j._id}</option>
-                ))}
-              </select>
-              <select
-                value={days}
-                onChange={e => setDays(Number(e.target.value))}
-                className="text-sm border border-neutral-200 rounded-xl px-3 py-2 text-neutral-600 bg-neutral-0 focus:outline-none focus:ring-2 focus:ring-primary-300"
-              >
-                <option value={30}>Last 30 Days</option>
-                <option value={90}>Last 90 Days</option>
-                <option value={180}>Last 6 Months</option>
-                <option value={0}>All Time</option>
-              </select>
-            </div>
+      <div className="flex flex-1 flex-col overflow-hidden">
+        <header className="flex shrink-0 flex-wrap items-start justify-between gap-4 border-b border-neutral-200 bg-neutral-0 px-10 py-6">
+          <div>
+            <h1 className="text-4xl font-extrabold tracking-tight text-neutral-800">Interview Consistency</h1>
+            <p className="mt-1 text-xs text-neutral-400">Scoring alignment and bias patterns across interviewers</p>
           </div>
         </header>
 
-        {/* Body */}
-        <div className="flex-1 overflow-y-auto px-10 py-6">
-
-          {/* KPI row */}
-          <div className="grid grid-cols-4 gap-5 mb-6">
-            <div className="rounded-2xl border border-neutral-200 bg-neutral-0 p-5 flex items-center gap-4">
-              <DonutChart score={kpis.avg_overall_score} />
-              <div>
-                <p className="text-xs font-bold text-neutral-400 uppercase tracking-widest mb-1">Avg Score</p>
-                <p className="text-xl font-bold text-neutral-800">
-                  {kpis.avg_overall_score}<span className="text-sm font-normal text-neutral-400"> / 10</span>
-                </p>
-                <p className="text-xs text-neutral-400 mt-0.5">Across all interviewers</p>
-              </div>
-            </div>
-
-            <div className={`rounded-2xl border bg-neutral-0 p-5 ${kpis.score_variance > VARIANCE_THRESHOLD ? 'border-amber-200' : 'border-neutral-200'}`}>
-              <p className="text-xs font-bold text-neutral-400 uppercase tracking-widest mb-2">Score Variance</p>
-              <p className="text-3xl font-bold text-neutral-800">± {kpis.score_variance}</p>
-              {kpis.score_variance > VARIANCE_THRESHOLD ? (
-                <p className="text-xs text-amber-600 font-semibold mt-1.5 flex items-center gap-1">
-                  <WarningIcon />Exceeds ±{VARIANCE_THRESHOLD} threshold
-                </p>
-              ) : (
-                <p className="text-xs text-neutral-400 mt-1.5">Within acceptable range</p>
+        <main className="flex-1 overflow-y-auto px-10 py-8" aria-busy={loading}>
+          {/* Filters scope everything below (KPIs, comparison, bias log), so they
+              sit directly above the results rather than up in the page header. */}
+          <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+            <div className="flex flex-wrap items-center gap-3">
+              <label className="flex items-center gap-2 rounded-xl border border-neutral-200 bg-neutral-0 px-3 py-1.5 text-neutral-400 focus-within:ring-2 focus-within:ring-primary-300">
+                <Briefcase size={14} aria-hidden="true" />
+                <span className="sr-only">Job</span>
+                <select
+                  value={jobFilter}
+                  onChange={(e) => setJobFilter(e.target.value)}
+                  className="max-w-[16rem] cursor-pointer truncate bg-transparent text-sm font-medium text-neutral-700 outline-none"
+                >
+                  <option value="">All jobs</option>
+                  {jobs.map((j) => (
+                    <option key={j.id} value={j.id}>{j.title}</option>
+                  ))}
+                </select>
+              </label>
+              {filtersActive && (
+                <button type="button" onClick={resetFilters} className="text-sm font-semibold text-primary-500 hover:text-primary-600">
+                  Reset filters
+                </button>
               )}
             </div>
-
-            <div className="rounded-2xl border border-neutral-200 bg-neutral-0 p-5">
-              <p className="text-xs font-bold text-neutral-400 uppercase tracking-widest mb-2">Evaluated Interviews</p>
-              <p className="text-3xl font-bold text-neutral-800">{kpis.evaluated_count}</p>
-              <p className="text-xs text-neutral-400 mt-1.5">Interviews with completed ratings</p>
-            </div>
-
-            <div className={`rounded-2xl border bg-neutral-0 p-5 ${kpis.bias_flag_count > 0 ? 'border-coral-100' : 'border-neutral-200'}`}>
-              <p className="text-xs font-bold text-neutral-400 uppercase tracking-widest mb-2">Bias Flags</p>
-              <p className="text-3xl font-bold text-neutral-800">{kpis.bias_flag_count}</p>
-              {kpis.bias_flag_count > 0 ? (
-                <p className="text-xs text-coral-500 font-semibold mt-1.5">
-                  Across {biasInterviewerCount} interviewer{biasInterviewerCount !== 1 ? 's' : ''} this period
-                </p>
-              ) : (
-                <p className="text-xs text-neutral-400 mt-1.5">No flags this period</p>
-              )}
+            <div className="flex items-center gap-2 text-neutral-400">
+              <CalendarDays size={16} aria-hidden="true" />
+              <Segmented label="Time frame" options={RANGES} value={days} onChange={setDays} />
             </div>
           </div>
 
-          {/* Empty state */}
-          {interviewers.length === 0 && (
-            <div className="rounded-2xl border border-neutral-200 bg-neutral-0 p-12 text-center mb-6">
-              <p className="text-sm text-neutral-400">No completed interviews with ratings found for this filter.</p>
-            </div>
+          {firstLoad && <p className="py-20 text-center text-sm text-neutral-400">Loading analytics…</p>}
+
+          {!firstLoad && error && !data && (
+            <p className="py-20 text-center text-sm text-coral-600">{error || 'Failed to load analytics.'}</p>
           )}
 
-          {interviewers.length > 0 && (
-            <>
-              {/* Score Comparison */}
-              <div className="rounded-2xl border border-neutral-200 bg-neutral-0 overflow-hidden mb-6">
-                <div className="px-5 py-4 border-b border-neutral-100 flex items-center justify-between">
-                  <div>
-                    <h2 className="text-sm font-bold text-neutral-700">Interviewer Score Comparison</h2>
-                    <p className="text-xs text-neutral-400 mt-0.5">Avg candidate scores per interviewer</p>
-                  </div>
-                  <div className="flex rounded-xl border border-neutral-200 overflow-hidden text-sm font-semibold">
-                    <button
-                      onClick={() => setView('table')}
-                      className={`px-4 py-1.5 ${view === 'table' ? 'bg-primary-500 text-white' : 'bg-neutral-0 text-neutral-500 hover:bg-neutral-50'}`}
-                    >Table</button>
-                    <button
-                      onClick={() => setView('cards')}
-                      className={`px-4 py-1.5 ${view === 'cards' ? 'bg-primary-500 text-white' : 'bg-neutral-0 text-neutral-500 hover:bg-neutral-50'}`}
-                    >Cards</button>
-                  </div>
-                </div>
+          {!firstLoad && error && data && (
+            <p className="mb-4 rounded-xl border border-coral-200 bg-coral-50 px-4 py-3 text-sm text-coral-700">
+              Could not refresh the analytics. Showing the last results. {error}
+            </p>
+          )}
 
-                {view === 'table' ? (
-                  <TableView
-                    interviewers={interviewers}
-                    teamSeries={teamSeries}
-                    allMonths={allMonths}
-                    xScale={xScale}
-                    expandedRows={expandedRows}
-                    toggleRow={toggleRow}
-                    hoveredId={hoveredId}
-                    setHoveredId={setHoveredId}
-                    activeCategory={activeCategory}
-                    setActiveCategory={setActiveCategory}
-                    highVarianceInterviewers={highVarianceInterviewers}
-                  />
-                ) : (
-                  <CardsView interviewers={interviewers} />
-                )}
+          {!firstLoad && data && (
+            <div className={`flex flex-col gap-6 transition-opacity motion-reduce:transition-none ${loading ? 'opacity-60' : ''}`}>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                <KpiCard
+                  icon={Gauge} tint="bg-primary-100 text-primary-600"
+                  label="Avg score" value={kpis.avg_overall_score} unit="/ 10" note="Across all interviewers"
+                />
+                <KpiCard
+                  icon={Activity} tint="bg-amber-100 text-amber-600"
+                  label="Score variance" value={`± ${kpis.score_variance}`}
+                  note={overThreshold ? `Above the ± ${VARIANCE_THRESHOLD} threshold` : 'Within acceptable range'}
+                  tone={overThreshold ? 'warn' : undefined}
+                />
+                <KpiCard
+                  icon={ClipboardCheck} tint="bg-sky-100 text-sky-600"
+                  label="Evaluated interviews" value={kpis.evaluated_count} note="With completed ratings"
+                />
+                <KpiCard
+                  icon={ShieldAlert} tint="bg-coral-100 text-coral-600"
+                  label="Bias flags" value={kpis.bias_flag_count}
+                  note={kpis.bias_flag_count > 0 ? `Across ${plural(biasInterviewerCount, 'interviewer')}` : 'No flags this period'}
+                  tone={kpis.bias_flag_count > 0 ? 'bad' : undefined}
+                />
               </div>
 
-              {/* Bias Incident Log */}
-              <BiasIncidentLog
-                interviewers={interviewers}
-                expandedBias={expandedBias}
-                toggleBias={toggleBias}
-                totalFlags={kpis.bias_flag_count}
-              />
-            </>
-          )}
+              {interviewers.length === 0 ? (
+                <div className={`${card.flat} p-12 text-center`}>
+                  <p className="text-sm text-neutral-400">
+                    {filtersActive
+                      ? 'No evaluated interviews match these filters. Try a longer time frame or all jobs.'
+                      : 'No evaluated interviews yet. Scores appear here once interviews are completed.'}
+                  </p>
+                  {filtersActive && (
+                    <button type="button" onClick={resetFilters} className="mt-3 text-sm font-semibold text-primary-500 hover:text-primary-600">
+                      Reset filters
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <>
+                  <section className={`${card.flat} overflow-hidden`}>
+                    <CardHeader title="Interviewer score comparison" subtitle="Average candidate scores per interviewer">
+                      <Segmented label="Comparison view" options={[['table', 'Table'], ['cards', 'Cards']]} value={view} onChange={setView} />
+                    </CardHeader>
+                    {view === 'table' ? (
+                      <TableView
+                        interviewers={interviewers}
+                        teamSeries={teamSeries}
+                        allMonths={allMonths}
+                        kpis={kpis}
+                        expandedRows={expandedRows}
+                        toggleRow={toggleRow}
+                        hoveredId={hoveredId}
+                        setHoveredId={setHoveredId}
+                        hiddenIds={hiddenIds}
+                        toggleHidden={toggleHidden}
+                        activeCategory={activeCategory}
+                        setActiveCategory={setActiveCategory}
+                      />
+                    ) : (
+                      <CardsView interviewers={interviewers} />
+                    )}
+                  </section>
 
-        </div>
+                  <BiasIncidentLog
+                    interviewers={interviewers}
+                    expandedBias={expandedBias}
+                    toggleBias={toggleBias}
+                    totalFlags={kpis.bias_flag_count}
+                  />
+                </>
+              )}
+            </div>
+          )}
+        </main>
       </div>
     </div>
   )
