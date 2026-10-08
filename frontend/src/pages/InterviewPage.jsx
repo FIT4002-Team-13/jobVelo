@@ -10,6 +10,7 @@ import { InterviewSectionTimeline } from "../components/interview/InterviewSecti
 import { InterviewReportModal } from "../components/interview/InterviewReportModal.jsx";
 import RecordingSetupModal from "../components/interview/RecordingSetupModal.jsx";
 
+import { useAssignedInterviewer } from "../hooks/useAssignedInterviewer.js";
 import { useInterviewData } from "../hooks/useInterviewData.js";
 import { useBias } from "../hooks/useBias.js";
 import { useInterviewSections } from "../hooks/useInterviewSections.js";
@@ -26,6 +27,8 @@ export default function InterviewPage() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { user } = useAuth();
+
+  const { assignedInterviewer } = useAssignedInterviewer(id);
 
   const timerRef = useRef(0);
   const startTimeRef = useRef(Date.now());
@@ -267,7 +270,7 @@ export default function InterviewPage() {
                 Interviewer
               </span>
               <span className="text-2xl font-bold text-neutral-800">
-                {user?.full_name || "—"}
+                {assignedInterviewer.name || "—"}
               </span>
               <span className="text-sm text-neutral-400">
                 {user?.role || "—"}
