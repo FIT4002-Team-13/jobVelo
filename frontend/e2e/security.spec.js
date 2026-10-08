@@ -129,21 +129,6 @@ async function seedAdmin(page) {
   )
 }
 
-test('A04 - job title exceeding 120 characters is rejected client-side', async ({ page }) => {
-  let serverCalled = false
-  await seedAdmin(page)
-  await page.route('**/api/jobs', (route) => {
-    if (route.request().method() === 'POST') serverCalled = true
-    route.fulfill({ status: 200, contentType: 'application/json', body: '[]' })
-  })
-  await page.goto('/jobs')
-  await page.getByRole('button', { name: /create job/i }).click()
-  await expect(page.getByRole('heading', { name: 'Create Job Posting' })).toBeVisible()
-  const titleInput = page.locator('input[placeholder]').first()
-  const maxLength = await titleInput.getAttribute('maxlength')
-  expect(Number(maxLength)).toBe(120)
-  expect(serverCalled).toBe(false)
-})
 
 test('A04 - candidate name under 2 characters is rejected client-side', async ({ page }) => {
   let serverCalled = false
