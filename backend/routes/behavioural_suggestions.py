@@ -1,0 +1,250 @@
+from __future__ import annotations
+
+import logging
+import re
+import uuid
+from datetime import datetime, timezone
+
+from bson import ObjectId
+from fastapi import APIRouter, Depends, HTTPException, status
+
+from database import get_db
+from dependencies import get_current_user
+from models.behavioural_suggestion import (
+    BehaviouralSuggestion,
+    BehaviouralSuggestionsOut,
+    BehaviouralSuggestionUpdate,
+)
+from services.gemini_service import generate_behavioural_suggestions
+
+router = APIRouter(prefix="/api/behavioural-suggestions", tags=["behavioural_suggestions"])
+logger = logging.getLogger(__name__)
+
+# How many recent interviews to feed the model
+_MAX_SESSIONS = 5
+_SECTION_CAP = 6
+
+
+def _engaged_suggestions(items: list | None) -> list[dict]:
+    """Items the user has acknowledged or added a note to - these must
+    survive a regenerate so the user's reflections aren't lost."""
+    return [
+        it for it in (items or [])
+        if it.get("acknowledged") or it.get("note")
+    ]
+
+
+def _title_words(text: str | None) -> set[str]:
+    return set(re.findall(r"[a-z0-9]+", (text or "").lower()))
+
+
+def _is_duplicate(title: str, existing: list[dict]) -> bool:
+    """True when a freshly generated suggestion restates one already kept
+    (strong title-word overlap). Cheap Jaccard, same approach as
+    interviewer_feedback._is_duplicate."""
+    words = _title_words(title)
+    if not words:
+        return False
+    for item in existing:
+        other = _title_words(item.get("title"))
+        if other and len(words & other) / len(words | other) >= 0.5:
+            return True
+    return False
+
+
+def _merge_suggestions(kept: list[dict], fresh) -> list[dict]:
+    """Engaged items first (notes/acknowledgements intact), then new
+    non-duplicate suggestions up to _SECTION_CAP."""
+    merged = list(kept)
+    for s in fresh:
+        if len(merged) >= _SECTION_CAP:
+            break
+        if _is_duplicate(s.title, merged):
+            continue
+        merged.append({
+            "id": uuid.uuid4().hex,
+            "title": s.title,
+            "detail": s.detail,
+            "examples": list(s.examples or []),
+            "acknowledged": False,
+            "note": None,
+        })
+    return merged
+
+async def _recent_completed_interview_ids(db, user_id: str) -> list[str]:
+
+    links = (await db.interview_users.find({"user_id": user_id}, {"intv_id": 1}) .to_list(length=200))
+    intv_ids = [link["intv_id"] for link in links if link.get("intv_id")]
+
+    if not intv_ids:
+        return []
+
+    oids = [ObjectId(i) for i in intv_ids if ObjectId.is_valid(i)]
+
+    if not oids:
+        return []
+
+    completed = (
+        await db.interviews.find(
+            {"_id": {"$in": oids}, "intv_status": "completed"},
+            {"_id": 1, "intv_updated_at": 1, "intv_created_at": 1}
+        ).to_list(length=200)
+    )
+
+    completed.sort(key=lambda d: d.get("intv_updated_at") or d.get("intv_created_at") or datetime.min.replace(tzinfo=timezone.utc), reverse=True)
+    return [str(d["_id"]) for d in completed[:_MAX_SESSIONS]]
+
+
+def _transcript_to_text(entries: list[dict] | None) -> str:
+
+    if not entries:
+        return ""
+
+    lines = []
+    for e in entries:
+        speaker = (e.get("speaker") or "Speaker").strip()
+        text = (e.get("text") or "").strip()
+        if text:
+            lines.append(f"{speaker}: {text}")
+
+    return "\n".join(lines)
+
+
+async def _build_session_block(db, intv_id: str) -> str | None:
+
+    interview = await db.interviews.find_one({"_id": ObjectId(intv_id)})
+
+    if not interview:
+        return None
+
+    transcript = _transcript_to_text(interview.get("intv_transcript"))
+    if not transcript:
+        return None
+
+    when = interview.get("intv_date_time") or interview.get("intv_updated_at")
+    header = f"[Interview {intv_id} on {when}]\n" if when else f"[Interview {intv_id}]\n"
+
+    return header + transcript
+
+
+def _serialise(doc: dict | None) -> BehaviouralSuggestionsOut:
+    if not doc:
+        return BehaviouralSuggestionsOut()
+
+    return BehaviouralSuggestionsOut(
+        suggestions=[BehaviouralSuggestion(**s) for s in (doc.get("suggestions") or [])],
+        generated_at=doc.get("generated_at"),
+        session_count=doc.get("session_count") or 0
+    )
+
+
+@router.get("", response_model=BehaviouralSuggestionsOut)
+async def get_latest_suggestions(user: dict = Depends(get_current_user)) -> BehaviouralSuggestionsOut:
+    db = get_db()
+    user_id = str(user["_id"])
+    doc = await db.behavioural_suggestions.find_one({"user_id": user_id})
+
+    if doc and isinstance(doc.get("suggestions"), list):
+        changed = False
+        for s in doc["suggestions"]:
+            if not isinstance(s, dict):
+                continue
+            if not s.get("id"):
+                s["id"] = uuid.uuid4().hex
+                changed = True
+            if "acknowledged" not in s:
+                s["acknowledged"] = False
+                changed = True
+            if "note" not in s:
+                s["note"] = None
+                changed = True
+        if changed:
+            await db.behavioural_suggestions.update_one(
+                {"user_id": user_id},
+                {"$set": {"suggestions": doc["suggestions"]}},
+            )
+
+    return _serialise(doc)
+
+
+@router.post("/regenerate", response_model=BehaviouralSuggestionsOut)
+async def regenerate_suggestions(user: dict = Depends(get_current_user)) -> BehaviouralSuggestionsOut:
+    db = get_db()
+    user_id = str(user["_id"])
+
+    intv_ids = await _recent_completed_interview_ids(db, user_id)
+    if not intv_ids:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No completed interviews to generate suggestions from yet.")
+
+    sessions: list[str] = []
+
+    for intv_id in intv_ids:
+        block = await _build_session_block(db, intv_id)
+        if block:
+            sessions.append(block)
+
+    if not sessions:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=(
+                "Your recent completed interviews don't have usable transcripts"
+                " to analyse yet."
+            ))
+
+    try:
+        result = await generate_behavioural_suggestions(sessions)
+    except Exception as e:
+        logger.exception("Behavioural suggestion generation failed")
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Could not generate suggestions right now. Please try again.") from e
+
+    # Carry forward items the user has engaged with (acknowledged or noted)
+    # so their reflections survive a regenerate. Fresh LLM suggestions get
+    # appended after, skipping anything that duplicates a kept item.
+    prev = await db.behavioural_suggestions.find_one({"user_id": user_id})
+    kept = _engaged_suggestions((prev or {}).get("suggestions"))
+    suggestions = _merge_suggestions(kept, result.suggestions)
+
+    now = datetime.now(timezone.utc)
+    doc = {
+        "user_id": user_id,
+        "suggestions": suggestions,
+        "generated_at": now,
+        "session_count": len(sessions)
+    }
+
+    await db.behavioural_suggestions.replace_one({"user_id": user_id}, doc, upsert=True)
+    return _serialise(doc)
+
+
+@router.patch(
+    "/items/{item_id}",
+    response_model=BehaviouralSuggestionsOut,
+)
+async def update_suggestion_item(
+    item_id: str,
+    payload: BehaviouralSuggestionUpdate,
+    user: dict = Depends(get_current_user),
+) -> BehaviouralSuggestionsOut:
+    """Toggle a suggestion's acknowledged flag or save a reflection note.
+    Mirrors how interviewer_feedback items are updated so the frontend can
+    reuse the same FeedbackItemRow component."""
+    db = get_db()
+    user_id = str(user["_id"])
+
+    update: dict = {}
+    if payload.acknowledged is not None:
+        update["suggestions.$[item].acknowledged"] = payload.acknowledged
+    if payload.note is not None:
+        update["suggestions.$[item].note"] = payload.note or None
+
+    if not update:
+        raise HTTPException(status_code=400, detail="Nothing to update.")
+
+    result = await db.behavioural_suggestions.update_one(
+        {"user_id": user_id, "suggestions.id": item_id},
+        {"$set": update},
+        array_filters=[{"item.id": item_id}],
+    )
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Suggestion not found.")
+
+    doc = await db.behavioural_suggestions.find_one({"user_id": user_id})
+    return _serialise(doc)

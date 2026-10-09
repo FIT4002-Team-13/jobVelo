@@ -931,3 +931,4 @@ async def rate_candidate_skills(
         communication=build_skill_rating("communication", "Communication"),
         problem_solving=build_skill_rating("problem_solving", "Problem Solving"),
     )
+

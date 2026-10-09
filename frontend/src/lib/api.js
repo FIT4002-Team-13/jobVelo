@@ -263,4 +263,13 @@ export const api = {
   getCompany:    (comp_id)          => request(`/companies/${comp_id}`,  { auth: true }),
   updateCompany: (comp_id, payload) => request(`/companies/${comp_id}`,  { method: 'PUT', body: payload, auth: true }),
   updateCompanyLogo: (comp_id, formData) => request(`/companies/${comp_id}/logo`, { method: 'PATCH', body: formData, auth: true }),
+
+  // ---------- behavioural suggestions---------------------------
+  getBehaviouralSuggestions:        ()  => request('/behavioural-suggestions', { auth: true }),
+  regenerateBehaviouralSuggestions: ()  => request('/behavioural-suggestions/regenerate', { method: 'POST', auth: true }),
+  // Acknowledge toggle / reflection-note save for one suggestion (mirrors updateFeedbackItem so FeedbackItemRow can be reused).
+  updateBehaviouralSuggestion: (itemId, patch) =>
+    request(`/behavioural-suggestions/items/${encodeURIComponent(itemId)}`, {
+      method: 'PATCH', body: patch, auth: true,
+    }),
 }
