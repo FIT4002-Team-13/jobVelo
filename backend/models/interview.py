@@ -5,6 +5,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
 
+from models.cv_analysis import CvAnalysisOut
 from models.job_candidate import CandidateRatings
 
 # Interview cycle for scheduling + running + post-interview state.
@@ -102,6 +103,30 @@ class RequirementMapping(BaseModel):
     evidence: list[EvidenceRef] = Field(default_factory=list)
 
 
+class TopicCoverage(BaseModel):
+    """One planned topic/section and whether the interviewer covered it (US: the
+    interviewer questioning-pattern analysis)."""
+
+    topic: str
+    covered: bool
+    note: str = ""
+
+
+class QuestioningPatterns(BaseModel):
+    """Analysis of how the INTERVIEWER questioned - open vs closed mix, topic
+    coverage against the interview plan, and how closely they followed it.
+
+    Populated on the interviewer report only; the candidate report leaves it
+    null. Absent on reports generated before this feature, so the UI/PDF treat
+    None as "no analysis available"."""
+
+    summary: str = ""
+    open_questions: int = 0
+    closed_questions: int = 0
+    topic_coverage: list[TopicCoverage] = Field(default_factory=list)
+    plan_adherence: str = ""
+
+
 class InterviewFeedback(BaseModel):
     """
     Create/update payload for an interview feedback report.
@@ -115,6 +140,10 @@ class InterviewFeedback(BaseModel):
         default_factory=InterviewFeedbackSection
     )
     requirements_mapping: list[RequirementMapping] = Field(default_factory=list)
+    # Interviewer-report only: questioning-pattern analysis (open/closed mix,
+    # topic coverage vs plan, plan adherence). None on the candidate report and
+    # on reports generated before this feature.
+    questioning_patterns: QuestioningPatterns | None = None
 
 
 class InterviewScores(BaseModel):
@@ -207,3 +236,41 @@ class InterviewOut(BaseModel):
     intv_bias_incidents: list[BiasIncident] = Field(default_factory=list)
     intv_created_at: datetime
     intv_updated_at: datetime
+
+
+# ── Aggregate "view" model for the interview screen ─────────────────────────
+# One response that carries everything the live-interview page needs, so the
+# frontend stops fanning /interviews/{id} out into job + candidate +
+# job-candidate + cv-analysis + interviewer follow-up requests.
+
+
+class InterviewContextJob(BaseModel):
+    job_id: str
+    title: str | None = None
+
+
+class InterviewContextCandidate(BaseModel):
+    cand_id: str
+    cand_full_name: str | None = None
+    cand_cv_url: str | None = None
+
+
+class InterviewContextJobCandidate(BaseModel):
+    jobcand_id: str
+    plan_sections: list[dict] | None = None
+    ratings: CandidateRatings | None = None
+    rank: int | None = None
+
+
+class InterviewContextInterviewer(BaseModel):
+    user_id: str
+    full_name: str | None = None
+
+
+class InterviewContextOut(BaseModel):
+    interview: InterviewOut
+    job: InterviewContextJob | None = None
+    candidate: InterviewContextCandidate | None = None
+    job_candidate: InterviewContextJobCandidate | None = None
+    cv_analysis: CvAnalysisOut | None = None
+    interviewer: InterviewContextInterviewer | None = None

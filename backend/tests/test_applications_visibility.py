@@ -80,6 +80,16 @@ def test_recruiter_sees_company_wide_applications(client):
     assert len(rows) == 1
     assert rows[0]["candidate_name"] == "Jane Smith"
     assert rows[0]["status"] == "NOT SCHEDULED"
+    # The typed ApplicationRowOut contract: every documented field is present,
+    # and the "no interview yet" row nulls the interview-derived ones.
+    row = rows[0]
+    assert row["application_id"] == str(link_oid)
+    assert row["job_id"] == str(job_oid)
+    assert row["score"] is None
+    assert row["ratings"] is None
+    assert row["interview_datetime"] is None
+    assert row["interviewer"] is None
+    assert row["cv_analysis_status"] is None
     # Company-wide scope queried by job_id, not by assigned pairs.
     query = db.job_candidates.find.call_args.args[0]
     assert query == {"job_id": {"$in": [str(job_oid)]}}

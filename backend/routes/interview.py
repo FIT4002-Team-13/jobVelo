@@ -14,6 +14,11 @@ from models.interview import (
     BiasIncident,
     InterviewCompleteOut,
     InterviewCompleteRequest,
+    InterviewContextCandidate,
+    InterviewContextInterviewer,
+    InterviewContextJob,
+    InterviewContextJobCandidate,
+    InterviewContextOut,
     InterviewCreate,
     InterviewFeedback,
     InterviewFeedbackSection,
@@ -26,6 +31,7 @@ from models.job_candidate import (
     CandidateRatings,
     SkillRating,
 )
+from routes._scoping import get_interview_in_company, job_in_company
 from services.openai_service import (
     generate_interview_plan,
     generate_interview_reports,
@@ -45,16 +51,24 @@ class PlanRequest(BaseModel):
 
 
 @router.post("/generate-plan", summary="Generate an AI interview plan for a candidate.")
-async def generate_plan(payload: PlanRequest) -> list[dict]:
+async def generate_plan(
+    payload: PlanRequest,
+    comp_id: ObjectId = Depends(get_current_comp_id),
+) -> list[dict]:
     db = get_db()
 
+    # Tenant-scope both lookups: the job and candidate must belong to the
+    # caller's company (a mismatch just degrades to the generic prompt, same
+    # as a genuinely missing doc).
     job = (
-        await db.jobs.find_one({"_id": ObjectId(payload.job_id)})
+        await db.jobs.find_one({"_id": ObjectId(payload.job_id), "comp_id": comp_id})
         if ObjectId.is_valid(payload.job_id)
         else None
     )
     cand = (
-        await db.candidates.find_one({"_id": ObjectId(payload.cand_id)})
+        await db.candidates.find_one(
+            {"_id": ObjectId(payload.cand_id), "comp_id": comp_id}
+        )
         if ObjectId.is_valid(payload.cand_id)
         else None
     )
@@ -118,27 +132,10 @@ _VALID_STATUSES = {
 }
 
 
-async def _job_in_company(db, job_id: str | None, comp_id: ObjectId) -> bool:
-    """Tenant guard: an interview belongs to whichever company owns its job."""
-    if not job_id or not ObjectId.is_valid(job_id):
-        return False
-    return (
-        await db.jobs.find_one(
-            {"_id": ObjectId(job_id), "comp_id": comp_id}, {"_id": 1}
-        )
-        is not None
-    )
-
-
-async def _get_interview_in_company(db, intv_id: str, comp_id: ObjectId) -> dict:
-    """Fetch an interview, 404-ing when it doesn't exist OR belongs to a
-    different company (404 rather than 403 so ids can't be probed)."""
-    if not ObjectId.is_valid(intv_id):
-        raise HTTPException(status_code=400, detail="Invalid interview id.")
-    interview = await db.interviews.find_one({"_id": ObjectId(intv_id)})
-    if not interview or not await _job_in_company(db, interview.get("job_id"), comp_id):
-        raise HTTPException(status_code=404, detail="Interview not found.")
-    return interview
+# Tenant guards live in routes/_scoping.py now; keep the old private names as
+# aliases so the many call sites below don't churn.
+_job_in_company = job_in_company
+_get_interview_in_company = get_interview_in_company
 
 
 def _safe_report(raw) -> InterviewFeedback | None:
@@ -251,7 +248,7 @@ async def _assert_assigned_interviewer(db, intv_id: str, user: dict) -> None:
 )
 async def create_interview(
     payload: InterviewCreate,
-    _user: dict = Depends(require_role("interviewer")),
+    _user: dict = Depends(require_role("recruiter")),
     comp_id: ObjectId = Depends(get_current_comp_id),
 ) -> InterviewOut:
     """Insert a new interview document.
@@ -364,6 +361,99 @@ async def get_interview(
     db = get_db()
     interview = await _get_interview_in_company(db, intv_id, comp_id)
     return interview_helper(interview)
+
+
+@router.get(
+    "/{intv_id}/context",
+    response_model=InterviewContextOut,
+    summary="Interview plus its job, candidate, plan, CV analysis and interviewer.",
+)
+async def get_interview_context(
+    intv_id: str,
+    comp_id: ObjectId = Depends(get_current_comp_id),
+) -> InterviewContextOut:
+    """Everything the live-interview screen needs in one response, so the
+    frontend stops chaining /interviews/{id} -> jobs -> candidates ->
+    job-candidates -> cv-analysis -> interview-users -> users.
+
+    Related lookups are best-effort: a missing job/candidate/link degrades
+    that slice to null rather than failing the whole read (mirrors how the
+    frontend hook swallowed each follow-up error individually)."""
+    # Deferred import: routes.cv_analysis pulls in Gemini config at module
+    # load; importing lazily keeps this route light and avoids an import
+    # cycle. applications.py uses the same trick for _effective_status.
+    from routes.cv_analysis import _serialise
+
+    db = get_db()
+    interview = await _get_interview_in_company(db, intv_id, comp_id)
+    job_id = interview.get("job_id")
+    cand_id = interview.get("cand_id")
+
+    job_ctx = None
+    if job_id and ObjectId.is_valid(job_id):
+        job = await db.jobs.find_one({"_id": ObjectId(job_id)}, {"title": 1})
+        if job:
+            job_ctx = InterviewContextJob(job_id=str(job["_id"]), title=job.get("title"))
+
+    cand_ctx = None
+    if cand_id and ObjectId.is_valid(cand_id):
+        cand = await db.candidates.find_one(
+            {"_id": ObjectId(cand_id)},
+            {"cand_full_name": 1, "name": 1, "cand_cv_url": 1},
+        )
+        if cand:
+            cand_ctx = InterviewContextCandidate(
+                cand_id=str(cand["_id"]),
+                cand_full_name=cand.get("cand_full_name") or cand.get("name"),
+                cand_cv_url=cand.get("cand_cv_url"),
+            )
+
+    jobcand_ctx = None
+    cv_analysis_out = None
+    if job_id and cand_id:
+        link = await db.job_candidates.find_one(
+            {"cand_id": cand_id, "job_id": job_id}
+        )
+        if link:
+            jobcand_id = str(link["_id"])
+            jobcand_ctx = InterviewContextJobCandidate(
+                jobcand_id=jobcand_id,
+                plan_sections=link.get("plan_sections"),
+                ratings=link.get("ratings"),
+                rank=link.get("rank"),
+            )
+            analysis = await db.cv_analyses.find_one({"jobcand_id": jobcand_id})
+            if analysis:
+                try:
+                    cv_analysis_out = _serialise(analysis, cached=True)
+                except Exception:  # a malformed analysis shouldn't 500 the page
+                    logger.warning(
+                        "Dropping unparseable CV analysis for jobcand %s",
+                        jobcand_id,
+                        exc_info=True,
+                    )
+
+    interviewer_ctx = None
+    link = await db.interview_users.find_one({"intv_id": intv_id}, {"user_id": 1})
+    user_id = (link or {}).get("user_id")
+    if user_id and ObjectId.is_valid(str(user_id)):
+        user = await db.users.find_one(
+            {"_id": ObjectId(str(user_id))}, {"full_name": 1, "username": 1}
+        )
+        if user:
+            interviewer_ctx = InterviewContextInterviewer(
+                user_id=str(user["_id"]),
+                full_name=user.get("full_name") or user.get("username"),
+            )
+
+    return InterviewContextOut(
+        interview=interview_helper(interview),
+        job=job_ctx,
+        candidate=cand_ctx,
+        job_candidate=jobcand_ctx,
+        cv_analysis=cv_analysis_out,
+        interviewer=interviewer_ctx,
+    )
 
 
 # Cap what we send to the LLM: far below the model's context window, but
@@ -485,6 +575,30 @@ def _cv_analysis_to_text(doc: dict) -> str:
     return "\n".join(lines)
 
 
+def _plan_sections_to_text(sections: list | None) -> str | None:
+    """Condense the interview plan sections into a numbered list for the report
+    prompt (topic coverage + plan adherence). None when there's no plan."""
+    if not sections:
+        return None
+    lines: list[str] = []
+    for i, s in enumerate(sections, 1):
+        if not isinstance(s, dict):
+            continue
+        name = (s.get("name") or "").strip()
+        if not name:
+            continue
+        desc = (s.get("description") or "").strip()
+        minutes = s.get("suggested_minutes")
+        extra = []
+        if desc:
+            extra.append(desc)
+        if isinstance(minutes, (int, float)) and minutes:
+            extra.append(f"{int(minutes)} min")
+        suffix = f" - {'; '.join(extra)}" if extra else ""
+        lines.append(f"{i}. {name}{suffix}")
+    return "\n".join(lines) or None
+
+
 async def _get_interviewer_name(db, intv_id: str) -> str | None:
     """Look up the interviewer's display name via interview_users -> users.
 
@@ -526,6 +640,7 @@ async def _generate_reports(
     job: dict,
     candidate: dict,
     cv_context: str | None,
+    plan_context: str | None,
     candidate_speech_detected: bool,
     interviewer_label: str,
     candidate_label: str,
@@ -543,6 +658,7 @@ async def _generate_reports(
             job_description=job.get("description"),
             candidate_name=candidate.get("cand_full_name"),
             cv_analysis_context=cv_context,
+            plan_context=plan_context,
             duration_seconds=duration_seconds,
             interviewer_speaker_label=interviewer_label,
             candidate_speaker_label=candidate_label,
@@ -673,7 +789,7 @@ async def _persist_completion(
 async def complete_interview(
     intv_id: str,
     payload: InterviewCompleteRequest,
-    _user: dict = Depends(require_role("interviewer")),
+    _user: dict = Depends(require_role("interviewer", "hiring_manager")),
     comp_id: ObjectId = Depends(get_current_comp_id),
 ) -> InterviewCompleteOut:
     """Called when the interviewer clicks Complete.
@@ -789,6 +905,10 @@ async def complete_interview(
     if analysis and (analysis.get("status") or "completed") == "completed":
         cv_context = _cv_analysis_to_text(analysis) or None
 
+    # Interview plan (for the interviewer report's questioning-pattern analysis:
+    # topic coverage + plan adherence). Absent when no plan was set.
+    plan_context = _plan_sections_to_text(link.get("plan_sections"))
+
     # Diarization guard: detect transcripts where every line is attributed to
     # the interviewer (see _has_non_interviewer_speech for the failure mode).
     interviewer_name = await _get_interviewer_name(db, intv_id)
@@ -809,6 +929,7 @@ async def complete_interview(
             job=job,
             candidate=candidate,
             cv_context=cv_context,
+            plan_context=plan_context,
             candidate_speech_detected=candidate_speech_detected,
             interviewer_label=interviewer_label,
             candidate_label=candidate_label,
@@ -1030,11 +1151,26 @@ def _transcript_to_text(entries: list[dict]) -> str:
 async def update_interview(
     intv_id: str,
     payload: InterviewUpdate,
-    user: dict = Depends(get_current_user),
+    user: dict = Depends(require_role("interviewer", "hiring_manager")),
     comp_id: ObjectId = Depends(get_current_comp_id),
 ) -> InterviewOut:
     db = get_db()
+
     existing_interview = await _get_interview_in_company(db, intv_id, comp_id)
+
+    if payload.intv_status == "in_progress":
+        assigned = await db.interview_users.find_one(
+            {
+                "intv_id": intv_id,
+                "user_id": str(user["_id"]),
+            }
+        )
+
+        if not assigned:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You are not assigned to this interview.",
+            )
 
     update_data = payload.model_dump(exclude_unset=True)
 
@@ -1054,7 +1190,10 @@ async def update_interview(
         {"$set": update_data},
     )
 
-    updated_interview = await db.interviews.find_one({"_id": ObjectId(intv_id)})
+    updated_interview = await db.interviews.find_one(
+        {"_id": ObjectId(intv_id)}
+    )
+
     if not updated_interview:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

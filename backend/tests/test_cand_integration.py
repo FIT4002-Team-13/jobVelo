@@ -14,7 +14,7 @@ from bson import ObjectId
 from mongomock_motor import AsyncMongoMockClient
 
 import database as db_module
-from dependencies import get_current_comp_id
+from dependencies import get_current_comp_id, get_current_user
 from main import app
 
 
@@ -36,14 +36,22 @@ async def db_client():
             yield c, mock_db
     app.dependency_overrides.clear()
 
-
 @pytest.fixture
 async def authed_db_client(db_client):
-    """db_client + a fake comp_id bypassing JWT auth."""
+    """db_client + a fake recruiter user for authenticated API tests."""
     client, db = db_client
     comp_id = ObjectId()
+
     app.dependency_overrides[get_current_comp_id] = lambda: comp_id
+    app.dependency_overrides[get_current_user] = lambda: {
+        "_id": ObjectId(),
+        "comp_id": comp_id,
+        "role": "recruiter",
+        "full_name": "Test Recruiter",
+    }
+
     yield client, db, comp_id
+    app.dependency_overrides.clear()
 
 
 # ── 1. Status rollup ──────────────────────────────────────────────────────────
@@ -296,3 +304,99 @@ async def test_create_for_job_second_link_to_same_job_is_idempotent(authed_db_cl
     assert response.status_code == 201
     docs = await db.job_candidates.find({"job_id": job_id}).to_list(10)
     assert len(docs) == 1
+
+
+# ── 4. Typed flat/enriched list contracts (Phase B4) ─────────────────────────
+# These endpoints used to return untyped list[dict]; they now carry
+# response_model=list[...RowOut] so /docs shows a schema and every scalar is
+# validated. The rows are still the same keys the frontend already reads.
+
+
+async def test_list_candidates_for_job_row_shape(authed_db_client):
+    client, db, comp_id = authed_db_client
+    now = datetime.now(timezone.utc)
+    job_id, cand_id, link_id, intv_id, user_id = (ObjectId() for _ in range(5))
+
+    await db.jobs.insert_one({"_id": job_id, "comp_id": comp_id, "title": "Dev"})
+    await db.candidates.insert_one(
+        {
+            "_id": cand_id,
+            "comp_id": comp_id,
+            "cand_full_name": "Row Shape",
+            "cand_email": "row@example.com",
+        }
+    )
+    await db.job_candidates.insert_one(
+        {
+            "_id": link_id,
+            "cand_id": str(cand_id),
+            "job_id": str(job_id),
+            "created_at": now,
+            "updated_at": now,
+        }
+    )
+    await db.interviews.insert_one(
+        {
+            "_id": intv_id,
+            "cand_id": str(cand_id),
+            "job_id": str(job_id),
+            "intv_status": "completed",
+            "intv_date_time": now,
+            "intv_created_at": now,
+            "intv_updated_at": now,
+        }
+    )
+    await db.interview_users.insert_one(
+        {"_id": ObjectId(), "intv_id": str(intv_id), "user_id": str(user_id)}
+    )
+    await db.users.insert_one(
+        {"_id": user_id, "comp_id": comp_id, "full_name": "Iris Interviewer"}
+    )
+
+    r = await client.get(f"/api/jobs/{job_id}/candidates")
+
+    assert r.status_code == 200, r.text
+    (row,) = r.json()
+    assert row["id"] == str(link_id)
+    assert row["cand_id"] == str(cand_id)
+    assert row["name"] == "Row Shape"
+    assert row["status"] == "COMPLETED"
+    assert row["interviewer"] == "Iris Interviewer"
+    assert row["intv_completed"] is True
+    assert row["intv_id"] == str(intv_id)
+    assert row["score"] is None  # no ratings on the link
+
+
+async def test_list_job_candidates_flat_row_shape(authed_db_client):
+    client, db, comp_id = authed_db_client
+    now = datetime.now(timezone.utc)
+    job_id, cand_id, link_id = ObjectId(), ObjectId(), ObjectId()
+
+    await db.jobs.insert_one({"_id": job_id, "comp_id": comp_id, "title": "Platform"})
+    await db.candidates.insert_one(
+        {"_id": cand_id, "comp_id": comp_id, "cand_full_name": "Flat Row"}
+    )
+    await db.job_candidates.insert_one(
+        {
+            "_id": link_id,
+            "cand_id": str(cand_id),
+            "job_id": str(job_id),
+            "status": "EVALUATED",
+            "created_at": now,
+            "updated_at": now,
+        }
+    )
+
+    r = await client.get("/api/job-candidates")
+
+    assert r.status_code == 200, r.text
+    (row,) = r.json()
+    assert row == {
+        "jobcand_id": str(link_id),
+        "job_id": str(job_id),
+        "cand_id": str(cand_id),
+        "job_title": "Platform",
+        "cand_full_name": "Flat Row",
+        "status": "EVALUATED",
+        "has_analysis": False,
+    }
