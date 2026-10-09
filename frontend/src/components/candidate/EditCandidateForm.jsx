@@ -190,7 +190,21 @@ export default function EditCandidateForm({
       } catch (err) {
         throw new Error(messageFromError(err, 'Failed to update application.'))
       }
-
+      try {
+        if (cvFile && formState.application_id) {
+          const fd = new FormData()
+          fd.append('jobcand_id', formState.application_id)
+          fd.append('cv', cvFile)
+          if (coverLetterFile) fd.append('cover_letter', coverLetterFile)
+          await api.analyseCv(fd)
+        } else if (coverLetterFile && formState.cand_id) {
+          const fd = new FormData()
+          fd.append('cover_letter', coverLetterFile)
+          await api.uploadCandidateCoverLetter(formState.cand_id, fd)
+        }
+      } catch (err) {
+        console.warn('Document upload failed:', err)
+      }
       onSaved(saved)
     } catch (err) {
       setError(err.message || 'Something went wrong.')
