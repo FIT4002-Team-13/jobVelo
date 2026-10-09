@@ -242,6 +242,10 @@ export const api = {
   updateApplication: (applicationId, patch) =>
     request(`/applications/${encodeURIComponent(applicationId)}`, { method: 'PATCH', body: patch, auth: true }),
 
+  // ---------- analytics ----------------------------------------------------
+  getInterviewConsistency: (params = {}) =>
+    request(`/analytics/interview-consistency${qs(params)}`, { auth: true }),
+
   // ---------- dashboard ----------------------------------------------------
   getDashboardSummary: () => request('/dashboard/summary', { auth: true }),
 
