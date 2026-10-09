@@ -4,6 +4,7 @@ import { isEmail, isPhone, isFullName, isFutureDateTime } from '../../lib/valida
 import { useAuth } from '../../lib/AuthContext.jsx'
 import { api, authedFetch } from '../../lib/api.js'
 import InterviewerCombobox from './InterviewerCombobox.jsx'
+import FileDropzone from './FileDropzone.jsx'
 
 // Turn an ApiError (or any error) into a user-facing message, expanding
 // FastAPI's `detail` array into `field: message` bullets when present.
@@ -43,8 +44,57 @@ export default function EditCandidateForm({
   const [interviewers, setInterviewers] = useState([])
   const [interviewerOpen, setInterviewerOpen] = useState(false)
 
+  // Documents already on file, plus any newly-picked replacements. The
+  // dropzones show the existing PDF as a chip; its × removes it (see below).
+  const [cvUrl, setCvUrl] = useState(initialData?.cv_url || '')
+  const [coverLetterUrl, setCoverLetterUrl] = useState(initialData?.cover_letter_url || '')
+  const [cvFile, setCvFile] = useState(null)
+  const [coverLetterFile, setCoverLetterFile] = useState(null)
+
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
+
+  // Deleting the CV means deleting its analysis (same as the report page's
+  // delete button) - the analysis owns the stored PDF and clears the
+  // candidate's cand_cv_url when removed.
+  async function handleDeleteCv() {
+    if (!formState.application_id) {
+      return setError('Open the CV analysis page to remove this CV.')
+    }
+    setError('')
+    try {
+      const analysis = await api.getCvAnalysisByJobcand(formState.application_id)
+      if (analysis?.analysis_id) {
+        await api.deleteCvAnalysis(analysis.analysis_id)
+      }
+      setCvUrl('')
+    } catch (err) {
+      setError(err?.message || 'Could not delete the CV.')
+    }
+  }
+
+  async function handleDeleteCoverLetter() {
+    if (!formState.cand_id) return
+    setError('')
+    try {
+      await api.deleteCandidateCoverLetter(formState.cand_id)
+      setCoverLetterUrl('')
+    } catch (err) {
+      setError(err?.message || 'Could not delete the cover letter.')
+    }
+  }
+
+  // The dropzone × clears a freshly-picked file if there is one, otherwise it
+  // deletes the document already stored on the server.
+  function handleCvRemove() {
+    if (cvFile) return setCvFile(null)
+    if (cvUrl) handleDeleteCv()
+  }
+
+  function handleCoverLetterRemove() {
+    if (coverLetterFile) return setCoverLetterFile(null)
+    if (coverLetterUrl) handleDeleteCoverLetter()
+  }
 
   useEffect(() => {
     async function loadInterviewers() {
@@ -140,7 +190,21 @@ export default function EditCandidateForm({
       } catch (err) {
         throw new Error(messageFromError(err, 'Failed to update application.'))
       }
-
+      try {
+        if (cvFile && formState.application_id) {
+          const fd = new FormData()
+          fd.append('jobcand_id', formState.application_id)
+          fd.append('cv', cvFile)
+          if (coverLetterFile) fd.append('cover_letter', coverLetterFile)
+          await api.analyseCv(fd)
+        } else if (coverLetterFile && formState.cand_id) {
+          const fd = new FormData()
+          fd.append('cover_letter', coverLetterFile)
+          await api.uploadCandidateCoverLetter(formState.cand_id, fd)
+        }
+      } catch (err) {
+        console.warn('Document upload failed:', err)
+      }
       onSaved(saved)
     } catch (err) {
       setError(err.message || 'Something went wrong.')
@@ -239,6 +303,24 @@ export default function EditCandidateForm({
               </div>
             </div>
           )}
+
+          <div className="grid grid-cols-2 gap-4">
+            <FileDropzone
+              label="Resume / CV"
+              file={cvFile}
+              existingName={cvUrl ? 'CV.pdf' : null}
+              onFileChange={setCvFile}
+              onRemove={handleCvRemove}
+            />
+
+            <FileDropzone
+              label="Cover Letter"
+              file={coverLetterFile}
+              existingName={coverLetterUrl ? 'Cover-Letter.pdf' : null}
+              onFileChange={setCoverLetterFile}
+              onRemove={handleCoverLetterRemove}
+            />
+          </div>
 
           {error && <p className={form.error}>{error}</p>}
 

@@ -172,22 +172,46 @@ async def _job_stats(db, job_ids: list[str]) -> dict[str, dict]:
     return out
 
 
+async def _assigned_job_ids(db, user: dict) -> list[str]:
+    """job_ids of interviews assigned to `user` (interview_users -> interviews)."""
+    intv_ids = [
+        ObjectId(link["intv_id"])
+        async for link in db.interview_users.find(
+            {"user_id": str(user["_id"])}, {"intv_id": 1}
+        )
+        if ObjectId.is_valid(link.get("intv_id", ""))
+    ]
+    if not intv_ids:
+        return []
+    return await db.interviews.distinct("job_id", {"_id": {"$in": intv_ids}})
+
+
 @router.get("", response_model=list[JobOut])
 async def list_jobs(
     comp_id: ObjectId = Depends(get_current_comp_id),
+    user: dict = Depends(get_current_user),
 ) -> list[JobOut]:
     """List jobs in the caller's company. Newest-update first.
 
     Tenant isolation: comp_id is sourced from the JWT - the client cannot
     pass a different comp_id to view another company's jobs.
 
+    Interviewers only see jobs where they are assigned to at least one
+    interview (same rule as the job's candidate table). Other roles see all.
+
     Each returned job's `interviewers` array is computed live from the
     job_candidates link table - the field on the job doc itself is just
     a placeholder (`[]` from create_job).
     """
     db = get_db()
+    query: dict = {"comp_id": comp_id}
+    if user.get("role") == "interviewer":
+        assigned = [
+            ObjectId(j) for j in await _assigned_job_ids(db, user) if ObjectId.is_valid(j)
+        ]
+        query["_id"] = {"$in": assigned}
     jobs = await (
-        db.jobs.find({"comp_id": comp_id})
+        db.jobs.find(query)
         .sort("job_last_update_datetime", -1)
         .to_list(length=200)
     )
@@ -210,13 +234,17 @@ async def list_jobs(
 async def get_job(
     job_id: str,
     comp_id: ObjectId = Depends(get_current_comp_id),
+    user: dict = Depends(get_current_user),
 ) -> JobOut:
     db = get_db()
     oid = _validate_oid(job_id)
     # Filter by comp_id so jobs in another company return 404 (not 403) -
     # we don't reveal the existence of records the caller can't see.
     job = await db.jobs.find_one({"_id": oid, "comp_id": comp_id})
-    if job is None:
+    if job is None or (
+        user.get("role") == "interviewer"
+        and job_id not in await _assigned_job_ids(db, user)
+    ):
         raise HTTPException(status_code=404, detail="Job not found")
 
     stats = await _job_stats(db, [job_id])
