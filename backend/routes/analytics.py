@@ -15,7 +15,7 @@ from bson import ObjectId
 from fastapi import APIRouter, Depends, Query
 
 from database import get_db
-from dependencies import get_current_comp_id
+from dependencies import get_current_comp_id, require_role
 
 router = APIRouter(prefix="/api/analytics", tags=["analytics"])
 
@@ -27,8 +27,11 @@ async def interview_consistency(
     job_id: str | None = Query(default=None),
     days: int = Query(default=90, ge=0),
     comp_id: ObjectId = Depends(get_current_comp_id),
+    _user: dict = Depends(require_role("hiring_manager")),
 ):
-    """Return per-interviewer consistency metrics.
+    """Return per-interviewer consistency metrics. Hiring managers only: it
+    exposes every interviewer's scores and bias flags, so the UI route guard
+    alone isn't enough.
 
     - job_id: optional – restrict to a single job (must belong to company)
     - days:   how far back to look; 0 = all time

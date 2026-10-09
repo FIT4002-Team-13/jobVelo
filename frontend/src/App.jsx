@@ -137,7 +137,9 @@ export default function App() {
             path="/interview-consistency"
             element={
               <RequireAuth>
-                <InterviewConsistencyPage />
+                <RequireRole allow={['hiring_manager']}>
+                  <InterviewConsistencyPage />
+                </RequireRole>
               </RequireAuth>
             }
           />
