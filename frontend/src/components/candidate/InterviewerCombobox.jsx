@@ -37,6 +37,14 @@ export default function InterviewerCombobox({ value, onChange, options, onOpenCh
       )
     : options
 
+  const hasSelection = Boolean(value?.userId)
+
+  function handleClear() {
+    setQuery('')
+    setOpen(false)
+    onChange({ label: '', userId: '' })
+  }
+
   return (
     <div ref={ref} className="relative">
       <input
@@ -49,8 +57,22 @@ export default function InterviewerCombobox({ value, onChange, options, onOpenCh
         }}
         onFocus={() => setOpen(true)}
         placeholder={options.length === 0 ? 'No interviewers in your company yet' : 'Type to search interviewers…'}
-        className={form.input}
+        className={`${form.input} ${hasSelection ? 'pr-8' : ''}`}
       />
+      {hasSelection && (
+        <button
+          type="button"
+          onClick={handleClear}
+          aria-label="Unassign interviewer"
+          title="Unassign interviewer"
+          className="absolute right-2 top-1/2 -translate-y-1/2 flex h-6 w-6 items-center justify-center rounded-full text-neutral-400 hover:bg-neutral-100 hover:text-neutral-700 transition-colors"
+        >
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M18 6L6 18" />
+            <path d="M6 6l12 12" />
+          </svg>
+        </button>
+      )}
 
       {open && (
         <div ref={dropdownRef} className="scrollbar-primary absolute z-20 left-0 right-0 top-full mt-1 max-h-48 overflow-y-auto rounded-xl border border-neutral-200 bg-white shadow-lg scroll-mb-8">
