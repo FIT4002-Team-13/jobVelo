@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Copy, Plus, Trash2 } from 'lucide-react'
 import Sidebar from '../components/common/Sidebar'
+import GenerateCodesModal from '../components/admin/GenerateCodesModal.jsx'
 import { api, ApiError } from '../lib/api.js'
 import { useToast } from '../components/common/ToastContext.jsx'
 import { button, card, modal, page } from '../styles/layout'
@@ -21,11 +22,9 @@ export default function AdminDashboardPage() {
   const toast = useToast()
   const [invitations, setInvitations] = useState(null)  // null = loading
   const [error, setError] = useState('')
-  const [generating, setGenerating] = useState(false)
   const [copiedId, setCopiedId] = useState(null)
-  // Role the admin will assign to the NEXT generated code. Default mirrors
-  // the most common case (interviewer) so the happy path is one click.
-  const [nextRole, setNextRole] = useState('interviewer')
+  // The generate-codes flow (pick role + how many, then copy) lives in a modal.
+  const [showGenerate, setShowGenerate] = useState(false)
   // Invitation queued for deletion - null when the confirm modal is closed.
   const [deleteTarget, setDeleteTarget] = useState(null)
   const [deleting, setDeleting] = useState(false)
@@ -47,22 +46,8 @@ export default function AdminDashboardPage() {
 
   useEffect(() => { load() }, [])
 
-  const onGenerate = async () => {
-    setGenerating(true)
-    setError('')
-    try {
-      // Role is set by the admin in the dropdown next to this button; the
-      // invitee inherits it and cannot change it at signup time.
-      const created = await api.createInvitation(nextRole)
-      // Optimistic prepend instead of re-fetching the whole list.
-      setInvitations((prev) => [created, ...(prev || [])])
-      toast.success(`${formatRole(created.role)} invitation code created.`)
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Could not generate code.')
-    } finally {
-      setGenerating(false)
-    }
-  }
+  // Prepend the new codes instead of re-fetching the whole list.
+  const onCreated = (created) => setInvitations((prev) => [...created, ...(prev || [])])
 
   const onConfirmDelete = async () => {
     if (!deleteTarget) return
@@ -110,31 +95,14 @@ export default function AdminDashboardPage() {
             </p>
           </div>
 
-          <div className="flex items-center gap-2">
-            <label className="flex items-center gap-2 text-sm text-neutral-600">
-              <span className="font-medium">Role</span>
-              <select
-                value={nextRole}
-                onChange={(e) => setNextRole(e.target.value)}
-                disabled={generating}
-                className="rounded-lg border border-neutral-300 bg-neutral-0 px-3 py-2 text-sm text-neutral-700
-                           outline-none transition-all focus:border-primary-400 focus:ring-4 focus:ring-primary-100
-                           disabled:opacity-60"
-              >
-                {ROLE_OPTIONS.map((o) => (
-                  <option key={o.value} value={o.value}>{o.label}</option>
-                ))}
-              </select>
-            </label>
-            <button
-              onClick={onGenerate}
-              disabled={generating}
-              className={`flex items-center gap-2 ${button.primary} disabled:opacity-60`}
-            >
-              <Plus size={16} />
-              {generating ? 'Generating…' : 'Generate code'}
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={() => setShowGenerate(true)}
+            className={`flex items-center gap-2 ${button.primary}`}
+          >
+            <Plus size={16} />
+            Generate codes
+          </button>
         </div>
 
         {error && (
@@ -148,7 +116,7 @@ export default function AdminDashboardPage() {
             <p className="px-6 py-8 text-sm text-neutral-400">Loading…</p>
           ) : invitations.length === 0 ? (
             <p className="px-6 py-12 text-center text-sm text-neutral-400">
-              No codes yet. Click <span className="font-semibold">Generate code</span> to make your first one.
+              No codes yet. Click <span className="font-semibold">Generate codes</span> to make your first ones.
             </p>
           ) : (
             <table className="w-full text-sm">
@@ -207,6 +175,10 @@ export default function AdminDashboardPage() {
           )}
         </div>
       </main>
+
+      {showGenerate && (
+        <GenerateCodesModal onClose={() => setShowGenerate(false)} onCreated={onCreated} />
+      )}
 
       {/* Delete confirmation - same chrome as the app's other destructive
           modals. The "used" case spells out that the teammate goes too. */}

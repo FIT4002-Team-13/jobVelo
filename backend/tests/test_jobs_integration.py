@@ -29,6 +29,7 @@ async def db_client():
             yield c, mock_db
     app.dependency_overrides.clear()
 
+
 @pytest.fixture
 async def authed_db_client(db_client):
     client, db = db_client
@@ -42,7 +43,7 @@ async def authed_db_client(db_client):
     }
 
     yield client, db, comp_id
-    
+
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -256,3 +257,38 @@ async def test_list_candidates_for_foreign_job_returns_404(authed_db_client):
     response = await client.get(f"/api/jobs/{foreign_job_id}/candidates")
 
     assert response.status_code == 404
+
+
+# ── Interviewer scoping ───────────────────────────────────────────────────────
+
+
+async def test_interviewer_lists_only_assigned_jobs(authed_db_client):
+    """An interviewer sees only jobs where they have an assigned interview;
+    other roles still see every job in the company."""
+    client, db, comp_id = authed_db_client
+    me = ObjectId()
+    app.dependency_overrides[get_current_user] = lambda: {
+        "_id": me,
+        "role": "interviewer",
+        "comp_id": comp_id,
+    }
+    mine = (await db.jobs.insert_one({"comp_id": comp_id, "title": "Mine"})).inserted_id
+    other = (
+        await db.jobs.insert_one({"comp_id": comp_id, "title": "Other"})
+    ).inserted_id
+    intv = await db.interviews.insert_one({"job_id": str(mine), "cand_id": "c1"})
+    await db.interview_users.insert_one(
+        {"user_id": str(me), "intv_id": str(intv.inserted_id)}
+    )
+
+    titles = [j["title"] for j in (await client.get("/api/jobs")).json()]
+    assert titles == ["Mine"]
+    assert (await client.get(f"/api/jobs/{other}")).status_code == 404
+    assert (await client.get(f"/api/jobs/{mine}")).status_code == 200
+
+    app.dependency_overrides[get_current_user] = lambda: {
+        "_id": ObjectId(),
+        "role": "recruiter",
+        "comp_id": comp_id,
+    }
+    assert len((await client.get("/api/jobs")).json()) == 2

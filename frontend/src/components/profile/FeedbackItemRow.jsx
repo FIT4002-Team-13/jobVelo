@@ -4,7 +4,7 @@ import commentIcon from "../../assets/icons/comment.png";
 // One strength/improvement row on the interviewer profile: the point, an
 // acknowledge toggle, and an inline reflection-note editor. Acknowledgement and
 // note are persisted via onUpdate(itemId, patch).
-export default function FeedbackItemRow({ item, onUpdate }) {
+export default function FeedbackItemRow({ item, onUpdate, tag }) {
   const [editing, setEditing] = useState(false);
   const [note, setNote] = useState(item.note || "");
   const [busy, setBusy] = useState(false);
@@ -25,8 +25,13 @@ export default function FeedbackItemRow({ item, onUpdate }) {
     <div className="shrink-0 rounded-xl bg-neutral-100 px-3 py-2">
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <p className="text-sm font-bold text-neutral-800">{item.title}</p>
+            {tag && (
+              <span className={`rounded-pill px-1.5 py-0.5 text-[10px] font-semibold ${tag.className}`}>
+                {tag.label}
+              </span>
+            )}
             {item.acknowledged && (
               <span className="rounded-pill bg-green-100 px-1.5 py-0.5 text-[10px] font-semibold text-green-700">
                 Acknowledged
