@@ -111,6 +111,14 @@ test('admin dashboard shows role labels for each invitation', async ({ page }) =
 
 // ── Generate invitation ───────────────────────────────────────────────────────
 
+// Generating opens a modal: pick a role, then confirm with "Generate 1 code".
+async function generateInterviewerCode(page) {
+  await page.getByRole('button', { name: /generate codes/i }).click()
+  const dialog = page.getByRole('dialog')
+  await dialog.getByRole('radio', { name: /^Interviewer/ }).click()
+  await dialog.getByRole('button', { name: 'Generate 1 code' }).click()
+}
+
 test('Generate Code button is visible on the admin dashboard', async ({ page }) => {
   await setupAdminWithInvitations(page)
   await page.goto('/admin/dashboard')
@@ -141,8 +149,8 @@ test('clicking Generate Code sends POST to /api/invitations', async ({ page }) =
   })
 
   await goToAdminDashboard(page)
-  await page.getByRole('button', { name: /generate code/i }).click()
-  expect(postCalled).toBe(true)
+  await generateInterviewerCode(page)
+  await expect.poll(() => postCalled).toBe(true)
 })
 
 test('newly generated code appears in the list after creation', async ({ page }) => {
@@ -166,8 +174,8 @@ test('newly generated code appears in the list after creation', async ({ page })
   })
 
   await goToAdminDashboard(page)
-  await page.getByRole('button', { name: /generate code/i }).click()
-  await expect(page.getByText('INV-NEW1-CODE')).toBeVisible()
+  await generateInterviewerCode(page)
+  await expect(page.locator('table tbody').getByText('INV-NEW1-CODE')).toBeVisible()
 })
 
 // ── Delete invitation ─────────────────────────────────────────────────────────

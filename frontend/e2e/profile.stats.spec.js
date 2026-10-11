@@ -12,6 +12,27 @@ const FAKE_INTERVIEWER = {
   created_at: '2024-01-01T00:00:00Z',
 }
 
+const FAKE_STATS = {
+  total_interviews: 20,
+  total_interviews_delta_pct: null,
+  average_candidate_score: 7.4,
+  average_candidate_score_delta_pct: null,
+  score_trend_range_label: 'Jan 2026 - Jun 2026',
+  score_trend: [
+    { label: 'Jan', tooltip_label: 'January 2026', avg_score: 6.5 },
+    { label: 'Now', tooltip_label: 'June 2026', avg_score: 8.1 },
+  ],
+}
+
+const feedbackItem = (id, title) => ({ id, title, detail: '', acknowledged: false, note: null })
+
+const FAKE_FEEDBACK = {
+  feedback_id: '507f1f77bcf86cd799439061',
+  generated_at: '2026-06-01T00:00:00Z',
+  strengths: [feedbackItem('s1', 'Strong Communication'), feedbackItem('s2', 'Fast Learner')],
+  improvements: [feedbackItem('i1', 'System Design Depth'), feedbackItem('i2', 'Edge Case Handling')],
+}
+
 async function seedAuth(page) {
   await page.addInitScript(
     (auth) => localStorage.setItem('smartrecruit.auth', JSON.stringify(auth)),
@@ -23,13 +44,16 @@ async function seedAuth(page) {
   await page.route('**/api/auth/me', (route) =>
     route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(FAKE_INTERVIEWER) })
   )
+  await page.route('**/api/interviewer-stats**', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(FAKE_STATS) })
+  )
+  await page.route('**/api/interviewer-feedback', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(FAKE_FEEDBACK) })
+  )
 }
 
 // ── US35: View Interview Performance Statistics ────────────────────────────────
-// NOTE: The stats panel currently renders hardcoded data (as noted in the
-// source: "// Note: Stats are hardcoded for now but will be created by US35").
-// These tests verify that the UI structure is correctly rendered so the page
-// is ready for the real data wiring.
+// Stats come from GET /api/interviewer-stats, mocked with FAKE_STATS.
 
 test('US35 - profile page loads with the interviewer name displayed', async ({ page }) => {
   await seedAuth(page)
@@ -46,8 +70,7 @@ test('US35 - TOTAL INTERVIEWS stat label is shown', async ({ page }) => {
 test('US35 - total interviews count value is displayed', async ({ page }) => {
   await seedAuth(page)
   await page.goto('/profile')
-  // Hardcoded value is 20
-  await expect(page.getByText('20')).toBeVisible()
+  await expect(page.getByText('20', { exact: true })).toBeVisible()
 })
 
 test('US35 - AVERAGE CANDIDATE SCORE stat label is shown', async ({ page }) => {
@@ -59,23 +82,21 @@ test('US35 - AVERAGE CANDIDATE SCORE stat label is shown', async ({ page }) => {
 test('US35 - average score value is displayed', async ({ page }) => {
   await seedAuth(page)
   await page.goto('/profile')
-  // Hardcoded value is 7.4
-  await expect(page.getByText('7.4')).toBeVisible()
+  await expect(page.getByText('7.4', { exact: true })).toBeVisible()
 })
 
 test('US35 - SCORE TRENDS label and bar chart are rendered', async ({ page }) => {
   await seedAuth(page)
   await page.goto('/profile')
   await expect(page.getByText('SCORE TRENDS')).toBeVisible()
-  // Month labels from the hardcoded stats array
-  await expect(page.getByText('Jan')).toBeVisible()
-  await expect(page.getByText('Now')).toBeVisible()
+  // Axis labels from FAKE_STATS.score_trend
+  await expect(page.getByText('Jan', { exact: true })).toBeVisible()
+  await expect(page.getByText('Now', { exact: true })).toBeVisible()
 })
 
 // ── US33/34: Interviewer Feedback on Profile ──────────────────────────────────
-// NOTE: Strengths and Improvements are hardcoded on the Profile page until
-// US34 wires them to real LLM-generated data. These tests verify the UI
-// scaffold is correctly rendered.
+// Strengths and Improvements come from GET /api/interviewer-feedback,
+// mocked with FAKE_FEEDBACK.
 
 test('US34 - Strengths section heading is visible on the profile page', async ({ page }) => {
   await seedAuth(page)
@@ -83,7 +104,7 @@ test('US34 - Strengths section heading is visible on the profile page', async ({
   await expect(page.getByRole('heading', { name: 'Strengths' })).toBeVisible()
 })
 
-test('US34 - hardcoded strength items are rendered', async ({ page }) => {
+test('US34 - strength items from the API are rendered', async ({ page }) => {
   await seedAuth(page)
   await page.goto('/profile')
   await expect(page.getByText('Strong Communication')).toBeVisible()
@@ -96,7 +117,7 @@ test('US34 - Improvements section heading is visible on the profile page', async
   await expect(page.getByRole('heading', { name: 'Improvements' })).toBeVisible()
 })
 
-test('US34 - hardcoded improvement items are rendered', async ({ page }) => {
+test('US34 - improvement items from the API are rendered', async ({ page }) => {
   await seedAuth(page)
   await page.goto('/profile')
   await expect(page.getByText('System Design Depth')).toBeVisible()

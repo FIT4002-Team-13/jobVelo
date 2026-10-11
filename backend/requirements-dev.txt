@@ -1,5 +1,5 @@
 pytest
 httpx
 pytest-asyncio
-ruff
+ruff==0.16.0
 mongomock-motor

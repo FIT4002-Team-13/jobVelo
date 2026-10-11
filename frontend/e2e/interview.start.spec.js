@@ -172,7 +172,7 @@ test('US15 - new interview is created when no existing scheduled/in-progress int
   await expect(page).toHaveURL(new RegExp(`/interview/${NEW_INTV_ID}`))
 })
 
-test('US15 - non-SCHEDULED candidate has a disabled Start Interview button', async ({ page }) => {
+test('US15 - non-SCHEDULED candidate has no Start Interview button', async ({ page }) => {
   await seedAuth(page)
   // Override candidates with a NOT SCHEDULED one
   const notScheduled = { ...FAKE_SCHEDULED_CANDIDATE, status: 'NOT SCHEDULED', scheduled_at: null }
@@ -187,8 +187,8 @@ test('US15 - non-SCHEDULED candidate has a disabled Start Interview button', asy
   )
   await page.goto(`/jobs/${JOB_ID}`)
   await expect(page.getByText('Alice Smith')).toBeVisible()
-  const startBtn = page.getByRole('button', { name: 'Start Interview' }).first()
-  await expect(startBtn).toBeDisabled()
+  // The button is only rendered when the interview can actually be started.
+  await expect(page.getByRole('button', { name: 'Start Interview' })).toHaveCount(0)
 })
 
 test('US15 - Start Interview button is also present on the candidate detail page', async ({ page }) => {
