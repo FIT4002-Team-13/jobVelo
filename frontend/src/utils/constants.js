@@ -25,9 +25,9 @@ export const CANDIDATE_FILTER_OPTIONS = CANDIDATE_STATUSES.map((s) => ({
 // absent - admin status only comes from creating a company. Kept in sync
 // with NonAdminRole in backend/models/user.py.
 export const ROLE_OPTIONS = [
-  { value: 'interviewer',    label: 'Interviewer' },
-  { value: 'hiring_manager', label: 'Hiring Manager' },
-  { value: 'recruiter',      label: 'Recruiter' },
+  { value: 'interviewer',    label: 'Interviewer',    description: 'Runs live interviews and sees their own schedule.' },
+  { value: 'hiring_manager', label: 'Hiring Manager', description: 'Reviews interviewer consistency and bias insights. Cannot run interviews.' },
+  { value: 'recruiter',      label: 'Recruiter',      description: 'Manages jobs and candidates. Cannot run interviews or see insights.' },
 ]
 
 export const ROLE_LABELS = Object.fromEntries(ROLE_OPTIONS.map((r) => [r.value, r.label]))

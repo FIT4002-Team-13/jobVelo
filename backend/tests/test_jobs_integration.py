@@ -135,3 +135,30 @@ async def test_create_job_blocked_when_required_fields_missing(
     # Nothing must have been written to the DB.
     count = await db.jobs.count_documents({})
     assert count == 0
+
+
+# ── Interviewer scoping ───────────────────────────────────────────────────────
+
+
+async def test_interviewer_lists_only_assigned_jobs(authed_db_client):
+    """An interviewer sees only jobs where they have an assigned interview;
+    other roles still see every job in the company."""
+    client, db, comp_id = authed_db_client
+    me = ObjectId()
+    app.dependency_overrides[get_current_user] = lambda: {
+        "_id": me, "role": "interviewer", "comp_id": comp_id,
+    }
+    mine = (await db.jobs.insert_one({"comp_id": comp_id, "title": "Mine"})).inserted_id
+    other = (await db.jobs.insert_one({"comp_id": comp_id, "title": "Other"})).inserted_id
+    intv = await db.interviews.insert_one({"job_id": str(mine), "cand_id": "c1"})
+    await db.interview_users.insert_one({"user_id": str(me), "intv_id": str(intv.inserted_id)})
+
+    titles = [j["title"] for j in (await client.get("/api/jobs")).json()]
+    assert titles == ["Mine"]
+    assert (await client.get(f"/api/jobs/{other}")).status_code == 404
+    assert (await client.get(f"/api/jobs/{mine}")).status_code == 200
+
+    app.dependency_overrides[get_current_user] = lambda: {
+        "_id": ObjectId(), "role": "recruiter", "comp_id": comp_id,
+    }
+    assert len((await client.get("/api/jobs")).json()) == 2

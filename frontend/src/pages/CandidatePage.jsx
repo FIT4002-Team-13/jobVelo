@@ -6,6 +6,7 @@ import { useAuth } from "../lib/AuthContext.jsx";
 import { authedFetch, api, downloadFileWithAuth } from "../lib/api.js";
 import { useToast } from "../components/common/ToastContext.jsx";
 
+import { useAssignedInterviewer } from "../hooks/useAssignedInterviewer.js";
 import { useInterviewData } from "../hooks/useInterviewData.js";
 import { useTranscript } from "../hooks/useTranscript.js";
 import { parseTimestamp } from "../utils/time.js";
@@ -50,32 +51,19 @@ export default function CandidatePage() {
   const [showStartWarning, setShowStartWarning] = useState(false);
   const [showEditMode, setShowEditMode] = useState(false);
   const [profileVisible, setProfileVisible] = useState(true);
-  const [assignedInterviewerName, setAssignedInterviewerName] = useState("");
-  const [assignedInterviewerUserId, setAssignedInterviewerUserId] = useState("");
-  const [interviewerRefreshKey, setInterviewerRefreshKey] = useState(0);
+  const [companyName, setCompanyName] = useState("");
 
   useEffect(() => {
-    if (!id || !user?.comp_id) return;
+    if (!user?.comp_id) return;
     let cancelled = false;
-    setAssignedInterviewerName("");
-    setAssignedInterviewerUserId("");
-    (async () => {
-      try {
-        const links = await api.getInterviewUsersByInterview(id);
-        const uid = Array.isArray(links) ? links[0]?.user_id : null;
-        if (cancelled || !uid) return;
-        setAssignedInterviewerUserId(uid);
-        const u = await api.getUser(uid).catch(() => null);
-        if (cancelled || !u) return;
-        setAssignedInterviewerName(
-          u.full_name || u.username || u.email || ""
-        );
-      } catch {
-
-      }
-    })();
+    api
+      .getCompany(user.comp_id)
+      .then((c) => { if (!cancelled) setCompanyName(c?.comp_name || ""); })
+      .catch(() => {});
     return () => { cancelled = true; };
-  }, [id, user?.comp_id, interviewerRefreshKey]);
+  }, [user?.comp_id]);
+
+  const { assignedInterviewer, reloadAssignedInterviewer } = useAssignedInterviewer(id);
 
   function switchProfileView(toEdit) {
     setProfileVisible(false);
@@ -179,7 +167,7 @@ export default function CandidatePage() {
     });
   }, [isCompleted, id, serverData]);
 
-  const interviewerLabel = user?.full_name || "Interviewer";
+  const interviewerLabel = assignedInterviewer.name || user?.full_name || "Interviewer";
 
   const report =
     prefetchedReport ??
@@ -335,38 +323,40 @@ export default function CandidatePage() {
       <Sidebar />
       <div className="flex-1 flex flex-col overflow-hidden">
         <header className="bg-neutral-0 border-b border-neutral-200 px-10 py-4 shrink-0">
-          <button
-            onClick={() => navigate(-1)}
-            className={`${flex.row} gap-2 mb-3 w-fit rounded-lg border border-neutral-200 bg-neutral-0 px-3 py-1.5 text-sm font-semibold text-neutral-600 transition-colors hover:border-primary-200 hover:bg-primary-500/10 hover:text-primary-600`}
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/>
-            </svg>
-            Back
-          </button>
-          <div className={`${flex.row} gap-16 items-center`}>
-            <div className={flex.col}>
-              <span className="text-xs font-bold text-neutral-400 uppercase tracking-widest mb-0.5">
-                Candidate
-              </span>
-              <span className="text-2xl font-bold text-neutral-800">
-                {candidateName || "—"}
-              </span>
-              <span className="text-sm text-neutral-400">
-                {candidateRole || "—"}
-              </span>
+          <div className={`${flex.row} items-center justify-between`}>
+            <div className={`${flex.row} gap-16 items-center`}>
+              <div className={flex.col}>
+                <span className="text-xs font-bold text-neutral-400 uppercase tracking-widest mb-0.5">
+                  Candidate
+                </span>
+                <span className="text-2xl font-bold text-neutral-800">
+                  {candidateName || "—"}
+                </span>
+                <span className="text-sm text-neutral-400">
+                  {candidateRole || "—"}
+                </span>
+              </div>
+              <div className={flex.col}>
+                <span className="text-xs font-bold text-neutral-400 uppercase tracking-widest mb-0.5">
+                  Interviewer
+                </span>
+                <span className="text-2xl font-bold text-neutral-800">
+                  {assignedInterviewer.name || "—"}
+                </span>
+                <span className="text-sm text-neutral-400">
+                  {companyName || "—"}
+                </span>
+              </div>
             </div>
-            <div className={flex.col}>
-              <span className="text-xs font-bold text-neutral-400 uppercase tracking-widest mb-0.5">
-                Interviewer
-              </span>
-              <span className="text-2xl font-bold text-neutral-800">
-                {user?.full_name || "—"}
-              </span>
-              <span className="text-sm text-neutral-400">
-                {user?.role || "—"}
-              </span>
-            </div>
+            <button
+              onClick={() => navigate(-1)}
+              className={`${flex.row} gap-2 rounded-lg border border-neutral-200 bg-neutral-0 px-3 py-1.5 text-sm font-semibold text-neutral-600 transition-colors hover:border-primary-200 hover:bg-primary-500/10 hover:text-primary-600`}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/>
+              </svg>
+              Back
+            </button>
           </div>
 
           <div className="mt-3 pt-3 border-t border-neutral-100 flex items-center gap-2">
@@ -489,12 +479,14 @@ export default function CandidatePage() {
                   email: candidate?.cand_email,
                   phone: candidate?.cand_phone,
                   job_id: jobId,
-                  interviewer: assignedInterviewerName,
-                  interviewer_user_id: assignedInterviewerUserId,
+                  interviewer: assignedInterviewer.name,
+                  interviewer_user_id: assignedInterviewer.userId,
                   interview_datetime: intvDateTime ?? null,
+                  cv_url: cvUrl,
+                  cover_letter_url: coverLetterUrl,
                 }}
                 onClose={() => { setShowProfile(false); setShowEditMode(false); setProfileVisible(true); }}
-                onSaved={() => { refreshCandidate(); setInterviewerRefreshKey((k) => k + 1); setShowProfile(false); setShowEditMode(false); setProfileVisible(true); }}
+                onSaved={() => { refreshCandidate(); refreshCvAnalysis(); reloadAssignedInterviewer(); setShowProfile(false); setShowEditMode(false); setProfileVisible(true); }}
               />
             ) : (
               <CandidateInfoCard

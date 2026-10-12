@@ -14,6 +14,7 @@ export default function Profile() {
   const [fbLoading, setFbLoading] = useState(true);
   const [regenerating, setRegenerating] = useState(false);
   const [fbError, setFbError] = useState('');
+  const [behavioural, setBehavioural] = useState(null);
 
   const [stats, setStats] = useState(null);
   const [statsLoading, setStatsLoading] = useState(true);
@@ -29,6 +30,14 @@ export default function Profile() {
       .then((d) => { if (!cancelled) setFeedback(d); })
       .catch(() => {})
       .finally(() => { if (!cancelled) setFbLoading(false); });
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    api.getBehaviouralSuggestions()
+      .then((d) => { if (!cancelled) setBehavioural(d); })
+      .catch(() => {});
     return () => { cancelled = true; };
   }, []);
 
@@ -108,12 +117,21 @@ export default function Profile() {
     setFeedback(updated);
   }
 
+  async function handleUpdateBehaviouralItem(itemId, patch) {
+    const updated = await api.updateBehaviouralSuggestion(itemId, patch);
+    setBehavioural(updated);
+  }
+
   async function handleRegenerateFeedback() {
     setRegenerating(true);
     setFbError("");
     try {
-      const d = await api.regenerateInterviewerFeedback();
+      const [d, b] = await Promise.all([
+        api.regenerateInterviewerFeedback(),
+        api.regenerateBehaviouralSuggestions().catch(() => null),
+      ]);
       setFeedback(d);
+      if (b) setBehavioural(b);
     } catch (e) {
       setFbError(e?.message || "Could not generate feedback.");
     } finally {
@@ -136,7 +154,19 @@ export default function Profile() {
       <FeedbackItemRow key={it.id} item={it} onUpdate={handleUpdateFeedbackItem} />
     ));
   }
-              
+  function renderBehaviouralSuggestions() {
+    const items = behavioural?.suggestions ?? [];
+    if (!items.length) return null;
+    return items.map((s) => (
+      <FeedbackItemRow
+        key={s.id}
+        item={s}
+        onUpdate={handleUpdateBehaviouralItem}
+        tag={{ label: "Behavioural", className: "bg-yellow-100 text-yellow-700" }}
+      />
+    ));
+  }
+
   const profileGrid = (
 
     <div className="grid h-full min-h-0 w-full grid-cols-[minmax(260px,1fr)_minmax(0,2fr)] items-stretch gap-4">
@@ -338,6 +368,7 @@ export default function Profile() {
             <h3 className="text-sm font-semibold text-neutral-700 mb-2 shrink-0">Improvements</h3>
             <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto pr-2 scrollbar-primary">
               {renderFeedbackBody(feedback?.improvements)}
+              {renderBehaviouralSuggestions()}
             </div>
           </div>
         </div>
@@ -528,14 +559,14 @@ export default function Profile() {
           <button
             onClick={handleSave}
             disabled={saving}
-            className="bg-primary-500 hover:bg-primary-600 text-white text-sm font-semibold py-2 px-6 rounded-xl transition-colors cursor-pointer"      
+            className="bg-primary-500 hover:bg-primary-600 text-white text-sm font-semibold py-2 px-6 rounded-xl transition-colors cursor-pointer"
             >
             {saving ? 'Saving...' : 'Save Changes'}
           </button>
         </div>
       </div>
     );
-  }  
+  }
 
 
   if (user?.role !== 'admin') {
