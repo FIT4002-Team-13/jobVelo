@@ -224,7 +224,7 @@ async def _run_analysis(
             ),
             timeout=300,
         )
-    except asyncio.TimeoutError:
+    except TimeoutError:
         await db.cv_analyses.update_one(
             {"_id": analysis_oid, "status": "processing"},
             {
