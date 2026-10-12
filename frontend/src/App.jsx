@@ -19,6 +19,7 @@ import CandidatePage from './pages/CandidatePage.jsx'
 import CandidateDetailPage from './pages/CandidateDetailPage.jsx'
 import ApplicationsPage from './pages/ApplicationsPage.jsx'
 import InterviewConsistencyPage from './pages/InterviewConsistencyPage.jsx'
+import UserGuidePage from './pages/UserGuidePage.jsx'
 import ErrorPage, { AppErrorBoundary } from './pages/ErrorPage.jsx'
 
 export default function App() {
@@ -140,6 +141,14 @@ export default function App() {
                 <RequireRole allow={['hiring_manager']}>
                   <InterviewConsistencyPage />
                 </RequireRole>
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/user-guide"
+            element={
+              <RequireAuth>
+                <UserGuidePage />
               </RequireAuth>
             }
           />

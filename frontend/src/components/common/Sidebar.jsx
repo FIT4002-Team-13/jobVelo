@@ -8,6 +8,7 @@ import {
   KeyRound,
   Search,
   BarChart3,
+  BookOpen,
 } from "lucide-react";
 import logoFull from "../../assets/logo-final.png";
 import { useAuth } from "../../lib/AuthContext.jsx";
@@ -97,6 +98,12 @@ export default function Sidebar({ user: userProp }) {
       icon: <KeyRound size={16} />,
       group: "ADMIN",
     },
+    {
+      label: "User Guide",
+      path: "/user-guide",
+      icon: <BookOpen size={16} />,
+      group: "HELP",
+    },
   ];
 
   const isAdmin = user?.role === "admin";
@@ -105,6 +112,7 @@ export default function Sidebar({ user: userProp }) {
   const groupItems = navItems.filter((i) => i.group === "GROUP");
   const insightsItems = isHiringManager ? navItems.filter((i) => i.group === "INSIGHTS") : [];
   const adminItems = isAdmin ? navItems.filter((i) => i.group === "ADMIN") : [];
+  const helpItems = navItems.filter((i) => i.group === "HELP");
 
   const navLink = (item) => {
     // Mark the link as active when its path matches OR when we're on a
@@ -195,6 +203,15 @@ export default function Sidebar({ user: userProp }) {
               ADMIN
             </span>
             {adminItems.map(navLink)}
+          </>
+        )}
+
+        {helpItems.length > 0 && (
+          <>
+            <span className="text-xs font-bold text-neutral-400 tracking-[0.08em] px-2 pt-4 pb-1.5">
+              HELP
+            </span>
+            {helpItems.map(navLink)}
           </>
         )}
       </nav>
