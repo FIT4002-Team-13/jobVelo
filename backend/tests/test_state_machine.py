@@ -7,7 +7,7 @@ with claim release, honest null scores on cached reads, and transcript
 truncation.
 """
 
-from datetime import datetime, timezone
+from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -31,7 +31,7 @@ def _cursor(items):
     return cur
 
 
-NOW = datetime.now(timezone.utc)
+NOW = datetime.now(datetime.UTC)
 
 
 def _interview_doc(status="scheduled", **extra):
@@ -103,6 +103,7 @@ def _complete_db(interview_doc, claim_result="claimed"):
     mock_db.interviews.update_one = AsyncMock()
     mock_db.job_candidates.update_one = AsyncMock()
     return mock_db
+
 
 @pytest.fixture()
 def authed(client):

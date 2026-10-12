@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -26,7 +26,7 @@ def authed_comp(client):
 def test_interviewer_can_view_candidate_profiles(authed_comp):
     fake_comp_id, client = authed_comp
     fake_cand_id = ObjectId()
-    now = datetime.now(timezone.utc)
+    now = datetime.now(datetime.UTC)
 
     mock_db = MagicMock()
 
@@ -70,7 +70,7 @@ def test_interviewer_can_view_candidate_profiles(authed_comp):
 def test_CV_and_Cover_Letter_Linked_To_Candidate(authed_comp):
     fake_comp_id, client = authed_comp
     fake_cand_id = ObjectId()
-    now = datetime.now(timezone.utc)
+    now = datetime.now(datetime.UTC)
 
     mock_db = MagicMock()
 

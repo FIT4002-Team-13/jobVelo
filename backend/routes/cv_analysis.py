@@ -26,7 +26,7 @@ from __future__ import annotations
 
 import asyncio
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from typing import Annotated
 
 from bson import ObjectId
@@ -100,8 +100,8 @@ def _effective_status(doc: dict) -> tuple[str, str | None]:
         created = doc.get("created_at")
         if created is not None:
             if created.tzinfo is None:
-                created = created.replace(tzinfo=timezone.utc)
-            if datetime.now(timezone.utc) - created > _PROCESSING_TIMEOUT:
+                created = created.replace(tzinfo=datetime.UTC)
+            if datetime.now(datetime.UTC) - created > _PROCESSING_TIMEOUT:
                 return "failed", "Analysis timed out. Re-upload the CV to retry."
     return doc_status, error
 
@@ -430,7 +430,7 @@ async def analyse(
 
     # 5. Insert the doc as "processing". The analysis fields are filled in
     #    by the background task; until then they serialise as empty.
-    now = datetime.now(timezone.utc)
+    now = datetime.now(datetime.UTC)
     doc: dict = {
         "jobcand_id": jobcand_id,
         "comp_id": str(candidate.get("comp_id") or job.get("comp_id") or ""),
@@ -600,6 +600,6 @@ async def delete_analysis(
                 {"_id": cand_oid},
                 {
                     "$unset": unset,
-                    "$set": {"cand_updated_at": datetime.now(timezone.utc)},
+                    "$set": {"cand_updated_at": datetime.now(datetime.UTC)},
                 },
             )

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import datetime, timezone
+from datetime import datetime
 
 from bson import ObjectId
 from fastapi import APIRouter, Depends, HTTPException, Response, status
@@ -188,7 +188,7 @@ def interview_helper(interview: dict) -> InterviewOut:
     back to not_scheduled, and malformed reports/transcripts degrade to
     None/[] instead of raising - one bad historical doc shouldn't 500 an
     entire list query (this was the "failed to load candidate page" bug)."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(datetime.UTC)
     created = interview.get("intv_created_at")
     updated = interview.get("intv_updated_at")
     if not isinstance(created, datetime):
@@ -285,7 +285,7 @@ async def create_interview(
                     detail="Only the assigned interviewer can start this interview.",
                 )
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(datetime.UTC)
 
     interview_doc = {
         "cand_id": payload.cand_id,
@@ -393,7 +393,9 @@ async def get_interview_context(
     if job_id and ObjectId.is_valid(job_id):
         job = await db.jobs.find_one({"_id": ObjectId(job_id)}, {"title": 1})
         if job:
-            job_ctx = InterviewContextJob(job_id=str(job["_id"]), title=job.get("title"))
+            job_ctx = InterviewContextJob(
+                job_id=str(job["_id"]), title=job.get("title")
+            )
 
     cand_ctx = None
     if cand_id and ObjectId.is_valid(cand_id):
@@ -411,9 +413,7 @@ async def get_interview_context(
     jobcand_ctx = None
     cv_analysis_out = None
     if job_id and cand_id:
-        link = await db.job_candidates.find_one(
-            {"cand_id": cand_id, "job_id": job_id}
-        )
+        link = await db.job_candidates.find_one({"cand_id": cand_id, "job_id": job_id})
         if link:
             jobcand_id = str(link["_id"])
             jobcand_ctx = InterviewContextJobCandidate(
@@ -745,7 +745,7 @@ async def _persist_completion(
     duration_seconds: int | None,
 ) -> None:
     """Write ratings to job_candidates and finalise the interview document."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(datetime.UTC)
 
     await db.job_candidates.update_one(
         {"_id": link_id},
@@ -1048,7 +1048,7 @@ async def _report_pdf_response(intv_id: str, kind: str, user: dict) -> Response:
     # Stamp with the interview's datetime (fallback: today) so a folder of
     # downloads sorts naturally and repeat interviews don't overwrite.
     when = interview.get("intv_date_time")
-    stamp = (when or datetime.now(timezone.utc)).strftime("%Y-%m-%d-%H%M")
+    stamp = (when or datetime.now(datetime.UTC)).strftime("%Y-%m-%d-%H%M")
     filename = f"{kind}-report-{safe_name}-{stamp}.pdf"
     return Response(
         content=pdf_bytes,
@@ -1183,16 +1183,14 @@ async def update_interview(
     if update_data.get("intv_status") == "in_progress":
         await _assert_assigned_interviewer(db, intv_id, user)
 
-    update_data["intv_updated_at"] = datetime.now(timezone.utc)
+    update_data["intv_updated_at"] = datetime.now(datetime.UTC)
 
     await db.interviews.update_one(
         {"_id": ObjectId(intv_id)},
         {"$set": update_data},
     )
 
-    updated_interview = await db.interviews.find_one(
-        {"_id": ObjectId(intv_id)}
-    )
+    updated_interview = await db.interviews.find_one({"_id": ObjectId(intv_id)})
 
     if not updated_interview:
         raise HTTPException(

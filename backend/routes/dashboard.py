@@ -11,7 +11,7 @@ The dashboard's candidate list itself is fetched from the real
 """
 
 import asyncio
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 
 from bson import ObjectId
 from fastapi import APIRouter, Depends
@@ -73,8 +73,8 @@ async def get_summary(
         }
 
     # Day window in UTC: [today 00:00:00, tomorrow 00:00:00)
-    now = datetime.now(timezone.utc)
-    today_start = datetime(now.year, now.month, now.day, tzinfo=timezone.utc)
+    now = datetime.now(datetime.UTC)
+    today_start = datetime(now.year, now.month, now.day, tzinfo=datetime.UTC)
     tomorrow_start = today_start + timedelta(days=1)
 
     base_scope = {

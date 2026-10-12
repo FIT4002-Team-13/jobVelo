@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any
 
 from bson import ObjectId
@@ -231,9 +231,9 @@ async def list_applications(
         dt = row.interview_datetime
 
         if dt is None:
-            return datetime.min.replace(tzinfo=timezone.utc)
+            return datetime.min.replace(tzinfo=datetime.UTC)
 
-        return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+        return dt if dt.tzinfo else dt.replace(tzinfo=datetime.UTC)
 
     rows.sort(key=_sort_key, reverse=True)
     return rows
@@ -268,7 +268,7 @@ async def update_application(
         ):
             raise HTTPException(status_code=404, detail="Application not found.")
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(datetime.UTC)
 
     # 1. Update the job-candidate link.
     await db.job_candidates.update_one(

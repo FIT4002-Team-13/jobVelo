@@ -8,7 +8,7 @@ created - this is how admins kick teammates off the platform.
 from __future__ import annotations
 
 import secrets
-from datetime import datetime, timezone
+from datetime import datetime
 
 from bson import ObjectId
 from fastapi import APIRouter, Depends, HTTPException, Response, status
@@ -69,7 +69,7 @@ async def create_invitation(
     Retries on the rare collision against an existing code (~10^12 space).
     """
     db = get_db()
-    now = datetime.now(timezone.utc)
+    now = datetime.now(datetime.UTC)
 
     for _ in range(5):
         code = _generate_code()

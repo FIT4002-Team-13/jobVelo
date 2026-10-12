@@ -9,7 +9,7 @@ Style matches test_interview_integration.py: mongomock-motor DB, auth faked
 via dependency overrides.
 """
 
-from datetime import datetime, timezone
+from datetime import datetime
 from unittest.mock import patch
 
 import httpx
@@ -48,7 +48,7 @@ _RATINGS = {
 async def _seed_full_chain(db, comp_id, *, cross_tenant_job=False):
     """Insert job + candidate + job_candidate + interview + interview_users +
     user + cv_analysis and return the ids as strings."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(datetime.UTC)
     job_id = ObjectId()
     cand_id = ObjectId()
     jobcand_id = ObjectId()
@@ -148,12 +148,15 @@ async def test_interview_context_bundles_every_related_slice(db_client):
     assert body["job_candidate"]["rank"] == 1
     assert body["job_candidate"]["ratings"]["communication"]["score"] == 7.0
     assert body["cv_analysis"]["jobcand_id"] == ids["jobcand_id"]
-    assert body["interviewer"] == {"user_id": ids["user_id"], "full_name": "Grace Hopper"}
+    assert body["interviewer"] == {
+        "user_id": ids["user_id"],
+        "full_name": "Grace Hopper",
+    }
 
 
 async def test_interview_context_degrades_when_related_docs_missing(db_client):
     client, db, comp_id = db_client
-    now = datetime.now(timezone.utc)
+    now = datetime.now(datetime.UTC)
     job_id = ObjectId()
     intv_id = ObjectId()
     await db.jobs.insert_one({"_id": job_id, "comp_id": comp_id, "title": "Solo Role"})
@@ -217,7 +220,7 @@ async def test_candidate_detail_requires_job_id(db_client):
 
 async def test_candidate_detail_unknown_job_is_404(db_client):
     client, db, comp_id = db_client
-    now = datetime.now(timezone.utc)
+    now = datetime.now(datetime.UTC)
     cand_id = ObjectId()
     await db.candidates.insert_one(
         {
@@ -268,7 +271,7 @@ async def test_get_user_returns_teammate(db_client):
 
 async def test_get_user_cross_tenant_is_404(db_client):
     client, db, _comp_id = db_client
-    now = datetime.now(timezone.utc)
+    now = datetime.now(datetime.UTC)
     other = ObjectId()
     await db.users.insert_one(
         {

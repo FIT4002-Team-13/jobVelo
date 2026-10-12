@@ -7,7 +7,7 @@ clean one-or-two page PDF for download. Pure-python - no native deps.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime
 
 from fpdf import FPDF
 from fpdf.enums import XPos, YPos
@@ -413,7 +413,7 @@ def build_interview_report_pdf(
     pdf.cell(0, 10, _latin("Interview Report"), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
     pdf.set_font("Helvetica", "", 10)
     pdf.set_text_color(*_MUTED)
-    generated = datetime.now(timezone.utc).strftime("%d %b %Y, %H:%M UTC")
+    generated = datetime.now(datetime.UTC).strftime("%d %b %Y, %H:%M UTC")
     pdf.cell(
         0,
         5.5,
@@ -602,11 +602,15 @@ def build_interviewer_stats_pdf(
     pdf.set_font("Helvetica", "B", 18)
     pdf.set_text_color(*_INK)
     pdf.cell(
-        0, 10, _latin("Interview Performance Statistics"), new_x=XPos.LMARGIN, new_y=YPos.NEXT
+        0,
+        10,
+        _latin("Interview Performance Statistics"),
+        new_x=XPos.LMARGIN,
+        new_y=YPos.NEXT,
     )
     pdf.set_font("Helvetica", "", 10)
     pdf.set_text_color(*_MUTED)
-    generated = datetime.now(timezone.utc).strftime("%d %b %Y, %H:%M UTC")
+    generated = datetime.now(datetime.UTC).strftime("%d %b %Y, %H:%M UTC")
     pdf.cell(
         0,
         5.5,
