@@ -95,10 +95,11 @@ export default function StartInterviewModal({ candidate, jobTitle, onClose, onCo
             {resume ? (
               <p className="text-xs text-primary-700 leading-relaxed">
                 This interview is <strong className="font-bold">already in progress</strong>.
-                Resuming continues the existing transcript and interview timer, but{' '}
-                <strong className="font-bold">section timers restart</strong>. The system
-                will request microphone and audio access again - make sure the candidate
-                is ready before you continue.
+                Resuming picks up the transcript, interview timer and section timers
+                where they stopped, and{' '}
+                <strong className="font-bold">recording starts again</strong> once you
+                grant microphone and audio access - make sure the candidate is ready
+                before you continue.
               </p>
             ) : (
               <p className="text-xs text-primary-700 leading-relaxed">

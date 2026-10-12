@@ -1,5 +1,6 @@
 import { card, button, flex } from "../../../styles/layout";
 import { formatTimer } from "../../../utils/time.js";
+import { restoreSectionStates } from "../../../hooks/useInterviewSections.js";
 import { BriefingCard, QuestionPlanCard } from "./InterviewPrepTab.jsx";
 
 // How many of the most recent transcript lines to show as a "where you left
@@ -65,7 +66,13 @@ function RecentTranscriptCard({ transcript, interviewerLabel }) {
 // Read-only on purpose: the live session already captured these sections into
 // the interview record, so editing the job-candidate plan here would have no
 // effect on the running interview.
-function SessionPlanCard({ sections }) {
+function SessionPlanCard({ sections, priorSeconds }) {
+  // Same reconstruction the live page uses, so the times shown here are the
+  // ones the section timers resume from.
+  const states = restoreSectionStates(sections, priorSeconds);
+  // The section that was running comes back as "paused" - flag it as current.
+  const currentIdx = sections.findIndex((s) => s.status === "running" || s.status === "paused");
+
   return (
     <div className={`${card.base} ${flex.col} gap-4`}>
       <h3 className="text-sm font-bold uppercase tracking-wide text-neutral-500">Session Plan</h3>
@@ -80,12 +87,23 @@ function SessionPlanCard({ sections }) {
               <span className="w-4 shrink-0 pt-px text-right text-sm font-semibold tabular-nums text-neutral-300">
                 {i + 1}
               </span>
-              <span className="flex-1 text-sm leading-snug text-neutral-700">{s.name}</span>
-              {s.suggested_minutes != null && (
-                <span className="shrink-0 text-xs font-semibold tabular-nums text-neutral-400">
-                  {s.suggested_minutes}m
+              <span
+                className={`flex-1 text-sm leading-snug ${
+                  states[i].status === "done" ? "text-neutral-400 line-through" : "text-neutral-700"
+                }`}
+              >
+                {s.name}
+              </span>
+              {i === currentIdx && (
+                <span className="shrink-0 rounded-pill bg-amber-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-700">
+                  Current
                 </span>
               )}
+              <span className="shrink-0 text-xs font-semibold tabular-nums text-neutral-400">
+                {states[i].status === "idle"
+                  ? s.suggested_minutes != null ? `${s.suggested_minutes}m` : ""
+                  : `${formatTimer(states[i].elapsed)}${s.suggested_minutes != null ? ` / ${s.suggested_minutes}m` : ""}`}
+              </span>
             </li>
           ))}
         </ol>
@@ -136,7 +154,7 @@ export default function InterviewResumeTab({ interview, analysis, interviewerLab
               <BriefingCard analysis={analysis} onViewFullAnalysis={onViewFullAnalysis} />
             </div>
             <div className={`${flex.col} gap-5`}>
-              <SessionPlanCard sections={sections} />
+              <SessionPlanCard sections={sections} priorSeconds={interview?.intv_duration_seconds ?? 0} />
               <QuestionPlanCard analysis={analysis} />
             </div>
           </div>
