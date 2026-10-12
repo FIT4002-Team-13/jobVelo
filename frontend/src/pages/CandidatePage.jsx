@@ -438,6 +438,7 @@ export default function CandidatePage() {
               highlightedEntryIdx={highlightedEntryIdx}
               highlightedEntryId={highlightedEntryId}
               interviewerLabel={interviewerLabel}
+              candidateLabel={candidateName || "Candidate"}
               sections={sections}
               jumpToSection={jumpToSection}
               report={report}
