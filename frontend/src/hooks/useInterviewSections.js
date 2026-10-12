@@ -21,13 +21,12 @@ export function restoreSectionStates(sections, priorSeconds) {
   });
 }
 
-export function useInterviewSections(id, { serverData, timerRef, intvStatus, isMicActive }) {
+export function useInterviewSections(id, { serverData, timer, timerRef, intvStatus, isMicActive }) {
   const [sections, setSections] = useState([]);
   const [sectionStates, setSectionStates] = useState([]);
   // Index of the section to (re)start once the mic goes live, or null.
   const [pendingSection, setPendingSection] = useState(null);
 
-  const sectionIntervals = useRef([]);
   const sectionsScrollRef = useRef(null);
   const sectionCardRefs = useRef([]);
   const hasInitializedRef = useRef(false);
@@ -37,11 +36,22 @@ export function useInterviewSections(id, { serverData, timerRef, intvStatus, isM
     statesRef.current = sectionStates;
   }, [sectionStates]);
 
+  // Section timers advance off the main interview timer rather than their
+  // own clock, so anything that stops the main timer (pausing the interview,
+  // recording not yet armed) stops the running section with it - and the two
+  // can never drift apart.
+  const lastTimerRef = useRef(null);
   useEffect(() => {
-    return () => {
-      sectionIntervals.current.forEach((interval) => clearInterval(interval));
-    };
-  }, []);
+    const last = lastTimerRef.current;
+    lastTimerRef.current = timer;
+    if (last == null || timer <= last) return;
+    const delta = timer - last;
+    setSectionStates((prev) =>
+      prev.some((st) => st.status === "running")
+        ? prev.map((st) => (st.status === "running" ? { ...st, elapsed: st.elapsed + delta } : st))
+        : prev
+    );
+  }, [timer]);
 
   const activeSectionIndex = sectionStates.findIndex(
     (st) => st.status === "running" || st.status === "paused"
@@ -76,17 +86,6 @@ export function useInterviewSections(id, { serverData, timerRef, intvStatus, isM
   const elapsedOf = (j) => statesRef.current[j]?.elapsed ?? 0;
   const stopped = (j, status) => ({ status, elapsed_seconds: elapsedOf(j), run_started_at: null });
 
-  function tick(i) {
-    clearInterval(sectionIntervals.current[i]);
-    sectionIntervals.current[i] = setInterval(() => {
-      setSectionStates((prev) => {
-        const next = [...prev];
-        next[i] = { ...next[i], elapsed: next[i].elapsed + 1 };
-        return next;
-      });
-    }, 1000);
-  }
-
   // Shared by start and resume: run section i, closing out whichever section
   // was active. `closeStatuses` is which states count as "active" to close.
   function runSection(i, closeStatuses) {
@@ -107,16 +106,10 @@ export function useInterviewSections(id, { serverData, timerRef, intvStatus, isM
     setSectionStates((prev) =>
       prev.map((st, j) => {
         if (j === i) return { ...st, status: "running" };
-        if (closeStatuses.includes(st.status)) {
-          clearInterval(sectionIntervals.current[j]);
-          sectionIntervals.current[j] = null;
-          return { ...st, status: "done" };
-        }
+        if (closeStatuses.includes(st.status)) return { ...st, status: "done" };
         return st;
       })
     );
-
-    tick(i);
   }
 
   function startSection(i) {
@@ -124,8 +117,6 @@ export function useInterviewSections(id, { serverData, timerRef, intvStatus, isM
   }
 
   function pauseSection(i) {
-    clearInterval(sectionIntervals.current[i]);
-    sectionIntervals.current[i] = null;
     persistSections((j) => (j === i ? stopped(j, "paused") : null));
     setSectionStates((prev) => prev.map((st, j) => (j === i ? { ...st, status: "paused" } : st)));
   }
@@ -135,8 +126,6 @@ export function useInterviewSections(id, { serverData, timerRef, intvStatus, isM
   }
 
   function doneSection(i) {
-    clearInterval(sectionIntervals.current[i]);
-    sectionIntervals.current[i] = null;
     persistSections((j) => (j === i ? stopped(j, "done") : null));
     setSectionStates((prev) => prev.map((st, j) => (j === i ? { ...st, status: "done" } : st)));
   }
@@ -158,7 +147,6 @@ export function useInterviewSections(id, { serverData, timerRef, intvStatus, isM
       setSections(intv_sections);
       setSectionStates(restored);
       statesRef.current = restored;
-      sectionIntervals.current = new Array(intv_sections.length).fill(null);
       if (!completed) {
         // Re-entering: pick the section that was running back up. A section
         // the interviewer paused themselves stays paused. Fresh plan: start
@@ -174,7 +162,6 @@ export function useInterviewSections(id, { serverData, timerRef, intvStatus, isM
           if (!Array.isArray(plan) || !plan.length) return;
           setSections(plan);
           setSectionStates(plan.map(() => ({ status: "idle", elapsed: 0 })));
-          sectionIntervals.current = new Array(plan.length).fill(null);
           setPendingSection(0);
           api.updateInterview(id, { intv_sections: plan }).catch(() => {});
         })
