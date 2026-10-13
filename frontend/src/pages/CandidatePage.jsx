@@ -51,8 +51,6 @@ export default function CandidatePage() {
   const [showStartWarning, setShowStartWarning] = useState(false);
   const [showEditMode, setShowEditMode] = useState(false);
   const [profileVisible, setProfileVisible] = useState(true);
-  // The interviewer's company name, shown under their name in the header
-  // (replacing the redundant "interviewer" role line).
   const [companyName, setCompanyName] = useState("");
 
   useEffect(() => {
@@ -169,7 +167,6 @@ export default function CandidatePage() {
     });
   }, [isCompleted, id, serverData]);
 
-  // Assigned interviewer, not the logged-in user (who may just be viewing).
   const interviewerLabel = assignedInterviewer.name || user?.full_name || "Interviewer";
 
   const report =
