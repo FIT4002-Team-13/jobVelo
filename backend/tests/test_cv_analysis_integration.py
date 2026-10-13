@@ -5,7 +5,7 @@ TC-016 - CV analysis page handles missing resume
 TC-017 - Pre-interview questions suggested based on CV
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, patch
 
 import httpx
@@ -50,8 +50,8 @@ async def _seed_context(db, comp_id: ObjectId) -> str:
             "cand_full_name": "Alex Brown",
             "cand_email": "alex@example.com",
             "comp_id": comp_id,
-            "cand_created_at": datetime.now(timezone.utc),
-            "cand_updated_at": datetime.now(timezone.utc),
+            "cand_created_at": datetime.now(UTC),
+            "cand_updated_at": datetime.now(UTC),
         }
     )
     await db.jobs.insert_one(
@@ -175,7 +175,7 @@ async def test_interview_questions_returned_from_completed_cv_analysis(
             ],
             "cv_path": "cv_analyses/fake-cv.pdf",
             "cover_letter_path": None,
-            "created_at": datetime.now(timezone.utc),
+            "created_at": datetime.now(UTC),
         }
     )
 
