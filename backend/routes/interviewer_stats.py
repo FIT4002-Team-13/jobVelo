@@ -13,7 +13,7 @@ Endpoints:
 from __future__ import annotations
 
 import calendar
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Literal
 
 from bson import ObjectId
@@ -54,9 +54,9 @@ def _add_months(year: int, month: int, delta: int) -> tuple[int, int]:
 
 
 def _month_bounds(year: int, month: int) -> tuple[datetime, datetime]:
-    start = datetime(year, month, 1, tzinfo=timezone.utc)
+    start = datetime(year, month, 1, tzinfo=UTC)
     ny, nm = _add_months(year, month, 1)
-    return start, datetime(ny, nm, 1, tzinfo=timezone.utc)
+    return start, datetime(ny, nm, 1, tzinfo=UTC)
 
 
 def _pct_change(current: float, previous: float) -> float | None:
@@ -70,7 +70,7 @@ def _as_utc(dt: datetime) -> datetime:
     but every stored value is UTC - so a naive read needs a UTC tzinfo before
     it can be compared against an aware `datetime.now(timezone.utc)`. Same
     fix as cv_analysis.py's `_status_of`."""
-    return dt if dt.tzinfo is not None else dt.replace(tzinfo=timezone.utc)
+    return dt if dt.tzinfo is not None else dt.replace(tzinfo=UTC)
 
 
 def _bucket_avg(sessions: list[dict], start: datetime, end: datetime) -> float | None:
@@ -102,8 +102,8 @@ def _build_score_trend(
         week_no = 1
         while day <= last_day:
             week_end_day = min(day + 6, last_day)
-            start = datetime(y, m, day, tzinfo=timezone.utc)
-            end = datetime(y, m, week_end_day, tzinfo=timezone.utc) + timedelta(days=1)
+            start = datetime(y, m, day, tzinfo=UTC)
+            end = datetime(y, m, week_end_day, tzinfo=UTC) + timedelta(days=1)
             points.append(
                 {
                     "label": f"W{week_no}",
@@ -134,7 +134,9 @@ def _build_score_trend(
     return points, range_label
 
 
-async def _assigned_interview_ids(db: AsyncIOMotorDatabase, user_id_str: str) -> list[ObjectId]:
+async def _assigned_interview_ids(
+    db: AsyncIOMotorDatabase, user_id_str: str
+) -> list[ObjectId]:
     ids: list[ObjectId] = []
     async for link in db.interview_users.find({"user_id": user_id_str}, {"intv_id": 1}):
         intv_id = link.get("intv_id")
@@ -167,7 +169,7 @@ async def _compute_interviewer_stats(
         await _company_job_ids(db, comp_id),
     )
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     interviews: list[dict] = []
     sessions: list[dict] = []  # {when, score}
 
@@ -214,15 +216,20 @@ async def _compute_interviewer_stats(
     total_7d_ago = sum(
         1
         for iv in interviews
-        if _as_utc(iv.get("intv_date_time") or iv.get("intv_updated_at") or now) <= week_ago
+        if _as_utc(iv.get("intv_date_time") or iv.get("intv_updated_at") or now)
+        <= week_ago
     )
     total_interviews_delta_pct = _pct_change(total_interviews, total_7d_ago)
 
     # --- Average score delta: this calendar month vs. last calendar month.
     this_month = _month_key(now)
     last_month = _add_months(now.year, now.month, -1)
-    this_month_scores = [s["score"] for s in scored if _month_key(s["when"]) == this_month]
-    last_month_scores = [s["score"] for s in scored if _month_key(s["when"]) == last_month]
+    this_month_scores = [
+        s["score"] for s in scored if _month_key(s["when"]) == this_month
+    ]
+    last_month_scores = [
+        s["score"] for s in scored if _month_key(s["when"]) == last_month
+    ]
     average_candidate_score_delta_pct = None
     if this_month_scores and last_month_scores:
         average_candidate_score_delta_pct = _pct_change(
@@ -230,7 +237,9 @@ async def _compute_interviewer_stats(
             sum(last_month_scores) / len(last_month_scores),
         )
 
-    score_trend, score_trend_range_label = _build_score_trend(scored, now, stat_range, offset)
+    score_trend, score_trend_range_label = _build_score_trend(
+        scored, now, stat_range, offset
+    )
 
     return {
         "total_interviews": total_interviews,
@@ -250,7 +259,9 @@ async def get_interviewer_stats(
     user: dict = Depends(get_current_user),
     comp_id: ObjectId = Depends(get_current_comp_id),
 ):
-    return await _compute_interviewer_stats(db, user, comp_id, stat_range=range, offset=offset)
+    return await _compute_interviewer_stats(
+        db, user, comp_id, stat_range=range, offset=offset
+    )
 
 
 _TREND_HEADINGS: dict[StatRange, str] = {
@@ -273,9 +284,14 @@ async def get_interviewer_stats_report(
     (This month / Past 6 months / Past year, at whatever page they're on)."""
     from services.report_pdf import build_interviewer_stats_pdf
 
-    stats = await _compute_interviewer_stats(db, user, comp_id, stat_range=range, offset=offset)
+    stats = await _compute_interviewer_stats(
+        db, user, comp_id, stat_range=range, offset=offset
+    )
     interviewer_name = (
-        user.get("full_name") or user.get("username") or user.get("email") or "Interviewer"
+        user.get("full_name")
+        or user.get("username")
+        or user.get("email")
+        or "Interviewer"
     )
     pdf_bytes = build_interviewer_stats_pdf(
         interviewer_name=interviewer_name,
@@ -283,7 +299,7 @@ async def get_interviewer_stats_report(
         trend_heading=_TREND_HEADINGS[range],
     )
 
-    stamp = datetime.now(timezone.utc).strftime("%Y-%m-%d-%H%M")
+    stamp = datetime.now(UTC).strftime("%Y-%m-%d-%H%M")
     filename = f"interview-stats-{stamp}.pdf"
     return Response(
         content=pdf_bytes,

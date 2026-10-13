@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import re
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from bson import ObjectId
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -39,7 +39,12 @@ _TRANSCRIPT_CAP = 2500
 # dropped to honour this cap.
 _SECTION_CAP = 8
 
-_EMPTY = {"feedback_id": None, "generated_at": None, "strengths": [], "improvements": []}
+_EMPTY = {
+    "feedback_id": None,
+    "generated_at": None,
+    "strengths": [],
+    "improvements": [],
+}
 
 
 def _engaged_items(items: list | None) -> list[dict]:
@@ -117,7 +122,7 @@ def _build_session_block(iv: dict) -> str:
     bias = iv.get("intv_bias_incidents") or []
     if bias:
         flags = "; ".join(
-            f"[{b.get('category') or 'flag'}] \"{(b.get('quote') or '')[:160]}\""
+            f'[{b.get("category") or "flag"}] "{(b.get("quote") or "")[:160]}"'
             for b in bias[:5]
         )
         parts.append(f"Bias flags ({len(bias)}): {flags}")
@@ -219,7 +224,7 @@ async def regenerate_feedback(
     kept_strengths = _engaged_items((prev or {}).get("strengths"))
     kept_improvements = _engaged_items((prev or {}).get("improvements"))
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     doc = {
         "user_id": str(user["_id"]),
         "comp_id": str(comp_id),
@@ -251,7 +256,7 @@ async def update_feedback_item(
     if not doc:
         raise HTTPException(status_code=404, detail="Feedback not found")
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     found = False
     for key in ("strengths", "improvements"):
         for item in doc.get(key, []):
