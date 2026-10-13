@@ -11,7 +11,7 @@ jobs.py resolves the DB with a body-level `db = get_db()`, so these tests
 patch `routes.jobs.get_db` for the duration of the request.
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -71,7 +71,7 @@ def _payload(**overrides) -> dict:
 
 def _base_db(comp_id: ObjectId, job_oid: ObjectId):
     """DB primed for the create-new-candidate, create-new-link happy path."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     cand_oid, link_oid, intv_oid = ObjectId(), ObjectId(), ObjectId()
 
     job = {"_id": job_oid, "comp_id": comp_id, "title": "Dev", "status": "Pending"}
