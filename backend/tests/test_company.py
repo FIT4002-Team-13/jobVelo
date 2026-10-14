@@ -4,7 +4,7 @@ TC-007 - Company profile updated and saved successfully
 TC-008 - Company profile rejects invalid logo file format
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -13,7 +13,7 @@ from bson import ObjectId
 from dependencies import get_current_user
 from main import app
 
-_NOW = datetime(2025, 1, 1, tzinfo=timezone.utc)
+_NOW = datetime(2025, 1, 1, tzinfo=UTC)
 
 
 def _admin_user(comp_id: ObjectId) -> dict:

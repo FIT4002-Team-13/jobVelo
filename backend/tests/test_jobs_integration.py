@@ -5,7 +5,7 @@ cluster is touched. The same patch.object + httpx.AsyncClient pattern used
 in test_cand_integration.py is applied here for consistency.
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import patch
 
 import httpx
@@ -150,8 +150,8 @@ async def _seed_candidate(db, comp_id: ObjectId, name: str, email: str) -> Objec
             "cand_full_name": name,
             "cand_email": email,
             "comp_id": comp_id,
-            "cand_created_at": datetime.now(timezone.utc),
-            "cand_updated_at": datetime.now(timezone.utc),
+            "cand_created_at": datetime.now(UTC),
+            "cand_updated_at": datetime.now(UTC),
         }
     )
     return cand_id

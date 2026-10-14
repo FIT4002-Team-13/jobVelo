@@ -13,7 +13,7 @@ Usage locally:
 """
 
 import os
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import certifi
 import pytest
@@ -109,7 +109,7 @@ async def test_candidate_write_read_roundtrip(real_db):
         "cand_full_name": "Integration Test Candidate",
         "cand_email": "integration_test_unique@example.com",
         "comp_id": comp_id,
-        "cand_created_at": datetime.now(timezone.utc),
+        "cand_created_at": datetime.now(UTC),
     }
 
     result = await real_db.candidates.insert_one(doc)

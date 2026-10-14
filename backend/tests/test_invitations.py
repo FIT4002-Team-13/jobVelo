@@ -6,7 +6,7 @@ Covers admin-only CRUD for /api/invitations:
   - DELETE /api/invitations/{id}   (delete, with optional user cascade)
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -15,7 +15,7 @@ from bson import ObjectId
 from dependencies import get_current_user
 from main import app
 
-_NOW = datetime(2025, 1, 1, tzinfo=timezone.utc)
+_NOW = datetime(2025, 1, 1, tzinfo=UTC)
 
 
 def _admin_user(comp_id: ObjectId) -> dict:
