@@ -9,14 +9,14 @@
   "sections": [
     {
       "key": "getting-started",
-      "title": "Getting started",
+      "title": "Getting Started",
       "icon": "BookOpen",
       "summary": "Your role, the pages you can open, and your profile.",
       "tasks": [
         {
           "key": "your-role",
           "icon": "ShieldCheck",
-          "title": "Your role: {role}",
+          "title": "Your Role: {role}",
           "intro": "Your role decides which pages and buttons you see. Pages you do not have access to are hidden from the sidebar.",
           "steps": [
             { "text": "Admin: invite new users, assign roles, manage the company profile, and edit jobs and candidates.", "roles": ["admin"] },
@@ -30,7 +30,7 @@
         {
           "key": "your-pages",
           "icon": "BookOpen",
-          "title": "Your pages",
+          "title": "Your Pages",
           "intro": "A quick tour of the sidebar. Pages not listed here are hidden for your account.",
           "steps": [
             { "text": "Dashboard: summary of jobs, candidates and recent activity." },
@@ -48,7 +48,7 @@
 
     {
       "key": "jobs-candidates",
-      "title": "Jobs and candidates",
+      "title": "Jobs and Candidates",
       "icon": "Briefcase",
       "summary": "Create jobs, add and edit candidates, and schedule interviews.",
       "tasks": [
@@ -120,7 +120,7 @@
 
     {
       "key": "interview",
-      "title": "Conducting an interview",
+      "title": "Conducting an Interview",
       "icon": "Mic",
       "summary": "Preparing, recording, the live transcript, bias warnings, questions, sections and completing the interview.",
       "tasks": [
@@ -256,7 +256,7 @@
 
     {
       "key": "review",
-      "title": "Reviewing results",
+      "title": "Reviewing Results",
       "icon": "BarChart3",
       "summary": "Review completed interviews with candidate results and interviewer feedback together, plus rankings, insights and your profile.",
       "tasks": [

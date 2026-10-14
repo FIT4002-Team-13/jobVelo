@@ -29,9 +29,9 @@ const ICONS = {
 };
 
 const TABS = [
-  { key: "guides", label: "Step-by-step guides" },
+  { key: "guides", label: "Step-by-step Guides" },
   { key: "troubleshooting", label: "Troubleshooting" },
-  { key: "limitations", label: "Limitations & support" },
+  { key: "limitations", label: "Limitations & Support" },
 ];
 
 function visibleTo(item, role) {
