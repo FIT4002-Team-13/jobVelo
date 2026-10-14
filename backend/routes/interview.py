@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import UTC, datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from bson import ObjectId
 from fastapi import APIRouter, Depends, HTTPException, Response, status
@@ -1007,7 +1007,7 @@ async def complete_interview(
 
     # Concurrency claim: atomically mark the interview as "generating" so a
     # second simultaneous click doesn't trigger a duplicate LLM run.
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     stale_before = now - timedelta(minutes=10)
 
     claimed = await db.interviews.find_one_and_update(
