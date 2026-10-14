@@ -365,8 +365,26 @@ export function useAudioCapture({
         displayProcessor.onaudioprocess = (event) => {
           if (isPausedRef.current || !transcriptionActiveRef.current) return;
           const inputBuffer = event.inputBuffer.getChannelData(0);
-          if (!wsDisplayRef.current || wsDisplayRef.current.readyState !== WebSocket.OPEN) return;
-          wsDisplayRef.current.send(downsampleBuffer(inputBuffer, audioContextRef.current.sampleRate, 16000));
+          if (
+            !wsDisplayRef.current ||
+            wsDisplayRef.current.readyState !== WebSocket.OPEN
+          ) {
+            return;
+          }
+
+          // FIX: Initialise the candidate transcription clock.
+          if (displayTranscriptStartRef.current === null) {
+            displayTranscriptStartRef.current =
+              (Date.now() - startTimeRef.current) / 1000;
+          }
+
+          wsDisplayRef.current.send(
+            downsampleBuffer(
+              inputBuffer,
+              audioContextRef.current.sampleRate,
+              16000
+            )
+          );
         };
 
         displaySource.connect(displayProcessor);
