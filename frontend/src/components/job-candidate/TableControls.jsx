@@ -126,6 +126,14 @@ export function SortMenu({ value, onChange, options = SORT_OPTIONS }) {
 export function FilterMenu({ values, onChange, options, singleSelect = false }) {
   function toggle(v, close) {
     if (singleSelect) {
+      // An empty value is the "All"/clear sentinel (see withAllOption). It must
+      // reset to no filter - selecting it as a real value would filter for
+      // status === '' and hide every row.
+      if (v === '') {
+        onChange([])
+        close?.()
+        return
+      }
       // Same value clicked again → clear; otherwise replace.
       onChange(values.includes(v) ? [] : [v])
       close?.()
@@ -133,6 +141,9 @@ export function FilterMenu({ values, onChange, options, singleSelect = false }) 
       onChange(values.includes(v) ? values.filter((x) => x !== v) : [...values, v])
     }
   }
+
+  // "All" (empty value) reads as selected whenever no real filter is active.
+  const isSelected = (v) => (v === '' ? values.length === 0 : values.includes(v))
 
   return (
     <DropdownButton label="Filter" icon={FilterIcon}>
@@ -144,7 +155,7 @@ export function FilterMenu({ values, onChange, options, singleSelect = false }) 
             {options.map((o, i) => (
               <li key={o.value}>
                 <MenuItem
-                  selected={values.includes(o.value)}
+                  selected={isSelected(o.value)}
                   isLast={i === options.length - 1}
                   onClick={() => toggle(o.value, close)}
                 >

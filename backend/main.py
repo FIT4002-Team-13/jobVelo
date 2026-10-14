@@ -11,8 +11,10 @@ from database import (
     seed_mock_data,
 )
 from routes import (
+    analytics,
     applications,
     auth,
+    behavioural_suggestions,
     cand,
     companies,
     cv_analysis,
@@ -21,6 +23,7 @@ from routes import (
     interview,
     interview_question,
     interviewer_feedback,
+    interviewer_stats,
     invitations,
     job_cand,
     jobs,
@@ -82,7 +85,10 @@ app.include_router(interview_question.router)
 app.include_router(interview.router)
 app.include_router(user_interview.router)
 app.include_router(applications.router)
+app.include_router(analytics.router)
 app.include_router(interviewer_feedback.router)
+app.include_router(interviewer_stats.router)
+app.include_router(behavioural_suggestions.router)
 
 
 @app.get("/api/health")

@@ -8,7 +8,7 @@ Style matches test_cand.py: TestClient from conftest, `get_db` patched with
 MagicMock/AsyncMock per route module, auth faked via dependency overrides.
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -24,6 +24,7 @@ async def _aiter(items):
     for item in items:
         yield item
 
+
 @pytest.fixture()
 def authed_recruiter(client):
     comp_id = ObjectId()
@@ -37,6 +38,7 @@ def authed_recruiter(client):
     yield comp_id, client
     app.dependency_overrides.clear()
 
+
 def _cursor(items):
     """Mock for `collection.find(...).to_list(...)` call chains."""
     cur = MagicMock()
@@ -45,7 +47,7 @@ def _cursor(items):
 
 
 def _interview_doc(job_id: str | None = None, status: str = "scheduled") -> dict:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     return {
         "_id": ObjectId(),
         "cand_id": str(ObjectId()),
@@ -77,6 +79,7 @@ def authed(client):
     app.dependency_overrides[get_current_user] = lambda: user
     yield comp_id, client
     app.dependency_overrides.clear()
+
 
 # ── 1. Anonymous requests are rejected everywhere ────────────────────────────
 
@@ -536,7 +539,7 @@ def test_interview_users_create_succeeds(authed_recruiter):
     """Regression for the datetime.now(datetime.utc) crash: a valid create
     must reach 201, not 500."""
     _, client = authed_recruiter
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     link_id = ObjectId()
     user_id, intv_id = str(ObjectId()), str(ObjectId())
 

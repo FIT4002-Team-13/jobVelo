@@ -15,7 +15,7 @@ Route shape: /api/jobs + /api/jobs/{job_id}
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from bson import ObjectId
 from fastapi import APIRouter, Depends, HTTPException, Response, status
@@ -172,24 +172,48 @@ async def _job_stats(db, job_ids: list[str]) -> dict[str, dict]:
     return out
 
 
+async def _assigned_job_ids(db, user: dict) -> list[str]:
+    """job_ids of interviews assigned to `user` (interview_users -> interviews)."""
+    intv_ids = [
+        ObjectId(link["intv_id"])
+        async for link in db.interview_users.find(
+            {"user_id": str(user["_id"])}, {"intv_id": 1}
+        )
+        if ObjectId.is_valid(link.get("intv_id", ""))
+    ]
+    if not intv_ids:
+        return []
+    return await db.interviews.distinct("job_id", {"_id": {"$in": intv_ids}})
+
+
 @router.get("", response_model=list[JobOut])
 async def list_jobs(
     comp_id: ObjectId = Depends(get_current_comp_id),
+    user: dict = Depends(get_current_user),
 ) -> list[JobOut]:
     """List jobs in the caller's company. Newest-update first.
 
     Tenant isolation: comp_id is sourced from the JWT - the client cannot
     pass a different comp_id to view another company's jobs.
 
+    Interviewers only see jobs where they are assigned to at least one
+    interview (same rule as the job's candidate table). Other roles see all.
+
     Each returned job's `interviewers` array is computed live from the
     job_candidates link table - the field on the job doc itself is just
     a placeholder (`[]` from create_job).
     """
     db = get_db()
+    query: dict = {"comp_id": comp_id}
+    if user.get("role") == "interviewer":
+        assigned = [
+            ObjectId(j)
+            for j in await _assigned_job_ids(db, user)
+            if ObjectId.is_valid(j)
+        ]
+        query["_id"] = {"$in": assigned}
     jobs = await (
-        db.jobs.find({"comp_id": comp_id})
-        .sort("job_last_update_datetime", -1)
-        .to_list(length=200)
+        db.jobs.find(query).sort("job_last_update_datetime", -1).to_list(length=200)
     )
 
     stats = await _job_stats(db, [str(j["_id"]) for j in jobs])
@@ -205,18 +229,21 @@ async def list_jobs(
     ]
 
 
-
 @router.get("/{job_id}", response_model=JobOut)
 async def get_job(
     job_id: str,
     comp_id: ObjectId = Depends(get_current_comp_id),
+    user: dict = Depends(get_current_user),
 ) -> JobOut:
     db = get_db()
     oid = _validate_oid(job_id)
     # Filter by comp_id so jobs in another company return 404 (not 403) -
     # we don't reveal the existence of records the caller can't see.
     job = await db.jobs.find_one({"_id": oid, "comp_id": comp_id})
-    if job is None:
+    if job is None or (
+        user.get("role") == "interviewer"
+        and job_id not in await _assigned_job_ids(db, user)
+    ):
         raise HTTPException(status_code=404, detail="Job not found")
 
     stats = await _job_stats(db, [job_id])
@@ -229,6 +256,7 @@ async def get_job(
         }
     )
 
+
 async def require_job_manager(
     user: dict = Depends(get_current_user),
 ) -> dict:
@@ -239,13 +267,13 @@ async def require_job_manager(
         )
     return user
 
+
 @router.post("", response_model=JobOut, status_code=status.HTTP_201_CREATED)
 async def create_job(
     payload: JobCreate,
     comp_id: ObjectId = Depends(get_current_comp_id),
     user: dict = Depends(require_job_manager),
 ) -> JobOut:
-    
     db = get_db()
     """Create a job in the caller's company. Any comp_id in the body is
     IGNORED - we substitute the JWT one so a user can't create jobs in a
@@ -255,7 +283,7 @@ async def create_job(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Only recruiters and admins can manage jobs.",
         )
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     body = payload.model_dump()
     body["comp_id"] = comp_id  # JWT-derived; ignore whatever the client sent
     # `candidates_filled` and `interviewers` are NOT stored on the doc -
@@ -279,7 +307,6 @@ async def update_job(
     comp_id: ObjectId = Depends(get_current_comp_id),
     user: dict = Depends(require_job_manager),
 ) -> JobOut:
-    
     db = get_db()
     if user.get("role") not in ("admin", "recruiter"):
         raise HTTPException(
@@ -291,7 +318,7 @@ async def update_job(
     updates = {k: v for k, v in payload.model_dump().items() if v is not None}
     if not updates:
         raise HTTPException(status_code=400, detail="No fields to update")
-    updates["job_last_update_datetime"] = datetime.now(timezone.utc)
+    updates["job_last_update_datetime"] = datetime.now(UTC)
 
     # Two-part filter: only updates if the job ALSO belongs to the caller's
     # company. Cross-tenant edits fall into the 404 branch.
@@ -329,7 +356,6 @@ async def delete_job(
     comp_id: ObjectId = Depends(get_current_comp_id),
     user: dict = Depends(require_job_manager),
 ):
-    
     db = get_db()
     """Delete the job AND everything hanging off it: job_candidates links,
     interviews (+ interviewer links), and cv_analyses docs/files. The
@@ -339,7 +365,7 @@ async def delete_job(
     Without the full cascade, orphaned interviews kept feeding the
     dashboard status rollup (pinning candidates at "SCHEDULED" forever)
     and analysis PDFs accumulated on disk unreachably."""
-    
+
     if user.get("role") not in ("admin", "recruiter"):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -483,7 +509,7 @@ async def add_candidate_to_job(
     if job is None:
         raise HTTPException(status_code=404, detail="Job not found")
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     comp_id = job["comp_id"]  # ObjectId
 
     # Validate the interviewer BEFORE creating anything, so a bad id can't
@@ -494,7 +520,11 @@ async def add_candidate_to_job(
         if not ObjectId.is_valid(payload.interviewer_user_id):
             raise HTTPException(status_code=400, detail="Invalid interviewer_user_id")
         interviewer_user = await db.users.find_one(
-            {"_id": ObjectId(payload.interviewer_user_id), "comp_id": comp_id, "role": {"$in": ["interviewer", "hiring_manager"]}},
+            {
+                "_id": ObjectId(payload.interviewer_user_id),
+                "comp_id": comp_id,
+                "role": {"$in": ["interviewer", "hiring_manager"]},
+            },
             {"_id": 1},
         )
         if interviewer_user is None:
