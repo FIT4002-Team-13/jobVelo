@@ -27,7 +27,8 @@ const FAKE_TRANSCRIPT = [
   { id: '2', speaker: 'Candidate', timestamp: '00:30', text: 'Sure, I have 5 years of experience in full-stack development.' },
 ]
 
-// The interview is already in_progress so the live workspace shows immediately.
+// The interview is already in_progress so /interview/:id/live opens the
+// workspace directly (/interview/:id now stops at the Resume checkpoint).
 const FAKE_INTERVIEW = {
   intv_id:              INTV_ID,
   intv_status:          'in_progress',
@@ -106,7 +107,7 @@ async function mockInterviewSession(page, interviewOverride = {}) {
 }
 
 async function goToLiveSession(page) {
-  await page.goto(`/interview/${INTV_ID}`)
+  await page.goto(`/interview/${INTV_ID}/live`)
   // Wait for the candidate name to appear (confirms the interview data loaded)
   await expect(page.getByText('Alice Smith')).toBeVisible()
   // In webkit the Recording Setup modal (fixed inset-0 z-50) appears when
