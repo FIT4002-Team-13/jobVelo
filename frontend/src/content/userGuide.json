@@ -39,7 +39,8 @@
             { "text": "Candidates: every applicant across all jobs. Filter by status, sort by date or name and search by candidate name." },
             { "text": "Insights - Interviewers: the candidate's average score under different interviewer, bias flags and interview consistency across the team.", "roles": ["hiring_manager"] },
             { "text": "Admin - Invitations: generate one-time codes to invite new users and assign roles.", "roles": ["admin"] },
-            { "text": "Profile: your interviewing stats, AI feedback in relevant improvement and strengths. Admins also see a Company Profile tab." },
+            { "text": "Profile: your interviewing stats and AI feedback on the interviews you have run. Interviewers and Hiring Managers only.", "roles": ["interviewer", "hiring_manager"] },
+            { "text": "Profile: your account details. Admins also see a Company Profile tab.", "roles": ["admin", "recruiter"] },
             { "text": "User Guide: a guide that walks you through the features and functionality of the app relevant to your role." }
           ]
         }
@@ -70,7 +71,7 @@
         },
         {
           "key": "add-candidate",
-          "icon": "Users",
+          "icon": "UserRoundPlus",
           "title": "Add a candidate to a job",
           "role": "Recruiter",
           "roles": ["recruiter"],
@@ -86,7 +87,7 @@
         },
         {
           "key": "edit-candidate",
-          "icon": "Users",
+          "icon": "UserPen",
           "title": "Edit a candidate and remove them from a job",
           "role": "Admin / Recruiter",
           "roles": ["admin", "recruiter"],
@@ -126,7 +127,7 @@
       "tasks": [
         {
           "key": "find-interviews",
-          "icon": "CalendarDays",
+          "icon": "Search",
           "title": "Find your assigned interviews",
           "role": "Interviewer / Hiring Manager",
           "roles": ["interviewer", "hiring_manager"],
@@ -142,7 +143,7 @@
         },
         {
           "key": "prepare",
-          "icon": "CalendarDays",
+          "icon": "ListChecks",
           "title": "Prepare before the interview",
           "role": "Interviewer / Hiring Manager",
           "roles": ["interviewer", "hiring_manager"],
@@ -174,7 +175,7 @@
         },
         {
           "key": "live-transcript",
-          "icon": "Mic",
+          "icon": "MessageSquareText",
           "title": "Use the live transcript and speaker labels",
           "role": "Interviewer / Hiring Manager",
           "roles": ["interviewer", "hiring_manager"],
@@ -208,7 +209,7 @@
         },
         {
           "key": "questions",
-          "icon": "Mic",
+          "icon": "MessageCircleQuestion",
           "title": "Use AI question suggestions",
           "role": "Interviewer / Hiring Manager",
           "roles": ["interviewer", "hiring_manager"],
@@ -224,7 +225,7 @@
         },
         {
           "key": "sections",
-          "icon": "Mic",
+          "icon": "CirclePlay",
           "title": "Run the interview sections",
           "role": "Interviewer / Hiring Manager",
           "roles": ["interviewer", "hiring_manager"],
@@ -239,7 +240,7 @@
         },
         {
           "key": "complete",
-          "icon": "Mic",
+          "icon": "CircleCheck",
           "title": "Complete the interview and generate reports",
           "role": "Interviewer / Hiring Manager",
           "roles": ["interviewer", "hiring_manager"],
@@ -262,7 +263,7 @@
       "tasks": [
         {
           "key": "review",
-          "icon": "BarChart3",
+          "icon": "FileCheck",
           "title": "Review a completed interview",
           "intro": "A completed interview shows the candidate's results and the interviewer's feedback together, so you can judge both from one place.",
           "steps": [
@@ -281,7 +282,7 @@
         },
         {
           "key": "rankings",
-          "icon": "BarChart3",
+          "icon": "ChartColumnStacked",
           "title": "Compare candidates with Rankings",
           "intro": "The job page lists its candidates. Rankings sorts them by overall score so you can compare them quickly.",
           "steps": [
@@ -295,20 +296,22 @@
           "key": "profile",
           "icon": "UserCircle2",
           "title": "Profile and AI feedback",
-          "intro": "Your profile summarises your own interviewing patterns. Acknowledgements and notes carry forward when you regenerate.",
+          "role": "Interviewer / Hiring Manager",
+          "roles": ["interviewer", "hiring_manager"],
+          "intro": "Your profile summarises the interviews you have run. Acknowledgements and notes carry forward when you regenerate. Feedback is only available once you have completed at least one interview.",
           "steps": [
             { "text": "Open your profile from the name at the bottom of the sidebar." },
             { "text": "Top left section shows your name, role and email. Below that, the Performance Stats card shows total interviews, average candidate score and a score trend chart." },
             { "text": "Use the Score trends period buttons and the range dropdown (This month, Past 6 months, Past year) to change the chart." },
             { "text": "Click Export PDF to download your stats report." },
             { "text": "The Feedback card on the right shows Strengths and Improvements, summarised from your completed interviews." },
-            { "text": "Click the tick on an strength or improvement to acknowledge it. Click the note icon to add a reflection." },
-            { "text": "Click Regenerate to generate new feedbacks. Items you acknowledged or noted are kept." }
+            { "text": "Click the tick on a strength or improvement to acknowledge it. Click the note icon to add a reflection." },
+            { "text": "Click Regenerate to generate new feedback. Items you acknowledged or noted are kept." }
           ]
         },
         {
           "key": "assess-candidates",
-          "icon": "UserCircle2",
+          "icon": "FileChartColumn",
           "title": "Assess candidates and record a decision",
           "role": "Hiring Manager",
           "roles": ["hiring_manager"],
@@ -324,7 +327,7 @@
         },
         {
           "key": "insights",
-          "icon": "BarChart3",
+          "icon": "FileChartColumn",
           "title": "Assess interviewers with Insights",
           "role": "Hiring Manager",
           "roles": ["hiring_manager"],
@@ -408,7 +411,8 @@
     },
     {
       "title": "Profile shows no feedback or stats",
-      "text": "Feedback and stats come from your completed interviews. If you have not finished any interviews yet, the cards will be empty. Complete an interview, then click Generate/Regenerate."
+      "text": "Feedback and stats come from the interviews you have run. If you have not completed any interviews yet, the cards will be empty. Complete an interview, then click Regenerate.",
+      "roles": ["interviewer", "hiring_manager"]
     },
     {
       "title": "Start Interview button is missing or greyed out",

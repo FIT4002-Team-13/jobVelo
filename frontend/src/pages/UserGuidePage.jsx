@@ -7,6 +7,17 @@ import {
   CalendarDays,
   ChevronDown,
   Mic,
+  MessageCircleQuestion,
+  CirclePlay,
+  CircleCheck,
+  MessageSquareText,
+  Search,
+  ListChecks,
+  FileCheck,
+  ChartColumnStacked,
+  UserPen,
+  UserRoundPlus,
+  FileChartColumn,
   ShieldCheck,
   UserCircle2,
   Users,
@@ -22,7 +33,18 @@ const ICONS = {
   Briefcase,
   Building2,
   CalendarDays,
+  CirclePlay,
+  UserRoundPlus,
+  FileChartColumn,
   Mic,
+  MessageCircleQuestion,
+  CircleCheck,
+  MessageSquareText,
+  Search,
+  ListChecks,
+  FileCheck,
+  ChartColumnStacked,
+  UserPen,
   ShieldCheck,
   UserCircle2,
   Users,
@@ -204,9 +226,7 @@ export default function UserGuidePage() {
   const troubles = useMemo(() => buildTroubleshooting(role), [role]);
 
   const [activeTab, setActiveTab] = useState("guides");
-  const [openSections, setOpenSections] = useState(
-    () => new Set(sections[0] ? [sections[0].key] : []),
-  );
+  const [openSections, setOpenSections] = useState(() => new Set());
   const [openTaskKey, setOpenTaskKey] = useState(null);
 
   const toggleSection = (key) =>
