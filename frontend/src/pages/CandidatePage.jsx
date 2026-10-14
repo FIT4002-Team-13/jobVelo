@@ -17,6 +17,7 @@ import EditCandidateForm from "../components/candidate/EditCandidateForm.jsx";
 import CvTab from "../components/candidate/tabs/CvTab.jsx";
 import CoverLetterTab from "../components/candidate/tabs/CoverLetterTab.jsx";
 import InterviewPrepTab from "../components/candidate/tabs/InterviewPrepTab.jsx";
+import InterviewResumeTab from "../components/candidate/tabs/InterviewResumeTab.jsx";
 import TranscriptAnalysisTab from "../components/candidate/tabs/TranscriptAnalysisTab.jsx";
 
 export default function CandidatePage() {
@@ -96,23 +97,17 @@ export default function CandidatePage() {
     intvDateTime,
   } = useInterviewData(id);
 
-  // null while the fetch is still in flight - deliberately distinct from
-  // "live" so the redirect guard below can't fire on the loading state's
-  // default before we actually know the interview's status.
+  // null while the fetch is still in flight. An in-progress interview lands
+  // on "resume" - a checkpoint before the live page - rather than jumping
+  // straight back into recording, so the interviewer can review the candidate
+  // or get their bearings first.
   const phase = !serverData
     ? null
     : isCompleted
     ? "debrief"
     : intvStatus === "scheduled" || intvStatus === "not_scheduled"
     ? "prep"
-    : "live";
-
-  // Someone reached this page directly (a bookmark, a link shared mid-interview,
-  // or the interview was already resumed elsewhere) while it's actually in
-  // progress - that experience lives only on the separate live page now.
-  useEffect(() => {
-    if (phase === "live") navigate(`/interview/${id}/live`, { replace: true });
-  }, [phase, id, navigate]);
+    : "resume";
 
   useEffect(() => {
     if (!phase) return;
@@ -124,8 +119,9 @@ export default function CandidatePage() {
       }
       requestedViewRef.current = null;
     } else {
-      // Pre-interview lands on CV (review the person first); post-interview
-      // lands on the transcript/report (the deliverable).
+      // Pre-interview lands on CV (review the person first); mid-interview
+      // lands on the resume checkpoint; post-interview lands on the
+      // transcript/report (the deliverable).
       setCenterView(phase === "prep" ? "cv" : "transcript");
     }
   }, [phase]);
@@ -144,6 +140,7 @@ export default function CandidatePage() {
     startTimeRef,
     timerRef,
     generateFollowUpRef,
+    autosave: false,
   });
 
   // Silently refresh the score/evidence breakdown for the debrief panel -
@@ -209,6 +206,11 @@ export default function CandidatePage() {
   }
 
   async function beginInterview() {
+    // Already in progress server-side - just reopen the live workspace.
+    if (phase === "resume") {
+      navigate(`/interview/${id}/live`);
+      return;
+    }
     if (beginningRef.current) return;
     beginningRef.current = true;
     try {
@@ -366,6 +368,12 @@ export default function CandidatePage() {
                   { id: "cv", label: "CV" },
                   { id: "cover-letter", label: "Cover Letter" },
                 ]
+              : phase === "resume"
+              ? [
+                  { id: "transcript", label: "Resume" },
+                  { id: "cv", label: "CV" },
+                  { id: "cover-letter", label: "Cover Letter" },
+                ]
               : [
                   // Pre-interview: review the source (CV + detail), then the
                   // cover letter, then prep-and-begin - left-to-right funnel.
@@ -406,6 +414,20 @@ export default function CandidatePage() {
             />
           )}
 
+          {centerView === "transcript" && phase === "resume" && (
+            <InterviewResumeTab
+              interview={serverData && { ...serverData, intv_transcript: transcript }}
+              analysis={cvAnalysis}
+              interviewerLabel={interviewerLabel}
+              onResume={() => setShowStartWarning(true)}
+              onViewFullAnalysis={
+                jobCand?.jobcand_id
+                  ? () => navigate(`/cv-analysis/${jobCand.jobcand_id}`)
+                  : null
+              }
+            />
+          )}
+
           {centerView === "transcript" && phase === "debrief" && (
             <TranscriptAnalysisTab
               transcript={transcript}
@@ -413,6 +435,7 @@ export default function CandidatePage() {
               highlightedEntryIdx={highlightedEntryIdx}
               highlightedEntryId={highlightedEntryId}
               interviewerLabel={interviewerLabel}
+              candidateLabel={candidateName || "Candidate"}
               sections={sections}
               jumpToSection={jumpToSection}
               report={report}
@@ -452,6 +475,7 @@ export default function CandidatePage() {
           candidate={{ name: candidateName, scheduled_at: intvDateTime }}
           jobTitle={candidateRole}
           noPlan={!(Array.isArray(jobCand?.plan_sections) && jobCand.plan_sections.length > 0)}
+          resume={phase === "resume"}
           onClose={() => setShowStartWarning(false)}
           onConfirm={() => {
             setShowStartWarning(false);
@@ -495,7 +519,11 @@ export default function CandidatePage() {
                 interview={mergedInterview}
                 jobCand={jobCand}
                 interviewer={interviewerLabel}
-                onStartInterview={phase === "prep" ? () => { setShowProfile(false); beginInterview(); } : null}
+                onStartInterview={
+                  phase === "prep" || phase === "resume"
+                    ? () => { setShowProfile(false); setShowStartWarning(true); }
+                    : null
+                }
                 onEdit={() => switchProfileView(true)}
                 cvAnalysis={cvAnalysis}
                 onViewCvAnalysis={null}

@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import { api } from "../lib/api.js";
 import { formatTimer } from "../utils/time.js";
 
-export function useTranscript(id, { serverData, candidateName, userId, isCompleted, startTimeRef, timerRef, generateFollowUpRef }) {
+export function useTranscript(id, { serverData, candidateName, userId, isCompleted, startTimeRef, timerRef, generateFollowUpRef, autosave = true }) {
   const [transcript, setTranscript] = useState([]);
   const [transcriptVisible, setTranscriptVisible] = useState(true);
   const [hasNewTranscriptUpdates, setHasNewTranscriptUpdates] = useState(false);
@@ -91,7 +91,11 @@ export function useTranscript(id, { serverData, candidateName, userId, isComplet
     }
   }, [serverData, id]);
 
+  // Only the live page records, so only it should autosave. A read-only view
+  // of an in-progress interview (the candidate page's Resume tab) has no
+  // running timer and would otherwise clobber intv_duration_seconds with 0.
   useEffect(() => {
+    if (!autosave) return undefined;
     const interval = setInterval(() => {
       if (!isCompleted && transcriptRef.current.length) {
         api
@@ -103,7 +107,7 @@ export function useTranscript(id, { serverData, candidateName, userId, isComplet
       }
     }, 30000);
     return () => clearInterval(interval);
-  }, [id, isCompleted]);
+  }, [id, isCompleted, autosave]);
 
   function syncCounterFromEntries(entries) {
     const maxId = entries.reduce((max, e) => {
@@ -125,7 +129,19 @@ export function useTranscript(id, { serverData, candidateName, userId, isComplet
       const prevPartialId = partialRef.current;
       partialRef.current = null;
 
-      const newEntry = {id: entryId, speaker: displayedSpeaker, timestamp, text, source: detected.source, stream_id: detected.stream_id, speaker_id: detected.speaker_id, participant_id: assignment?.participant_id ?? null, speaker_role: assignment?.speaker_role ?? null};
+      const newEntry = {
+        id: entryId,
+        speaker: displayedSpeaker,
+        timestamp,
+        text,
+        source: detected.source,
+        stream_id: detected.stream_id,
+        speaker_id: detected.speaker_id,
+        start: detected.start ?? null,
+        end: detected.end ?? null,
+        participant_id: assignment?.participant_id ?? null,
+        speaker_role: assignment?.speaker_role ?? null,
+      };
       setTranscript((prev) => {
         const refreshed = prevPartialId ? prev.filter((e) => e.id !== prevPartialId) : prev;
         const updated = [...refreshed, newEntry];
@@ -147,6 +163,8 @@ export function useTranscript(id, { serverData, candidateName, userId, isComplet
           source: detected.source,
           stream_id: detected.stream_id,
           speaker_id: detected.speaker_id,
+          start: detected.start ?? null,
+          end: detected.end ?? null,
           participant_id: assignment?.participant_id ?? null,
           speaker_role: assignment?.speaker_role ?? null},
       ]);
