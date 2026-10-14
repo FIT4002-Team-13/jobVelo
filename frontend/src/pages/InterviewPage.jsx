@@ -140,7 +140,7 @@ export default function InterviewPage() {
     pauseSection,
     resumeSection,
     doneSection,
-  } = useInterviewSections(id, { serverData, timerRef, intvStatus, isMicActive });
+  } = useInterviewSections(id, { serverData, timer, timerRef, intvStatus, isMicActive });
 
   // The interview section currently running/paused, kept in a ref so the
   // question generator can steer follow-ups to fit where the interview is.
