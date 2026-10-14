@@ -779,6 +779,7 @@ async def _persist_completion(
         {"_id": ObjectId(intv_id)}, {"$set": interview_updates}
     )
 
+
 INTERRUPTION_ACKNOWLEDGEMENTS = {
     "yeah",
     "yes",
@@ -806,7 +807,7 @@ async def _detect_interruptions(
 
     Deepgram timestamps are relative to each stream, so this assumes both
     streams use the same interview timer / recording clock.
-    
+
     An overlap is treated as a potential interruption when the interviewer
     starts speaking while the candidate is still speaking. Short
     acknowledgement responses (e.g. "yeah", "okay", "right") are ignored
@@ -877,9 +878,7 @@ async def _detect_interruptions(
 
     if effective_duration_seconds is None:
         all_end_times = [
-            float(entry["end"])
-            for entry in entries
-            if entry.get("end") is not None
+            float(entry["end"]) for entry in entries if entry.get("end") is not None
         ]
         if all_end_times:
             effective_duration_seconds = max(all_end_times)
@@ -891,17 +890,12 @@ async def _detect_interruptions(
     )
 
     # Three or more interruptions per 10 minutes is treated as frequent.
-    frequent = (
-        rate_per_minute is not None
-        and rate_per_minute >= 0.3
-    )
+    frequent = rate_per_minute is not None and rate_per_minute >= 0.3
 
     return {
         "count": count,
         "rate_per_minute": (
-            round(rate_per_minute, 2)
-            if rate_per_minute is not None
-            else None
+            round(rate_per_minute, 2) if rate_per_minute is not None else None
         ),
         "duration_seconds": (
             round(effective_duration_seconds, 2)
@@ -911,6 +905,7 @@ async def _detect_interruptions(
         "frequent": frequent,
         "evidence": interruptions,
     }
+
 
 @router.post(
     "/{intv_id}/complete",

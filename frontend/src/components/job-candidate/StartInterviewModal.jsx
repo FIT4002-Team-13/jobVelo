@@ -35,14 +35,19 @@ function formatScheduledAt(iso) {
  *   onConfirm  - PLACEHOLDER for now: the eventual handler will flip the
  *                job_candidate status to EVALUATED + open the Deepgram
  *                transcription UI. Wire it up when that pipeline lands.
+ *   resume     - the interview is already IN PROGRESS: swaps the copy to a
+ *                "jump back in" warning (and drops the no-plan nudge, since
+ *                the plan can't change mid-session).
  */
-export default function StartInterviewModal({ candidate, jobTitle, onClose, onConfirm, noPlan = false }) {
+export default function StartInterviewModal({ candidate, jobTitle, onClose, onConfirm, noPlan = false, resume = false }) {
   return (
     <div className={modal.overlay}>
       <div className="relative bg-neutral-0 rounded-2xl w-full max-w-md shadow-xl">
         {/* Header strip */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-neutral-100">
-          <h2 className="text-base font-bold text-neutral-800">Start Interview Session</h2>
+          <h2 className="text-base font-bold text-neutral-800">
+            {resume ? 'Resume Interview Session' : 'Start Interview Session'}
+          </h2>
           <button
             type="button"
             onClick={onClose}
@@ -87,15 +92,26 @@ export default function StartInterviewModal({ candidate, jobTitle, onClose, onCo
               <line x1="12" y1="16" x2="12" y2="12" />
               <line x1="12" y1="8" x2="12.01" y2="8" />
             </svg>
-            <p className="text-xs text-primary-700 leading-relaxed">
-              Once started, the interview session{' '}
-              <strong className="font-bold">cannot be reverted</strong> to Scheduled
-              status. The system will request microphone and audio access for live
-              transcription.
-            </p>
+            {resume ? (
+              <p className="text-xs text-primary-700 leading-relaxed">
+                This interview is <strong className="font-bold">already in progress</strong>.
+                Resuming picks up the transcript, interview timer and section timers
+                where they stopped, and{' '}
+                <strong className="font-bold">recording starts again</strong> once you
+                grant microphone and audio access - make sure the candidate is ready
+                before you continue.
+              </p>
+            ) : (
+              <p className="text-xs text-primary-700 leading-relaxed">
+                Once started, the interview session{' '}
+                <strong className="font-bold">cannot be reverted</strong> to Scheduled
+                status. The system will request microphone and audio access for live
+                transcription.
+              </p>
+            )}
           </div>
 
-          {noPlan && (
+          {noPlan && !resume && (
             <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 flex gap-3 mb-6">
               <svg className="shrink-0 text-amber-600 mt-0.5" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
@@ -127,7 +143,7 @@ export default function StartInterviewModal({ candidate, jobTitle, onClose, onCo
               <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor">
                 <polygon points="5 3 19 12 5 21 5 3" />
               </svg>
-              Start
+              {resume ? 'Resume' : 'Start'}
             </button>
           </div>
         </div>

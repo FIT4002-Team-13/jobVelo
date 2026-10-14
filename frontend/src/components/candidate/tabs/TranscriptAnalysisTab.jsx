@@ -1,7 +1,8 @@
-import { Fragment, useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { flex } from "../../../styles/layout";
 import { SECTION_COLORS } from "../../../utils/constants.js";
 import { formatTimer, parseTimestamp } from "../../../utils/time.js";
+import { initials, buildSpeakerColors } from "../../../utils/avatar.js";
 import ReportSections from "../../interview/ReportSections.jsx";
 import SectionMenu from "../SectionMenu.jsx";
 import QuestioningPatternsPanel from "../QuestioningPatternsPanel.jsx";
@@ -140,7 +141,7 @@ function SectionMarkers({ sections }) {
   ));
 }
 
-function TranscriptRow({ entry, query, highlighted, isInterviewer, onClick, entryRef, onNoteChange }) {
+function TranscriptRow({ entry, query, highlighted, color, onClick, entryRef, onNoteChange }) {
   const [editing, setEditing] = useState(false);
   const hasNote = !!entry.comment;
 
@@ -155,11 +156,10 @@ function TranscriptRow({ entry, query, highlighted, isInterviewer, onClick, entr
     >
       <div className={`${flex.row} gap-3 py-2`}>
         <div
-          className={`w-8 h-8 rounded-pill ${flex.rowCenter} text-white text-xs font-bold shrink-0 ${
-            isInterviewer ? "bg-primary-500" : "bg-sky-500"
-          }`}
+          className={`w-8 h-8 rounded-pill ${flex.rowCenter} text-white text-xs font-bold shrink-0 ${color}`}
+          title={entry.speaker || undefined}
         >
-          {entry.speaker?.slice(0, 2).toUpperCase() || "??"}
+          {initials(entry.speaker)}
         </div>
         <div className={`${flex.col} gap-0.5 flex-1 min-w-0`}>
           <span className="text-xs text-neutral-400">{entry.timestamp}</span>
@@ -231,6 +231,7 @@ export default function TranscriptAnalysisTab({
   highlightedEntryIdx,
   highlightedEntryId,
   interviewerLabel,
+  candidateLabel,
   sections,
   jumpToSection,
   report,
@@ -243,6 +244,14 @@ export default function TranscriptAnalysisTab({
   const [search, setSearch] = useState("");
   const [localHighlightId, setLocalHighlightId] = useState(null);
   const [activeTab, setActiveTab] = useState("candidate");
+
+  // Built from the full transcript (not the search-filtered one) so a
+  // speaker's color doesn't shift while searching - and with the same pinned
+  // order as the live view, so colors match what was seen during recording.
+  const speakerColors = useMemo(
+    () => buildSpeakerColors(transcript, [interviewerLabel, candidateLabel]),
+    [transcript, interviewerLabel, candidateLabel]
+  );
 
   const startedSections = Array.isArray(sections)
     ? sections.map((s, i) => ({ ...s, _idx: i })).filter((s) => s.start_at != null)
@@ -394,7 +403,7 @@ export default function TranscriptAnalysisTab({
                       entry={entry}
                       query={query}
                       highlighted={highlightedEntryIdx === i || entry.id === highlightedEntryId || entry.id === localHighlightId}
-                      isInterviewer={entry.speaker === interviewerLabel}
+                      color={speakerColors.get(entry.speaker)}
                       onClick={query ? () => handleFilteredEntryClick(entry) : undefined}
                       entryRef={(el) => (transcriptEntryRefs.current[i] = el)}
                       onNoteChange={onNoteChange}
