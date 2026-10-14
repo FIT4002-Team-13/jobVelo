@@ -219,13 +219,43 @@ export default function JobDetailPage() {
       <div className="flex-1 flex flex-col overflow-hidden">
         <header className="bg-neutral-0 border-b border-neutral-200 px-10 py-6 shrink-0 flex items-start justify-between">
           <div>
-            {/* Back-to-Jobs - upgraded from a tiny grey breadcrumb to a
-                proper chip so users actually notice it. Border + bg make it
-                read as a button; primary hover ties it to the rest of the
-                action palette (Edit, Add Candidate, Start Interview). */}
+            <h1 className="text-4xl font-extrabold tracking-tight text-neutral-800">
+              Job Posting
+            </h1>
+            <p className="text-xs text-neutral-400 mt-1">
+              Manage your open positions
+            </p>
+          </div>
+          <div className="flex items-center gap-3">
+            <span className="text-xs text-neutral-500">
+              <span className="font-bold text-neutral-700">
+                {candidates.length}
+              </span>
+              {" / "}
+              {job.candidates_total ?? 0} candidates
+            </span>
+            {(user?.role === "recruiter" || user?.role === "admin") && (
+              <button
+                type="button"
+                onClick={() => setShowAddCandidate(true)}
+                disabled={isFull}
+                title={
+                  isFull
+                    ? `This role is full (${job.candidates_total} candidates).`
+                    : undefined
+                }
+                className={`${flex.row} gap-2 ${button.primary} ${
+                  isFull
+                    ? "opacity-50 cursor-not-allowed hover:bg-primary-500"
+                    : ""
+                }`}
+              >
+                + Add Candidate
+              </button>
+            )}
             <button
               onClick={() => navigate(-1)}
-              className={`${flex.row} gap-2 mb-3 text-sm font-semibold text-neutral-600 bg-neutral-0 border border-neutral-200 rounded-lg px-3 py-1.5 hover:bg-primary-500/10 hover:border-primary-200 hover:text-primary-600 transition-colors`}
+              className={`${flex.row} gap-2 text-sm font-semibold text-neutral-600 bg-neutral-0 border border-neutral-200 rounded-lg px-3 py-1.5 hover:bg-primary-500/10 hover:border-primary-200 hover:text-primary-600 transition-colors`}
             >
               <svg
                 width="14"
@@ -241,45 +271,6 @@ export default function JobDetailPage() {
                 <path d="M12 19l-7-7 7-7" />
               </svg>
               Back
-            </button>
-            <h1 className="text-4xl font-extrabold tracking-tight text-neutral-800">
-              Job Posting
-            </h1>
-            <p className="text-xs text-neutral-400 mt-1">
-              Manage your open positions
-            </p>
-          </div>
-          <div className="flex items-center gap-3">
-            {/* Capacity hint - mirrors the job card on JobsPage so the user
-                sees the same X/Y number on both screens. Also explains WHY
-                the button is disabled when the role is full. */}
-            <span className="text-xs text-neutral-500">
-              <span
-                className={`font-bold ${
-                  isFull ? "text-neutral-700" : "text-neutral-700"
-                }`}
-              >
-                {candidates.length}
-              </span>
-              {" / "}
-              {job.candidates_total ?? 0} candidates
-            </span>
-            <button
-              type="button"
-              onClick={() => setShowAddCandidate(true)}
-              disabled={isFull}
-              title={
-                isFull
-                  ? `This role is full (${job.candidates_total} candidates).`
-                  : undefined
-              }
-              className={`${flex.row} gap-2 ${button.primary} ${
-                isFull
-                  ? "opacity-50 cursor-not-allowed hover:bg-primary-500"
-                  : ""
-              }`}
-            >
-              + Add Candidate
             </button>
           </div>
         </header>
@@ -319,12 +310,14 @@ export default function JobDetailPage() {
                 </p>
               </div>
               <div className={`${flex.row} gap-2`}>
-                <button
-                  onClick={() => setShowEdit(true)}
-                  className="text-xs font-medium text-neutral-500 border border-neutral-200 px-3 py-1 rounded-lg hover:bg-neutral-50 transition-colors"
-                >
-                  Edit
-                </button>
+                {(user?.role === 'admin' || user?.role === 'recruiter') && (
+                  <button
+                    onClick={() => setShowEdit(true)}
+                    className="text-xs font-medium text-neutral-500 border border-neutral-200 px-3 py-1 rounded-lg hover:bg-neutral-50 transition-colors"
+                  >
+                    Edit
+                  </button>
+                )}
                 <span
                   className={`text-xs font-bold px-3 py-1 rounded-pill ${
                     JOB_STATUS_STYLES[displayStatus] ?? FALLBACK_STATUS_CLASS
@@ -472,6 +465,7 @@ export default function JobDetailPage() {
             phone: editTarget.phone,
             job_id: id,
             interviewer: editTarget.interviewer || "",
+            interviewer_user_id: editTarget.interviewer_user_id || "",
             interview_datetime: editTarget.scheduled_at || null,
             cv_url: editTarget.cv_url,
             cover_letter_url: editTarget.cover_letter_url,

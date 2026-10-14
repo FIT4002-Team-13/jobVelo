@@ -1,4 +1,4 @@
-import { SortMenu, FilterMenu, makeSorter } from './TableControls'
+import { SortMenu, FilterMenu, makeSorter, SORT_OPTIONS } from './TableControls'
 import { flex, card, badge } from '../../styles/layout'
 import { CANDIDATE_STATUS_STYLES, FALLBACK_STATUS_CLASS } from '../../utils/status.js'
 import { formatScore, formatDateTime } from '../../utils/format.js'
@@ -19,19 +19,35 @@ export default function CandidatesTable({
   onDownloadTranscript,
 }) {
   const isInterviewer = user?.role === 'interviewer'
+  const isHiringManager = user?.role === 'hiring_manager'                    
+  const canManageCandidates =
+    user?.role === 'admin' || user?.role === 'recruiter'
 
   // Rankings always sorts by score, regardless of the Sort menu's key - the
   // menu itself is disabled on that tab (see the "Rankings are sorted by
   // score" placeholder below).
   const table = useTableControls(candidates, {
-    matchesSearch: (c, needle) => (c.name ?? '').toLowerCase().includes(needle),
+    // Search matches the candidate name OR the assigned interviewer, so a
+    // recruiter can pull up "everyone Jamie is interviewing" from one box.
+    matchesSearch: (c, needle) =>
+      (c.name ?? '').toLowerCase().includes(needle) ||
+      (c.interviewer ?? '').toLowerCase().includes(needle),
     matchesFilter: (c, filters) => filters.length === 0 || filters.includes(c.status),
-    compare: (a, b, sortKey) =>
-      tab === 'RANKINGS'
-        ? (b.score ?? -Infinity) - (a.score ?? -Infinity)
-        : (makeSorter(sortKey, { nameField: 'name', dateField: 'scheduled_at' }) ?? (() => 0))(a, b),
+    compare: (a, b, sortKey) => {
+      if (tab === 'RANKINGS') return (b.score ?? -Infinity) - (a.score ?? -Infinity)
+      if (sortKey === 'interviewer_asc') return (a.interviewer ?? '').localeCompare(b.interviewer ?? '')
+      if (sortKey === 'interviewer_desc') return (b.interviewer ?? '').localeCompare(a.interviewer ?? '')
+      return (makeSorter(sortKey, { nameField: 'name', dateField: 'scheduled_at' }) ?? (() => 0))(a, b)
+    },
   })
   const { search, setSearch, sortKey, setSortKey, filters: statusFilters, setFilters: setStatusFilters, sorted } = table
+
+  // Schedules can also sort by interviewer, on top of the shared date/name keys.
+  const scheduleSortOptions = [
+    ...SORT_OPTIONS,
+    { value: 'interviewer_asc', label: 'Interviewer A - Z' },
+    { value: 'interviewer_desc', label: 'Interviewer Z - A' },
+  ]
 
   return (
     <div>
@@ -55,15 +71,15 @@ export default function CandidatesTable({
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Candidate Name"
-              className="outline-none border-none bg-transparent text-sm text-neutral-600 placeholder:text-neutral-400 w-32"
+              placeholder="Name or interviewer"
+              className="outline-none border-none bg-transparent text-sm text-neutral-600 placeholder:text-neutral-400 w-40"
             />
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-neutral-400">
               <circle cx="11" cy="11" r="8" /><path d="m21 21-4.35-4.35" />
             </svg>
           </div>
           {tab === 'SCHEDULES' ? (
-            <SortMenu value={sortKey} onChange={setSortKey} />
+            <SortMenu value={sortKey} onChange={setSortKey} options={scheduleSortOptions} />
           ) : (
             <span className={`${flex.row} gap-1 text-xs font-medium text-neutral-300 cursor-not-allowed`} title="Rankings are sorted by score">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -120,7 +136,10 @@ export default function CandidatesTable({
                   <td className="px-4 py-3 font-semibold text-neutral-700">{formatScore(c.score)}</td>
                 )
                 const isRanked = typeof c.score === 'number' && Number.isFinite(c.score)
-                const isAssignedInterviewer = isInterviewer && c.interviewer_user_id === user?.userid
+                const isAssignedInterviewer =
+                  (isInterviewer || isHiringManager) &&
+                  !!c.interviewer_user_id &&
+                  c.interviewer_user_id === user?.userid
                 const isInProgress = c.status === 'IN PROGRESS'
                 // The assigned interviewer owns the session: only they may start
                 // a SCHEDULED interview or resume one that's IN PROGRESS
@@ -129,8 +148,8 @@ export default function CandidatesTable({
                   (c.status === 'SCHEDULED' || isInProgress) && isAssignedInterviewer
                 const hasCompletedInterview = Boolean(c.intv_completed)
                 const actionsCell = (
-                  <td className="px-4 py-3 w-[1%]" onClick={(e) => e.stopPropagation()}>
-                    <div className={`${flex.row} gap-2 whitespace-nowrap`}>
+                  <td className="px-4 py-3 w-[1%] text-right" onClick={(e) => e.stopPropagation()}>
+                    <div className={`${flex.row} justify-end gap-2 whitespace-nowrap`}>
                       {hasCompletedInterview ? (
                         <button
                           type="button"
@@ -146,13 +165,13 @@ export default function CandidatesTable({
                           </svg>
                           View Transcription
                         </button>
-                      ) : (
+                      ) : canStart ? (
                         <button
                           type="button"
                           disabled={!canStart}
                           title={
                             !isInterviewer
-                              ? 'Only interviewers can start interviews'
+                              ? 'Only interviewers and hiring managers can start interviews'
                               : !isAssignedInterviewer
                               ? `Only the assigned interviewer can ${isInProgress ? 'resume' : 'start'} this interview`
                               : undefined
@@ -167,7 +186,7 @@ export default function CandidatesTable({
                           </svg>
                           {isInProgress ? 'Resume Interview' : 'Start Interview'}
                         </button>
-                      )}
+                      ) : null}
                       <span className="mx-1 w-px self-stretch bg-neutral-200" aria-hidden />
                       <div className={`${flex.row} gap-2`}>
                         <button
@@ -186,42 +205,46 @@ export default function CandidatesTable({
                             <line x1="12" y1="15" x2="12" y2="3" />
                           </svg>
                         </button>
-                        <button
-                          type="button"
-                          disabled={c.status === 'COMPLETED' || c.status === 'CANCELLED'}
-                          onClick={() => {
-                            if (c.status === 'COMPLETED' || c.status === 'CANCELLED') return
-                            onEditCandidate?.(c)
-                          }}
-                          title={c.status === 'COMPLETED' || c.status === 'CANCELLED'
-                            ? 'This interview is finished - the application can no longer be edited.'
-                            : 'Edit candidate'}
-                          aria-label="Edit candidate"
-                          className={`w-7 h-7 ${flex.rowCenter} rounded-lg transition-colors ${
-                            c.status === 'COMPLETED' || c.status === 'CANCELLED'
-                              ? 'cursor-not-allowed text-neutral-200'
-                              : 'text-neutral-400 hover:bg-neutral-100 hover:text-neutral-600'
-                          }`}
-                        >
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <path d="M12 20h9" />
-                            <path d="M16.5 3.5a2.121 2.121 0 1 1 3 3L7 19l-4 1 1-4 12.5-12.5z" />
-                          </svg>
-                        </button>
-                        <button
-                          type="button"
-                          onClick={(event) => { event.stopPropagation(); onDelete?.(c) }}
-                          title="Remove this candidate from the job"
-                          aria-label="Delete candidate"
-                          className={`w-7 h-7 ${flex.rowCenter} rounded-lg text-coral-500 hover:bg-coral-50 hover:text-coral-700 transition-colors`}
-                        >
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <polyline points="3 6 5 6 21 6" />
-                            <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
-                            <path d="M10 11v6M14 11v6" />
-                            <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
-                          </svg>
-                        </button>
+                        {canManageCandidates && (
+                          <button
+                            type="button"
+                            disabled={c.status === 'COMPLETED' || c.status === 'CANCELLED'}
+                            onClick={() => {
+                              if (c.status === 'COMPLETED' || c.status === 'CANCELLED') return
+                              onEditCandidate?.(c)
+                            }}
+                            title={c.status === 'COMPLETED' || c.status === 'CANCELLED'
+                              ? 'This interview is finished - the application can no longer be edited.'
+                              : 'Edit candidate'}
+                            aria-label="Edit candidate"
+                            className={`w-7 h-7 ${flex.rowCenter} rounded-lg transition-colors ${
+                              c.status === 'COMPLETED' || c.status === 'CANCELLED'
+                                ? 'cursor-not-allowed text-neutral-200'
+                                : 'text-neutral-400 hover:bg-neutral-100 hover:text-neutral-600'
+                            }`}
+                          >
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <path d="M12 20h9" />
+                              <path d="M16.5 3.5a2.121 2.121 0 1 1 3 3L7 19l-4 1 1-4 12.5-12.5z" />
+                            </svg>
+                          </button>
+                        )}
+                        {canManageCandidates && (
+                          <button
+                            type="button"
+                            onClick={(event) => { event.stopPropagation(); onDelete?.(c) }}
+                            title="Remove this candidate from the job"
+                            aria-label="Delete candidate"
+                            className={`w-7 h-7 ${flex.rowCenter} rounded-lg text-coral-500 hover:bg-coral-50 hover:text-coral-700 transition-colors`}
+                          >
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <polyline points="3 6 5 6 21 6" />
+                              <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+                              <path d="M10 11v6M14 11v6" />
+                              <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+                            </svg>
+                          </button>
+                        )}
                       </div>
                     </div>
                   </td>

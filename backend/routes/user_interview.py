@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from bson import ObjectId
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from database import get_db
-from dependencies import get_current_comp_id
+from dependencies import get_current_comp_id, require_role
 from models.user_interview import InterviewUserCreate, InterviewUserOut
 from routes._scoping import interview_in_company
 
@@ -37,6 +37,7 @@ def interview_user_helper(interview_user: dict) -> InterviewUserOut:
 async def create_interview_user(
     payload: InterviewUserCreate,
     comp_id: ObjectId = Depends(get_current_comp_id),
+    _user: dict = Depends(require_role("recruiter")),
 ) -> InterviewUserOut:
     """Create the user-interview relationship.
 
@@ -65,7 +66,7 @@ async def create_interview_user(
             detail="User is already linked to this interview.",
         )
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     interview_user_doc = {
         "user_id": payload.user_id,

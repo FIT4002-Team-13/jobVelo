@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta, timezone
 
 from bson import ObjectId
 from fastapi import APIRouter, Depends, HTTPException, Response, status
@@ -188,7 +188,7 @@ def interview_helper(interview: dict) -> InterviewOut:
     back to not_scheduled, and malformed reports/transcripts degrade to
     None/[] instead of raising - one bad historical doc shouldn't 500 an
     entire list query (this was the "failed to load candidate page" bug)."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     created = interview.get("intv_created_at")
     updated = interview.get("intv_updated_at")
     if not isinstance(created, datetime):
@@ -248,7 +248,7 @@ async def _assert_assigned_interviewer(db, intv_id: str, user: dict) -> None:
 )
 async def create_interview(
     payload: InterviewCreate,
-    _user: dict = Depends(require_role("interviewer")),
+    _user: dict = Depends(require_role("recruiter")),
     comp_id: ObjectId = Depends(get_current_comp_id),
 ) -> InterviewOut:
     """Insert a new interview document.
@@ -285,7 +285,7 @@ async def create_interview(
                     detail="Only the assigned interviewer can start this interview.",
                 )
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     interview_doc = {
         "cand_id": payload.cand_id,
@@ -393,7 +393,9 @@ async def get_interview_context(
     if job_id and ObjectId.is_valid(job_id):
         job = await db.jobs.find_one({"_id": ObjectId(job_id)}, {"title": 1})
         if job:
-            job_ctx = InterviewContextJob(job_id=str(job["_id"]), title=job.get("title"))
+            job_ctx = InterviewContextJob(
+                job_id=str(job["_id"]), title=job.get("title")
+            )
 
     cand_ctx = None
     if cand_id and ObjectId.is_valid(cand_id):
@@ -411,9 +413,7 @@ async def get_interview_context(
     jobcand_ctx = None
     cv_analysis_out = None
     if job_id and cand_id:
-        link = await db.job_candidates.find_one(
-            {"cand_id": cand_id, "job_id": job_id}
-        )
+        link = await db.job_candidates.find_one({"cand_id": cand_id, "job_id": job_id})
         if link:
             jobcand_id = str(link["_id"])
             jobcand_ctx = InterviewContextJobCandidate(
@@ -575,6 +575,30 @@ def _cv_analysis_to_text(doc: dict) -> str:
     return "\n".join(lines)
 
 
+def _plan_sections_to_text(sections: list | None) -> str | None:
+    """Condense the interview plan sections into a numbered list for the report
+    prompt (topic coverage + plan adherence). None when there's no plan."""
+    if not sections:
+        return None
+    lines: list[str] = []
+    for i, s in enumerate(sections, 1):
+        if not isinstance(s, dict):
+            continue
+        name = (s.get("name") or "").strip()
+        if not name:
+            continue
+        desc = (s.get("description") or "").strip()
+        minutes = s.get("suggested_minutes")
+        extra = []
+        if desc:
+            extra.append(desc)
+        if isinstance(minutes, (int, float)) and minutes:
+            extra.append(f"{int(minutes)} min")
+        suffix = f" - {'; '.join(extra)}" if extra else ""
+        lines.append(f"{i}. {name}{suffix}")
+    return "\n".join(lines) or None
+
+
 async def _get_interviewer_name(db, intv_id: str) -> str | None:
     """Look up the interviewer's display name via interview_users -> users.
 
@@ -616,6 +640,7 @@ async def _generate_reports(
     job: dict,
     candidate: dict,
     cv_context: str | None,
+    plan_context: str | None,
     candidate_speech_detected: bool,
     interviewer_label: str,
     candidate_label: str,
@@ -634,6 +659,7 @@ async def _generate_reports(
             job_description=job.get("description"),
             candidate_name=candidate.get("cand_full_name"),
             cv_analysis_context=cv_context,
+            plan_context=plan_context,
             duration_seconds=duration_seconds,
             interviewer_speaker_label=interviewer_label,
             candidate_speaker_label=candidate_label,
@@ -721,7 +747,7 @@ async def _persist_completion(
     duration_seconds: int | None,
 ) -> None:
     """Write ratings to job_candidates and finalise the interview document."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     await db.job_candidates.update_one(
         {"_id": link_id},
@@ -897,7 +923,7 @@ async def _detect_interruptions(
 async def complete_interview(
     intv_id: str,
     payload: InterviewCompleteRequest,
-    _user: dict = Depends(require_role("interviewer")),
+    _user: dict = Depends(require_role("interviewer", "hiring_manager")),
     comp_id: ObjectId = Depends(get_current_comp_id),
 ) -> InterviewCompleteOut:
     """Called when the interviewer clicks Complete.
@@ -1042,6 +1068,10 @@ async def complete_interview(
     if analysis and (analysis.get("status") or "completed") == "completed":
         cv_context = _cv_analysis_to_text(analysis) or None
 
+    # Interview plan (for the interviewer report's questioning-pattern analysis:
+    # topic coverage + plan adherence). Absent when no plan was set.
+    plan_context = _plan_sections_to_text(link.get("plan_sections"))
+
     # Diarization guard: detect transcripts where every line is attributed to
     # the interviewer (see _has_non_interviewer_speech for the failure mode).
     interviewer_name = await _get_interviewer_name(db, intv_id)
@@ -1063,6 +1093,7 @@ async def complete_interview(
                 job=job,
                 candidate=candidate,
                 cv_context=cv_context,
+                plan_context=plan_context,
                 candidate_speech_detected=candidate_speech_detected,
                 interviewer_label=interviewer_label,
                 candidate_label=candidate_label,
@@ -1194,7 +1225,7 @@ async def _report_pdf_response(intv_id: str, kind: str, user: dict) -> Response:
     # Stamp with the interview's datetime (fallback: today) so a folder of
     # downloads sorts naturally and repeat interviews don't overwrite.
     when = interview.get("intv_date_time")
-    stamp = (when or datetime.now(timezone.utc)).strftime("%Y-%m-%d-%H%M")
+    stamp = (when or datetime.now(UTC)).strftime("%Y-%m-%d-%H%M")
     filename = f"{kind}-report-{safe_name}-{stamp}.pdf"
     return Response(
         content=pdf_bytes,
@@ -1297,11 +1328,26 @@ def _transcript_to_text(entries: list[dict]) -> str:
 async def update_interview(
     intv_id: str,
     payload: InterviewUpdate,
-    user: dict = Depends(get_current_user),
+    user: dict = Depends(require_role("interviewer", "hiring_manager")),
     comp_id: ObjectId = Depends(get_current_comp_id),
 ) -> InterviewOut:
     db = get_db()
+
     existing_interview = await _get_interview_in_company(db, intv_id, comp_id)
+
+    if payload.intv_status == "in_progress":
+        assigned = await db.interview_users.find_one(
+            {
+                "intv_id": intv_id,
+                "user_id": str(user["_id"]),
+            }
+        )
+
+        if not assigned:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You are not assigned to this interview.",
+            )
 
     update_data = payload.model_dump(exclude_unset=True)
 
@@ -1314,7 +1360,7 @@ async def update_interview(
     if update_data.get("intv_status") == "in_progress":
         await _assert_assigned_interviewer(db, intv_id, user)
 
-    update_data["intv_updated_at"] = datetime.now(timezone.utc)
+    update_data["intv_updated_at"] = datetime.now(UTC)
 
     await db.interviews.update_one(
         {"_id": ObjectId(intv_id)},
@@ -1322,6 +1368,7 @@ async def update_interview(
     )
 
     updated_interview = await db.interviews.find_one({"_id": ObjectId(intv_id)})
+
     if not updated_interview:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
