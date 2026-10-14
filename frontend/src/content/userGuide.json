@@ -20,11 +20,11 @@
           "intro": "Your role decides which pages and buttons you see. Pages you do not have access to are hidden from the sidebar.",
           "steps": [
             { "text": "Admin: invite new users, assign roles, manage the company profile, and edit jobs and candidates.", "roles": ["admin"] },
-            { "text": "Recruiter: create and edit jobs, add candidates, edit candidates, and schedule interviews by assigning an interviewer and a date.", "roles": ["recruiter"] },
+            { "text": "Recruiter: create and edit jobs, add and edit candidates, and schedule interviews by assigning an interviewer and a date.", "roles": ["recruiter"] },
             { "text": "Interviewer: run the interviews assigned to you. You can see all jobs and only the candidates whose interviews are assigned to you.", "roles": ["interviewer"] },
             { "text": "Hiring Manager: assess candidates and record recruitment decisions. Assess interviewers using Insights and their interview feedback. You also run the interviews assigned to you, see all jobs and candidates and can be assigned as an interviewer.", "roles": ["hiring_manager"] },
-            { "text": "Everyone: view candidate transcripts and post-interview feedback. Interviewers only see the feedback for interviews they conducted." },
-            { "text": "Your role cannot be changed from the app. Ask your admin for adjustment." }
+            { "text": "Everyone: view candidate transcripts and post-interview feedback. Interviewers only see the feedback for interviews they conducted." , "roles": ["interviewer"] },
+            { "text": "Your role cannot be changed from the app. Ask your admin for adjustment.", "roles": ["interviewer", "hiring_manager", "recruiter"] }
           ]
         },
         {
@@ -34,7 +34,7 @@
           "intro": "A quick tour of the sidebar. Pages not listed here are hidden for your account.",
           "steps": [
             { "text": "Dashboard: summary of jobs, candidates and recent activity." },
-            { "text": "Schedules: a monthly calendar of interviews by date. Interviewers and Hiring Managers see only their own assigned interviews." },
+            { "text": "Schedules: a monthly calendar of interviews by date. Interviewers see only their own assigned interviews." },
             { "text": "Jobs: the company's job postings. Open a job to see its candidate list and further job details." },
             { "text": "Candidates: every applicant across all jobs. Filter by status, sort by date or name and search by candidate name." },
             { "text": "Insights - Interviewers: the candidate's average score under different interviewer, bias flags and interview consistency across the team.", "roles": ["hiring_manager"] },
@@ -202,7 +202,7 @@
           "steps": [
             { "text": "A red box titled Possibly biased question appears in the transcript panel, with the category (for example age, gender or family circumstances)." },
             { "text": "Click the box to expand it. It shows the quoted line, the reason it was flagged and a suggestion when available." },
-            { "text": "Rephrase the question if the warning is valid howeer, warnings are only advisory." },
+            { "text": "Rephrase the question if the warning is valid. However, warnings are only advisory." },
             { "text": "Flags are kept with the interview. Hiring Managers can review them later." }
           ]
         },
@@ -392,7 +392,7 @@
     },
     {
       "title": "Candidate's voice is missing from the transcript",
-      "text": "Screen share was not started, or the share dialog did not include audio. Click Share screen again and tick the audio option in the browser's dialog (Share tab audio or Share system audio)."
+      "text": "Screen share was not started, or the share dialog did not include audio. Click Share screen again and tick the audio option in the browser's dialog (Share tab audio or Share system audio). Note: Some devices or browsers may only support audio sharing when you select a browser tab in the same window, rather than sharing your entire screen."
     },
     {
       "title": "Screen share stops during the interview",
