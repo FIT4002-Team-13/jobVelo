@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import math
 from collections import defaultdict
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
 from bson import ObjectId
 from fastapi import APIRouter, Depends, Query
@@ -54,7 +54,7 @@ async def interview_consistency(
         "intv_status": "completed",
     }
     if days > 0:
-        cutoff = datetime.now(datetime.UTC) - timedelta(days=days)
+        cutoff = datetime.now(UTC) - timedelta(days=days)
         q["intv_date_time"] = {"$gte": cutoff}
 
     interviews = [doc async for doc in db.interviews.find(q)]

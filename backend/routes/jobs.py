@@ -15,7 +15,7 @@ Route shape: /api/jobs + /api/jobs/{job_id}
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 
 from bson import ObjectId
 from fastapi import APIRouter, Depends, HTTPException, Response, status
@@ -283,7 +283,7 @@ async def create_job(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Only recruiters and admins can manage jobs.",
         )
-    now = datetime.now(datetime.UTC)
+    now = datetime.now(UTC)
     body = payload.model_dump()
     body["comp_id"] = comp_id  # JWT-derived; ignore whatever the client sent
     # `candidates_filled` and `interviewers` are NOT stored on the doc -
@@ -318,7 +318,7 @@ async def update_job(
     updates = {k: v for k, v in payload.model_dump().items() if v is not None}
     if not updates:
         raise HTTPException(status_code=400, detail="No fields to update")
-    updates["job_last_update_datetime"] = datetime.now(datetime.UTC)
+    updates["job_last_update_datetime"] = datetime.now(UTC)
 
     # Two-part filter: only updates if the job ALSO belongs to the caller's
     # company. Cross-tenant edits fall into the 404 branch.
@@ -509,7 +509,7 @@ async def add_candidate_to_job(
     if job is None:
         raise HTTPException(status_code=404, detail="Job not found")
 
-    now = datetime.now(datetime.UTC)
+    now = datetime.now(UTC)
     comp_id = job["comp_id"]  # ObjectId
 
     # Validate the interviewer BEFORE creating anything, so a bad id can't

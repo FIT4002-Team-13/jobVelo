@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 import re
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 
 from bson import ObjectId
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -95,7 +95,7 @@ async def _recent_completed_interview_ids(db, user_id: str) -> list[str]:
     completed.sort(
         key=lambda d: d.get("intv_updated_at")
         or d.get("intv_created_at")
-        or datetime.min.replace(tzinfo=datetime.UTC),
+        or datetime.min.replace(tzinfo=UTC),
         reverse=True,
     )
     return [str(d["_id"]) for d in completed[:_MAX_SESSIONS]]
@@ -223,7 +223,7 @@ async def regenerate_suggestions(
     kept = _engaged_suggestions((prev or {}).get("suggestions"))
     suggestions = _merge_suggestions(kept, result.suggestions)
 
-    now = datetime.now(datetime.UTC)
+    now = datetime.now(UTC)
     doc = {
         "user_id": user_id,
         "suggestions": suggestions,

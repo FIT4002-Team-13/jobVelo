@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 
 from bson import ObjectId
 from fastapi import (
@@ -79,7 +79,7 @@ async def _auto_generate_plan(jobcand_id: str, job_id: str, cand_id: str) -> Non
                 {
                     "$set": {
                         "plan_sections": sections,
-                        "updated_at": datetime.now(datetime.UTC),
+                        "updated_at": datetime.now(UTC),
                     }
                 },
             )
@@ -113,7 +113,7 @@ def candidate_helper(candidate: dict, cand_status: str | None = None) -> Candida
     dashboard is the only place that needs it today.
     """
 
-    now = datetime.now(datetime.UTC)
+    now = datetime.now(UTC)
     return CandidateOut(
         cand_id=str(candidate["_id"]),
         cand_full_name=candidate.get("cand_full_name")
@@ -179,7 +179,7 @@ async def create_candidate(
             detail="Candidate with this email already exists in this company.",
         )
 
-    now = datetime.now(datetime.UTC)
+    now = datetime.now(UTC)
 
     candidate_doc = {
         "cand_full_name": payload.cand_full_name,
@@ -224,7 +224,7 @@ async def create_candidate_for_job(
     """
 
     db = get_db()
-    now = datetime.now(datetime.UTC)
+    now = datetime.now(UTC)
     comp_oid = comp_id  # JWT-derived
 
     # 0. The target job must exist AND belong to the caller's company -
@@ -670,7 +670,7 @@ async def update_candidate(
                 detail="Candidate with this email already exists in this company.",
             )
 
-    update_data["cand_updated_at"] = datetime.now(datetime.UTC)
+    update_data["cand_updated_at"] = datetime.now(UTC)
 
     await db.candidates.update_one(
         {"_id": ObjectId(cand_id)},
@@ -737,7 +737,7 @@ async def upload_cover_letter(
     if old_url.startswith(old_prefix):
         await delete_upload(old_url.removeprefix("/api/files/"))
 
-    now = datetime.now(datetime.UTC)
+    now = datetime.now(UTC)
     await db.candidates.update_one(
         {"_id": candidate["_id"]},
         {
@@ -783,7 +783,7 @@ async def delete_cover_letter(
         {
             "$set": {
                 "cand_cover_letter_url": None,
-                "cand_updated_at": datetime.now(datetime.UTC),
+                "cand_updated_at": datetime.now(UTC),
             }
         },
     )

@@ -20,7 +20,7 @@ schema enforcement still happens - just one hop later.
 from __future__ import annotations
 
 import json
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from google import genai
@@ -178,7 +178,7 @@ async def analyse_cv(
         else "JOB DESCRIPTION: (not provided - score against position_title only)"
     )
     header = (
-        f"Today's date: {datetime.now(datetime.UTC).date().isoformat()}\n"
+        f"Today's date: {datetime.now(UTC).date().isoformat()}\n"
         f"Target position: {position_title}\n"
         f"Documents attached: {len(parts)}\n"
         f"{jd_block}\n\n"

@@ -9,7 +9,7 @@ Plus the usual login + me endpoints.
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
@@ -62,7 +62,7 @@ def _user_out(doc: dict) -> UserOut:
         email=doc["email"],
         role=role,
         comp_id=str(doc["comp_id"]) if doc.get("comp_id") else None,
-        created_at=doc.get("created_at") or datetime.now(datetime.UTC),
+        created_at=doc.get("created_at") or datetime.now(UTC),
     )
 
 
@@ -144,7 +144,7 @@ async def signup_company(
     used for validation (just constructed manually since multipart can't bind
     a full BaseModel directly)."""
     db = get_db()
-    now = datetime.now(datetime.UTC)
+    now = datetime.now(UTC)
 
     # Validate admin half via the Pydantic model so password strength + email
     # format are enforced consistently with the rest of the codebase.
@@ -276,7 +276,7 @@ async def signup(payload: UserCreate) -> UserOut:
 
     inv = await db.invitations.find_one_and_update(
         {"code": code, "status": "active"},
-        {"$set": {"status": "used", "used_at": datetime.now(datetime.UTC)}},
+        {"$set": {"status": "used", "used_at": datetime.now(UTC)}},
         return_document=True,
     )
     if not inv:
@@ -293,7 +293,7 @@ async def signup(payload: UserCreate) -> UserOut:
         "password_hash": hash_password(payload.password),
         "comp_id": inv["comp_id"],
         "role": inv.get("role") or "interviewer",
-        "created_at": datetime.now(datetime.UTC),
+        "created_at": datetime.now(UTC),
     }
     try:
         result = await db.users.insert_one(doc)

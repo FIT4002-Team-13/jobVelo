@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import datetime
+from datetime import UTC, datetime
 
 from bson import ObjectId
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
@@ -79,7 +79,7 @@ async def _auto_generate_plan(jobcand_id: str, job_id: str, cand_id: str) -> Non
                 {
                     "$set": {
                         "plan_sections": sections,
-                        "updated_at": datetime.now(datetime.UTC),
+                        "updated_at": datetime.now(UTC),
                     }
                 },
             )
@@ -102,8 +102,8 @@ def job_candidate_helper(job_candidate: dict) -> JobCandidateOut:
         ratings=job_candidate.get("ratings"),
         rank=job_candidate.get("rank"),
         plan_sections=job_candidate.get("plan_sections"),
-        created_at=job_candidate.get("created_at") or datetime.now(datetime.UTC),
-        updated_at=job_candidate.get("updated_at") or datetime.now(datetime.UTC),
+        created_at=job_candidate.get("created_at") or datetime.now(UTC),
+        updated_at=job_candidate.get("updated_at") or datetime.now(UTC),
     )
 
 
@@ -149,7 +149,7 @@ async def create_job_candidate(
             detail="Candidate is already linked to this job.",
         )
 
-    now = datetime.now(datetime.UTC)
+    now = datetime.now(UTC)
     job_candidate_doc = {
         "cand_id": payload.cand_id,
         "job_id": payload.job_id,
@@ -345,7 +345,7 @@ async def update_job_candidate_scores(
     if updates.get("ratings") is not None:
         updates["status"] = "EVALUATED"
 
-    updates["updated_at"] = datetime.now(datetime.UTC)
+    updates["updated_at"] = datetime.now(UTC)
 
     result = await db.job_candidates.find_one_and_update(
         {"_id": oid},
@@ -382,7 +382,7 @@ async def update_job_candidate_plan(
         {
             "$set": {
                 "plan_sections": payload.plan_sections,
-                "updated_at": datetime.now(datetime.UTC),
+                "updated_at": datetime.now(UTC),
             }
         },
         return_document=True,

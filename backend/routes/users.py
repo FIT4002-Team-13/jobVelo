@@ -11,7 +11,7 @@ filter for narrowing within the caller's own company.
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 
 from bson import ObjectId
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -52,7 +52,7 @@ def _user_out(doc: dict) -> UserOut:
         email=doc.get("email") or "unknown@unknown.test",
         role=role,
         comp_id=str(doc["comp_id"]) if doc.get("comp_id") else None,
-        created_at=doc.get("created_at") or datetime.now(datetime.UTC),
+        created_at=doc.get("created_at") or datetime.now(UTC),
     )
 
 

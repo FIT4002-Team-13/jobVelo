@@ -25,7 +25,7 @@ from __future__ import annotations
 
 import logging
 import re
-from datetime import datetime
+from datetime import UTC, datetime
 
 from fastapi import HTTPException, UploadFile
 from motor.motor_asyncio import AsyncIOMotorGridFSBucket
@@ -144,7 +144,7 @@ async def save_upload(file: UploadFile, *, subdir: str, key: str) -> str:
             "content_type": file.content_type
             or _CONTENT_TYPES.get(ext, "application/octet-stream"),
             "subdir": subdir,
-            "uploaded_at": datetime.now(datetime.UTC),
+            "uploaded_at": datetime.now(UTC),
         },
     )
     return rel_path
@@ -186,7 +186,7 @@ async def save_bytes(
             "content_type": content_type
             or _CONTENT_TYPES.get(ext, "application/octet-stream"),
             "subdir": subdir,
-            "uploaded_at": datetime.now(datetime.UTC),
+            "uploaded_at": datetime.now(UTC),
         },
     )
     return rel_path

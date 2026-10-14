@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import re
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 
 from bson import ObjectId
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -224,7 +224,7 @@ async def regenerate_feedback(
     kept_strengths = _engaged_items((prev or {}).get("strengths"))
     kept_improvements = _engaged_items((prev or {}).get("improvements"))
 
-    now = datetime.now(datetime.UTC)
+    now = datetime.now(UTC)
     doc = {
         "user_id": str(user["_id"]),
         "comp_id": str(comp_id),
@@ -256,7 +256,7 @@ async def update_feedback_item(
     if not doc:
         raise HTTPException(status_code=404, detail="Feedback not found")
 
-    now = datetime.now(datetime.UTC)
+    now = datetime.now(UTC)
     found = False
     for key in ("strengths", "improvements"):
         for item in doc.get(key, []):

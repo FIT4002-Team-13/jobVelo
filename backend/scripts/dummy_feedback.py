@@ -5,7 +5,7 @@ Run from the backend/ directory: python -m scripts.dummy_feedback
 """
 
 import asyncio
-from datetime import datetime
+from datetime import UTC, datetime
 
 from database import close_mongo_connection, connect_to_mongo, get_db
 
@@ -13,7 +13,7 @@ from database import close_mongo_connection, connect_to_mongo, get_db
 async def main():
     await connect_to_mongo()
     db = get_db()
-    now = datetime.now(datetime.UTC)
+    now = datetime.now(UTC)
 
     # email of the account to test
     MY_EMAIL = "bb@b.com"

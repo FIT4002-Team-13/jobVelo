@@ -8,7 +8,7 @@ Style matches test_cand.py: TestClient from conftest, `get_db` patched with
 MagicMock/AsyncMock per route module, auth faked via dependency overrides.
 """
 
-from datetime import datetime
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -47,7 +47,7 @@ def _cursor(items):
 
 
 def _interview_doc(job_id: str | None = None, status: str = "scheduled") -> dict:
-    now = datetime.now(datetime.UTC)
+    now = datetime.now(UTC)
     return {
         "_id": ObjectId(),
         "cand_id": str(ObjectId()),
@@ -539,7 +539,7 @@ def test_interview_users_create_succeeds(authed_recruiter):
     """Regression for the datetime.now(datetime.utc) crash: a valid create
     must reach 201, not 500."""
     _, client = authed_recruiter
-    now = datetime.now(datetime.UTC)
+    now = datetime.now(UTC)
     link_id = ObjectId()
     user_id, intv_id = str(ObjectId()), str(ObjectId())
 

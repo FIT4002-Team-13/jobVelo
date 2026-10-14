@@ -5,7 +5,7 @@ difference from the mock tests in test_cand.py is that the actual query
 logic, field names, and multi-collection flows are all exercised here.
 """
 
-from datetime import datetime
+from datetime import UTC, datetime
 from unittest.mock import patch
 
 import httpx
@@ -64,7 +64,7 @@ async def authed_db_client(db_client):
 async def test_status_rollup_scheduled_beats_evaluated(authed_db_client):
     """SCHEDULED must win over EVALUATED when a candidate has both."""
     client, db, comp_id = authed_db_client
-    now = datetime.now(datetime.UTC)
+    now = datetime.now(UTC)
     cand_id = ObjectId()
 
     await db.candidates.insert_one(
@@ -97,7 +97,7 @@ async def test_status_rollup_scheduled_beats_evaluated(authed_db_client):
 async def test_status_rollup_no_interview_gives_not_scheduled(authed_db_client):
     """A candidate linked to a job but with no interview should be NOT SCHEDULED."""
     client, db, comp_id = authed_db_client
-    now = datetime.now(datetime.UTC)
+    now = datetime.now(UTC)
     cand_id = ObjectId()
 
     await db.candidates.insert_one(
@@ -124,7 +124,7 @@ async def test_status_rollup_no_interview_gives_not_scheduled(authed_db_client):
 async def test_status_rollup_profile_only_gives_none(authed_db_client):
     """A candidate with no job link at all should have cand_status = null."""
     client, db, comp_id = authed_db_client
-    now = datetime.now(datetime.UTC)
+    now = datetime.now(UTC)
 
     await db.candidates.insert_one(
         {
@@ -155,7 +155,7 @@ async def test_status_rollup_profile_only_gives_none(authed_db_client):
 async def test_create_candidate_duplicate_email_returns_400(authed_db_client):
     """Second POST with the same email in the same company must be rejected."""
     client, db, comp_id = authed_db_client
-    now = datetime.now(datetime.UTC)
+    now = datetime.now(UTC)
 
     await db.candidates.insert_one(
         {
@@ -186,7 +186,7 @@ async def test_create_candidate_same_email_different_company_is_allowed(
 ):
     """Same email in a different company must succeed — candidates are tenant-scoped."""
     client, db, comp_id = authed_db_client
-    now = datetime.now(datetime.UTC)
+    now = datetime.now(UTC)
 
     await db.candidates.insert_one(
         {
@@ -315,7 +315,7 @@ async def test_create_for_job_second_link_to_same_job_is_idempotent(authed_db_cl
 
 async def test_list_candidates_for_job_row_shape(authed_db_client):
     client, db, comp_id = authed_db_client
-    now = datetime.now(datetime.UTC)
+    now = datetime.now(UTC)
     job_id, cand_id, link_id, intv_id, user_id = (ObjectId() for _ in range(5))
 
     await db.jobs.insert_one({"_id": job_id, "comp_id": comp_id, "title": "Dev"})
@@ -370,7 +370,7 @@ async def test_list_candidates_for_job_row_shape(authed_db_client):
 
 async def test_list_job_candidates_flat_row_shape(authed_db_client):
     client, db, comp_id = authed_db_client
-    now = datetime.now(datetime.UTC)
+    now = datetime.now(UTC)
     job_id, cand_id, link_id = ObjectId(), ObjectId(), ObjectId()
 
     await db.jobs.insert_one({"_id": job_id, "comp_id": comp_id, "title": "Platform"})

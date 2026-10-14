@@ -13,7 +13,7 @@ Endpoints:
 from __future__ import annotations
 
 import calendar
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Literal
 
 from bson import ObjectId
@@ -54,9 +54,9 @@ def _add_months(year: int, month: int, delta: int) -> tuple[int, int]:
 
 
 def _month_bounds(year: int, month: int) -> tuple[datetime, datetime]:
-    start = datetime(year, month, 1, tzinfo=datetime.UTC)
+    start = datetime(year, month, 1, tzinfo=UTC)
     ny, nm = _add_months(year, month, 1)
-    return start, datetime(ny, nm, 1, tzinfo=datetime.UTC)
+    return start, datetime(ny, nm, 1, tzinfo=UTC)
 
 
 def _pct_change(current: float, previous: float) -> float | None:
@@ -68,9 +68,9 @@ def _pct_change(current: float, previous: float) -> float | None:
 def _as_utc(dt: datetime) -> datetime:
     """Mongo/motor here returns naive datetimes (no tz_aware client option),
     but every stored value is UTC - so a naive read needs a UTC tzinfo before
-    it can be compared against an aware `datetime.now(datetime.UTC)`. Same
+    it can be compared against an aware `datetime.now(UTC)`. Same
     fix as cv_analysis.py's `_status_of`."""
-    return dt if dt.tzinfo is not None else dt.replace(tzinfo=datetime.UTC)
+    return dt if dt.tzinfo is not None else dt.replace(tzinfo=UTC)
 
 
 def _bucket_avg(sessions: list[dict], start: datetime, end: datetime) -> float | None:
@@ -102,8 +102,8 @@ def _build_score_trend(
         week_no = 1
         while day <= last_day:
             week_end_day = min(day + 6, last_day)
-            start = datetime(y, m, day, tzinfo=datetime.UTC)
-            end = datetime(y, m, week_end_day, tzinfo=datetime.UTC) + timedelta(days=1)
+            start = datetime(y, m, day, tzinfo=UTC)
+            end = datetime(y, m, week_end_day, tzinfo=UTC) + timedelta(days=1)
             points.append(
                 {
                     "label": f"W{week_no}",
@@ -169,7 +169,7 @@ async def _compute_interviewer_stats(
         await _company_job_ids(db, comp_id),
     )
 
-    now = datetime.now(datetime.UTC)
+    now = datetime.now(UTC)
     interviews: list[dict] = []
     sessions: list[dict] = []  # {when, score}
 
@@ -299,7 +299,7 @@ async def get_interviewer_stats_report(
         trend_heading=_TREND_HEADINGS[range],
     )
 
-    stamp = datetime.now(datetime.UTC).strftime("%Y-%m-%d-%H%M")
+    stamp = datetime.now(UTC).strftime("%Y-%m-%d-%H%M")
     filename = f"interview-stats-{stamp}.pdf"
     return Response(
         content=pdf_bytes,
