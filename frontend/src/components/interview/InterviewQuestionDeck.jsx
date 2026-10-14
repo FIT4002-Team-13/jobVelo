@@ -77,7 +77,7 @@ export function QuestionCard({ q, onMoreLike, onIgnore, isGeneratingSimilar }) {
           onClick={() => onIgnore?.(q)}
           className={`${button.danger} w-full py-1.5 text-xs font-semibold rounded-lg`}
         >
-          Ignore
+          Remove
         </button>
         <button
           onClick={() => onMoreLike(q)}
