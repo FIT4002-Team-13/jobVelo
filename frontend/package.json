@@ -17,6 +17,9 @@
     "react-dom": "^18.3.1",
     "react-router-dom": "^6.26.2"
   },
+  "overrides": {
+    "braces": "^3.0.3"
+  },
   "devDependencies": {
     "@eslint/js": "^9.39.5",
     "@playwright/test": "^1.62.1",

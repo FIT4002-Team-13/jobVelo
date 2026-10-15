@@ -70,4 +70,21 @@ describe("api client", () => {
     await api.listInterviewers();
     expect(calls[0].url).toBe("/api/users?role=interviewer");
   });
+
+  // A08: CSRF mitigation — the app uses JWT Bearer tokens sent in the
+  // Authorization request header. Browsers block cross-origin requests that
+  // include custom headers without a preflight (CORS), so a forged form POST
+  // from another origin cannot attach this header. Cookie-based sessions are
+  // not used, which means traditional CSRF tokens are unnecessary by design.
+  it("A08 - mutating requests carry Authorization header, not a session cookie", async () => {
+    await api.completeInterview("i1", { transcript: [], duration_seconds: 0, bias_incidents: [] });
+    expect(calls[0].init.headers.Authorization).toMatch(/^Bearer /);
+    expect(calls[0].init.credentials).not.toBe("include");
+  });
+
+  it("A08 - unauthenticated client omits Authorization header", async () => {
+    localStorage.clear();
+    await api.listJobs();
+    expect(calls[0].init.headers?.Authorization).toBeUndefined();
+  });
 });
