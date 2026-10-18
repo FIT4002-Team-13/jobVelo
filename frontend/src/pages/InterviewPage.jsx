@@ -30,6 +30,17 @@ export default function InterviewPage() {
 
   const { assignedInterviewer } = useAssignedInterviewer(id);
 
+  const [companyName, setCompanyName] = useState("");
+  useEffect(() => {
+    if (!user?.comp_id) return;
+    let cancelled = false;
+    api
+      .getCompany(user.comp_id)
+      .then((c) => { if (!cancelled) setCompanyName(c?.comp_name || ""); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [user?.comp_id]);
+
   const timerRef = useRef(0);
   const startTimeRef = useRef(Date.now());
   const generateFollowUpRef = useRef(null);
@@ -262,7 +273,7 @@ export default function InterviewPage() {
                 {assignedInterviewer.name || "—"}
               </span>
               <span className="text-sm text-neutral-400">
-                {user?.role || "—"}
+                {companyName || "—"}
               </span>
             </div>
           </div>

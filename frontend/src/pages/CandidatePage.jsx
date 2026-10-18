@@ -146,8 +146,11 @@ export default function CandidatePage() {
   // Silently refresh the score/evidence breakdown for the debrief panel -
   // the stored interview record only carries the report text, not the
   // scored ratings, so this re-derives them without popping the report modal.
+  // Only interviewer-capable roles may call it (everyone else would get a 403);
+  // they read the stored ratings off the job-candidate link instead (below).
   useEffect(() => {
     if (!isCompleted) return;
+    if (user?.role !== "interviewer" && user?.role !== "hiring_manager") return;
     authedFetch(`/api/interviews/${id}/complete`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -162,7 +165,18 @@ export default function CandidatePage() {
         if (data) setPrefetchedReport(data);
       }
     });
-  }, [isCompleted, id, serverData]);
+  }, [isCompleted, id, serverData, user?.role]);
+
+  // Stored ratings are readable by every role in the company, so the score
+  // donut doesn't depend on being able to call POST /complete.
+  const storedRatings = jobCand?.ratings ?? null;
+  const storedScores = storedRatings && {
+    communication: storedRatings.communication?.score,
+    skill: storedRatings.technical_skills?.score,
+    problem_solving: storedRatings.problem_solving?.score,
+  };
+  const hasStoredScores =
+    storedScores && Object.values(storedScores).every((v) => typeof v === "number");
 
   const interviewerLabel = assignedInterviewer.name || user?.full_name || "Interviewer";
 
@@ -172,7 +186,8 @@ export default function CandidatePage() {
       ? {
           candidate_report: serverData.intv_candidate_report,
           interviewer_report: serverData.intv_interviewer_report,
-          scores: null,
+          scores: hasStoredScores ? storedScores : null,
+          ratings: hasStoredScores ? storedRatings : null,
           bias_incidents: serverData.intv_bias_incidents ?? [],
         }
       : null);
