@@ -82,6 +82,9 @@ jobs:
 
       #Clean install exactly from the lockfile
       - run: npm ci --prefix frontend
+      #If install fails, print npm's debug log (stack trace) so it can be diagnosed
+      - if: failure()
+        run: node -v && npm -v && cat ~/.npm/_logs/*-debug-0.log
       - run: npm audit --audit-level=high --omit=dev --prefix frontend
       - run: npm run lint --prefix frontend
       - run: npm test --prefix frontend
