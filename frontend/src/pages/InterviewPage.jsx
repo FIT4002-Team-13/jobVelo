@@ -387,10 +387,10 @@ export default function InterviewPage() {
               disabled={isCompleted}
               className={`flex-1 py-2 short:py-1.5 text-sm font-semibold rounded-xl transition-colors ${
                 isCompleted
-                  ? "bg-neutral-300 text-neutral-500 cursor-not-allowed"
+                  ? "bg-neutral-200 text-neutral-400 cursor-not-allowed"
                   : isPaused
-                  ? "bg-mint-400 hover:bg-mint-500 text-white"
-                  : "bg-coral-400 hover:bg-coral-500 text-white"
+                  ? "bg-mint-500 hover:bg-mint-600 text-white"
+                  : "border border-neutral-200 bg-neutral-0 text-neutral-600 hover:bg-neutral-50"
               }`}
             >
               {isPaused ? "Unpause" : "Pause"}
@@ -400,10 +400,8 @@ export default function InterviewPage() {
               disabled={reportState.phase === "generating"}
               className={`flex-1 py-2 short:py-1.5 text-sm font-semibold rounded-xl transition-colors ${
                 reportState.phase === "generating"
-                  ? "bg-neutral-300 text-neutral-500 cursor-wait"
-                  : isCompleted
-                  ? "text-white bg-primary-500 hover:bg-primary-600"
-                  : "text-white bg-sky-300 hover:bg-sky-400"
+                  ? "bg-neutral-200 text-neutral-400 cursor-wait"
+                  : "text-white bg-primary-500 hover:bg-primary-600"
               }`}
             >
               {reportState.phase === "generating"
