@@ -75,12 +75,13 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
+          #Cache npm's download cache (~/.npm), not node_modules — restoring a
+          #stale node_modules makes npm crash ("reading 'edgesOut'")
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
 
-      - uses: actions/cache@v4
-        with:
-          path: frontend/node_modules
-          key: npm-${{ hashFiles('frontend/package-lock.json')}}
-      - run: npm install --prefix frontend
+      #Clean install exactly from the lockfile
+      - run: npm ci --prefix frontend
       - run: npm audit --audit-level=high --omit=dev --prefix frontend
       - run: npm run lint --prefix frontend
       - run: npm test --prefix frontend
