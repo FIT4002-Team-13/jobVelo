@@ -2,8 +2,13 @@ import { flex } from "../../../styles/layout";
 import DocumentSlot from "../DocumentSlot.jsx";
 import FitVerdict from "../FitVerdict.jsx";
 import InsightTabs from "../InsightTabs.jsx";
+import { useAuth } from "../../../lib/AuthContext.jsx";
 
 export default function CvTab({ cvUrl, uploading, onUpload, onDelete, cvAnalysis, candidate, onEdit }) {
+
+  const { user } = useAuth();
+  const canEdit = user?.role === "recruiter";
+  
   return (
     <div className="flex min-h-0 w-full flex-1">
       <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
@@ -13,7 +18,7 @@ export default function CvTab({ cvUrl, uploading, onUpload, onDelete, cvAnalysis
         <div className="flex flex-col gap-2">
           <div className="flex items-center justify-between">
             <p className="text-xs font-bold uppercase tracking-wide text-neutral-400">Candidate Detail</p>
-            {onEdit && (
+            {onEdit && canEdit && (
               <button type="button" onClick={onEdit} className="rounded-pill border border-neutral-200 px-3 py-1 text-xs font-medium text-neutral-500 transition-colors hover:bg-neutral-50">Edit</button>
             )}
           </div>
