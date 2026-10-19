@@ -68,7 +68,7 @@ def _pct_change(current: float, previous: float) -> float | None:
 def _as_utc(dt: datetime) -> datetime:
     """Mongo/motor here returns naive datetimes (no tz_aware client option),
     but every stored value is UTC - so a naive read needs a UTC tzinfo before
-    it can be compared against an aware `datetime.now(timezone.utc)`. Same
+    it can be compared against an aware `datetime.now(UTC)`. Same
     fix as cv_analysis.py's `_status_of`."""
     return dt if dt.tzinfo is not None else dt.replace(tzinfo=UTC)
 

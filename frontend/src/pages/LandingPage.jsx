@@ -4,6 +4,7 @@ import DashboardSection from '../components/landing/DashboardSection.jsx'
 import DefineRoleSection from '../components/landing/DefineRoleSection.jsx'
 import FeaturesSection from '../components/landing/FeaturesSection.jsx'
 import HowItWorksSection from '../components/landing/HowItWorksSection.jsx'
+import GettingStartedSection from '../components/landing/GettingStartedSection.jsx'
 import Footer from '../components/landing/Footer.jsx'
 
 export default function LandingPage() {
@@ -16,6 +17,7 @@ export default function LandingPage() {
         <DefineRoleSection />
         <FeaturesSection />
         <HowItWorksSection />
+        <GettingStartedSection />
       </main>
       <Footer />
     </div>

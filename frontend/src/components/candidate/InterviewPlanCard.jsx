@@ -87,48 +87,35 @@ export default function InterviewPlanCard({ jobId, candId, jobCand }) {
   }
 
   const plannedMinutes = sections.reduce((s, x) => s + (x.suggested_minutes || 0), 0)
+  const ghostBtn = 'whitespace-nowrap rounded-xl border border-neutral-200 bg-white px-3.5 py-1.5 text-xs font-semibold text-neutral-500 transition-colors hover:bg-neutral-50'
   const fieldClass = 'w-full rounded-lg border border-neutral-200 bg-white px-2 py-1 text-xs text-neutral-800 focus:outline-none focus:ring-1 focus:ring-primary-400'
 
   return (
     <section className={`${card.base} ${flex.col} gap-4`}>
-      <div className={flex.rowBetween}>
-        <div>
+      <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-3">
+        <div className="min-w-0 flex-1 basis-56">
           <h2 className="text-lg font-bold text-neutral-800">Interview Plan</h2>
-          <p className="text-xs text-neutral-400 mt-0.5">AI-suggested sections based on this role and candidate</p>
+          <p className="mt-0.5 text-xs text-neutral-400">
+            {state === 'done' && !editMode
+              ? `${sections.length} section${sections.length === 1 ? '' : 's'} · ${plannedMinutes} min planned`
+              : 'AI-suggested sections based on this role and candidate'}
+          </p>
         </div>
-        <div className={`${flex.row} items-center gap-3`}>
-          {/* Duration input only matters while generating fresh or editing. */}
-          {state !== 'loading' && (state !== 'done' || editMode) && (
-            <label className={`${flex.row} items-center gap-1.5`}>
-              <span className="text-xs font-semibold text-neutral-500 whitespace-nowrap">Total duration</span>
-              <input type="number" min={10} max={240} value={totalMinutes} onChange={(e) => setTotalMinutes(Number(e.target.value) || 60)}
-                className="w-16 rounded-lg border border-neutral-200 px-2 py-1 text-xs text-neutral-800 text-center focus:outline-none focus:ring-1 focus:ring-primary-400" />
-              <span className="text-xs text-neutral-400">min</span>
-            </label>
-          )}
 
+        <div className="flex shrink-0 items-center gap-2">
           {state === 'done' && !editMode && (
-            <>
-              <span className="text-xs font-semibold text-neutral-400 tabular-nums">
-                {plannedMinutes} min · {sections.length} section{sections.length === 1 ? '' : 's'}
-              </span>
-              <button type="button" onClick={() => setEditMode(true)} className="rounded-xl border border-neutral-200 bg-white px-3 py-1.5 text-xs font-semibold text-neutral-500 transition-colors hover:bg-neutral-50">Edit</button>
-            </>
+            <button type="button" onClick={() => setEditMode(true)} className={ghostBtn}>Edit plan</button>
           )}
 
           {state === 'done' && editMode && (
             <>
-              <span className={`text-xs font-semibold tabular-nums ${plannedMinutes === totalMinutes ? 'text-mint-600' : 'text-amber-600'}`}>
-                {plannedMinutes} / {totalMinutes} min
-                {plannedMinutes > totalMinutes ? ' (over)' : plannedMinutes < totalMinutes ? ' (under)' : ''}
-              </span>
-              <button type="button" onClick={generate} className="rounded-xl border border-neutral-200 bg-white px-3 py-1.5 text-xs font-semibold text-neutral-500 transition-colors hover:bg-neutral-50">Regenerate</button>
-              <button type="button" onClick={() => setEditMode(false)} className="rounded-xl bg-primary-500 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-primary-600">Done</button>
+              <button type="button" onClick={generate} className={ghostBtn}>Regenerate</button>
+              <button type="button" onClick={() => setEditMode(false)} className="whitespace-nowrap rounded-xl bg-primary-500 px-3.5 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-primary-600">Done</button>
             </>
           )}
 
           {state !== 'done' && state !== 'loading' && (
-            <button type="button" onClick={generate} className="inline-flex items-center gap-2 rounded-xl bg-primary-500 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-primary-600">
+            <button type="button" onClick={generate} className="inline-flex items-center gap-2 whitespace-nowrap rounded-xl bg-primary-500 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-primary-600">
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/>
               </svg>
@@ -137,6 +124,31 @@ export default function InterviewPlanCard({ jobId, candId, jobCand }) {
           )}
         </div>
       </div>
+
+      {/* Duration only matters while generating fresh or editing. */}
+      {state !== 'loading' && (state !== 'done' || editMode) && (
+        <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2 rounded-xl bg-neutral-50 px-3 py-2">
+          <label className="flex items-center gap-2">
+            <span className="whitespace-nowrap text-xs font-semibold text-neutral-500">Total duration</span>
+            <input type="number" min={10} max={240} value={totalMinutes} onChange={(e) => setTotalMinutes(Number(e.target.value) || 60)}
+              className="w-16 rounded-lg border border-neutral-200 bg-white px-2 py-1 text-center text-xs text-neutral-800 focus:outline-none focus:ring-1 focus:ring-primary-400" />
+            <span className="text-xs text-neutral-400">min</span>
+          </label>
+
+          {state === 'done' && (
+            <div className="flex items-center gap-2.5">
+              <div className="h-1.5 w-24 overflow-hidden rounded-full bg-neutral-200">
+                <div className={`h-full rounded-full transition-all ${plannedMinutes === totalMinutes ? 'bg-mint-500' : 'bg-amber-500'}`}
+                  style={{ width: `${Math.min(100, (plannedMinutes / (totalMinutes || 1)) * 100)}%` }} />
+              </div>
+              <span className={`whitespace-nowrap text-xs font-semibold tabular-nums ${plannedMinutes === totalMinutes ? 'text-mint-600' : 'text-amber-600'}`}>
+                {plannedMinutes} / {totalMinutes} min
+                {plannedMinutes > totalMinutes ? ' (over)' : plannedMinutes < totalMinutes ? ' (under)' : ''}
+              </span>
+            </div>
+          )}
+        </div>
+      )}
 
       {state === 'idle' && (
         <div className="flex items-center justify-center rounded-2xl bg-neutral-50 px-6 py-10">

@@ -28,10 +28,45 @@ jobs:
       - run: pip install -r backend/requirements.txt
       #install dev dependencies (linter and test runner)
       - run: pip install -r backend/requirements-dev.txt
+      #Scan backend dependencies for known CVEs (A06)
+      #Starlette CVEs are acknowledged below — they require a FastAPI major upgrade to fix.
+      - run: |
+          pip install pip-audit
+          pip-audit --requirement backend/requirements.txt \
+            --ignore-vuln PYSEC-2026-1943 \
+            --ignore-vuln PYSEC-2026-1941 \
+            --ignore-vuln PYSEC-2026-161 \
+            --ignore-vuln PYSEC-2026-2281 \
+            --ignore-vuln PYSEC-2026-2280 \
+            --ignore-vuln PYSEC-2026-249 \
+            --ignore-vuln PYSEC-2026-248
       #Checks linter against backend code
       - run: ruff check backend/
-      #Run unit tests
-      - run: python -m pytest backend/tests/
+      #Run unit tests (mocked — no DB required)
+      - run: python -m pytest backend/tests/ -m "not db_integration"
+
+  backend-db-integration:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: pip-${{ hashFiles('backend/requirements*.txt') }}
+
+      - run: pip install -r backend/requirements.txt
+      - run: pip install -r backend/requirements-dev.txt
+
+      # Run only the real-DB tests against the Atlas cluster (uses a separate
+      # test database — the production jobvelo database is never touched)
+      - run: python -m pytest backend/tests/ -m db_integration -v
+        env:
+          TEST_MONGODB_URI: ${{ secrets.MONGODB_URI }}
 
   frontend:
     runs-on: ubuntu-latest
@@ -46,6 +81,7 @@ jobs:
           path: frontend/node_modules
           key: npm-${{ hashFiles('frontend/package-lock.json')}}
       - run: npm install --prefix frontend
+      - run: npm audit --audit-level=high --omit=dev --prefix frontend
       - run: npm run lint --prefix frontend
       - run: npm test --prefix frontend
       - run: npm run build --prefix frontend

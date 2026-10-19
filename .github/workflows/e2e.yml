@@ -16,7 +16,7 @@ jobs:
         with:
           node-version: 20
       - name: Install deps
-        run: npm ci
+        run: npm install --legacy-peer-deps
         working-directory: frontend
       - name: Install Playwright browsers
         run: npx playwright install --with-deps
