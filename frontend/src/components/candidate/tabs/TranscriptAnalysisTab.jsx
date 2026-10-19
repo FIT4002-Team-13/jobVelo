@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { flex } from "../../../styles/layout";
-import { SECTION_COLORS } from "../../../utils/constants.js";
+import { sectionColor } from "../../../utils/constants.js";
 import { formatTimer, parseTimestamp } from "../../../utils/time.js";
 import { initials, buildSpeakerColors } from "../../../utils/avatar.js";
 import { mergeTranscriptFragments } from "../../../utils/transcript.js";
@@ -194,7 +194,7 @@ function DownloadMenu({ onDownloadReport, onDownloadTranscript }) {
 function SectionMarkers({ sections }) {
   return sections?.map((s) => (
     <div key={s._idx} id={`post-section-${s._idx}`} className={`${flex.row} scroll-mt-2 items-center gap-3 pt-2`}>
-      <span className={`shrink-0 rounded-full px-2.5 py-0.5 font-mono text-xs ${SECTION_COLORS[s._idx % SECTION_COLORS.length].badge}`}>
+      <span className={`shrink-0 rounded-full px-2.5 py-0.5 font-mono text-xs ${sectionColor(s, s._idx).badge}`}>
         {formatTimer(s.start_at)}
       </span>
       <span className="shrink-0 text-base font-semibold text-neutral-800">{s.name}</span>

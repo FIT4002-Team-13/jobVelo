@@ -274,7 +274,7 @@ export default function EditCandidateForm({
               </select>
             </div>
           </div>
-            {(user?.role === 'recruiter' || user?.role === 'admin') && (            
+            {(user?.role === 'recruiter') && (            
               <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className={form.label}>Interviewer</label>
