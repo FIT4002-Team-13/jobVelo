@@ -3,6 +3,7 @@ import { flex } from "../../../styles/layout";
 import { SECTION_COLORS } from "../../../utils/constants.js";
 import { formatTimer, parseTimestamp } from "../../../utils/time.js";
 import { initials, buildSpeakerColors } from "../../../utils/avatar.js";
+import { mergeTranscriptFragments } from "../../../utils/transcript.js";
 import ReportSections from "../../interview/ReportSections.jsx";
 import SectionMenu from "../SectionMenu.jsx";
 import QuestioningPatternsPanel from "../QuestioningPatternsPanel.jsx";
@@ -186,7 +187,7 @@ function TranscriptRow({ entry, query, highlighted, color, onClick, entryRef, on
           <textarea
             autoFocus
             value={entry.comment ?? ""}
-            onChange={(e) => onNoteChange(entry.id, e.target.value)}
+            onChange={(e) => onNoteChange(entry.noteId ?? entry.id, e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "Enter") {
                 e.preventDefault();
@@ -258,14 +259,24 @@ export default function TranscriptAnalysisTab({
     : [];
   const hasSections = startedSections.length > 0;
 
+  // Rows shown here are merged same-speaker fragments (see
+  // mergeTranscriptFragments) - `transcript` itself stays the raw entries.
+  const rows = useMemo(
+    () => mergeTranscriptFragments(
+      transcript,
+      Array.isArray(sections) ? sections.map((s) => s.start_at) : []
+    ),
+    [transcript, sections]
+  );
+
   const query = search.trim();
   const filteredTranscript = query
-    ? transcript.filter(
+    ? rows.filter(
         (e) =>
           e.text?.toLowerCase().includes(query.toLowerCase()) ||
           e.comment?.toLowerCase().includes(query.toLowerCase())
       )
-    : transcript;
+    : rows;
 
   function handleFilteredEntryClick(entry) {
     const { id, timestamp } = entry;
@@ -274,10 +285,10 @@ export default function TranscriptAnalysisTab({
   }
 
   function jumpToEntry(firstId, timestamp) {
-    let match = transcript.find((e) => e.id === firstId);
+    let match = rows.find((r) => r.ids.includes(firstId));
     if (!match && timestamp) {
       const targetSecs = parseTimestamp(timestamp);
-      match = transcript.reduce((best, e) => {
+      match = rows.reduce((best, e) => {
         const diff = Math.abs(parseTimestamp(e.timestamp) - targetSecs);
         const bestDiff = best ? Math.abs(parseTimestamp(best.timestamp) - targetSecs) : Infinity;
         return diff < bestDiff ? e : best;
@@ -294,8 +305,8 @@ export default function TranscriptAnalysisTab({
   const markersByIndex = {};
   if (showSections && !query) {
     startedSections.forEach((s) => {
-      let at = transcript.findIndex((e) => parseTimestamp(e.timestamp) >= s.start_at);
-      if (at === -1) at = transcript.length;
+      let at = rows.findIndex((e) => parseTimestamp(e.timestamp) >= s.start_at);
+      if (at === -1) at = rows.length;
       (markersByIndex[at] ??= []).push(s);
     });
   }
@@ -402,10 +413,17 @@ export default function TranscriptAnalysisTab({
                     <TranscriptRow
                       entry={entry}
                       query={query}
-                      highlighted={highlightedEntryIdx === i || entry.id === highlightedEntryId || entry.id === localHighlightId}
+                      highlighted={
+                        entry.rawIndices.includes(highlightedEntryIdx) ||
+                        entry.ids.includes(highlightedEntryId) ||
+                        entry.id === localHighlightId
+                      }
                       color={speakerColors.get(entry.speaker)}
                       onClick={query ? () => handleFilteredEntryClick(entry) : undefined}
-                      entryRef={(el) => (transcriptEntryRefs.current[i] = el)}
+                      // Keyed by raw transcript index (every merged fragment
+                      // points at its row) so the page's jumpToSection,
+                      // which indexes the raw transcript, still lands here.
+                      entryRef={(el) => entry.rawIndices.forEach((ri) => (transcriptEntryRefs.current[ri] = el))}
                       onNoteChange={onNoteChange}
                     />
                   </Fragment>
