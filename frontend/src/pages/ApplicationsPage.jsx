@@ -27,8 +27,6 @@ const SORT_OPTIONS = [
   { value: 'name:desc', label: 'Name Z - A' },
   { value: 'status', label: 'Current Status' },
   { value: 'job:asc', label: 'Job Applied' },
-  { value: 'cv:desc', label: 'CV Uploaded' },
-  { value: 'cl:desc', label: 'Cover Letter Uploaded' },
 ]
 
 // Status sort follows the interview lifecycle (Not Scheduled -> Completed);
@@ -39,20 +37,22 @@ function statusRank(status) {
 }
 
 const time = (row) => (row.interview_datetime ? new Date(row.interview_datetime).getTime() : null)
-const uploaded = (field) => (row) => Number(Boolean(row[field]))
 
-// Sortable columns, in header order. `value` is what's compared ascending;
-// `firstDir` is the direction a first header click picks (e.g. uploaded
-// first, highest score first, newest first).
+// Sortable columns. `value` is what's compared ascending; `firstDir` is the
+// direction a first header click picks (e.g. highest score first, newest
+// first).
 const SORT_COLUMNS = {
   name:   { label: 'Candidate',   firstDir: 'asc',  value: (r) => r.candidate_name || '' },
   job:    { label: 'Job Applied', firstDir: 'asc',  value: (r) => r.job_title || '' },
   status: { label: 'Status',      firstDir: 'asc',  value: (r) => statusRank(r.status) },
-  cv:     { label: 'CV',          firstDir: 'desc', value: uploaded('cv_url') },
-  cl:     { label: 'CL',          firstDir: 'desc', value: uploaded('cover_letter_url') },
   score:  { label: 'Score',       firstDir: 'desc', value: (r) => getAverageScore(r.ratings) },
   date:   { label: 'Date',        firstDir: 'desc', value: time },
 }
+
+// Header order. CV / CL aren't sortable - they're filters instead (see
+// DOCUMENT_FILTERS) - so they render as plain headers.
+const HEADER_COLUMNS = ['name', 'job', 'status', 'cv', 'cl', 'score', 'date']
+const PLAIN_HEADERS = { cv: 'CV', cl: 'CL' }
 
 function parseSortKey(sortKey) {
   const [col, dir] = (sortKey || '').split(':')
@@ -109,7 +109,22 @@ function SortableHeader({ col, sortKey, onSort }) {
 
 // Kept in sync with the dashboard candidates panel + JobDetailPage candidate
 // filter so the same statuses are filterable wherever the user looks.
-const FILTER_OPTIONS = withAllOption(CANDIDATE_FILTER_OPTIONS)
+// The document filters sit alongside them; their values are prefixed so they
+// can't collide with a status.
+const DOCUMENT_FILTERS = {
+  'doc:cv': { label: 'CV Uploaded',           field: 'cv_url' },
+  'doc:cl': { label: 'Cover Letter Uploaded', field: 'cover_letter_url' },
+}
+const FILTER_OPTIONS = withAllOption([
+  ...CANDIDATE_FILTER_OPTIONS,
+  ...Object.entries(DOCUMENT_FILTERS).map(([value, { label }]) => ({ value, label })),
+])
+
+function matchesFilter(row, filters) {
+  return filters.every((f) =>
+    DOCUMENT_FILTERS[f] ? Boolean(row[DOCUMENT_FILTERS[f].field]) : row.status === f
+  )
+}
 
 // Previously had a bespoke OptionsPopup component here - replaced by the
 // shared SortMenu / FilterMenu from TableControls so this page reads
@@ -205,7 +220,7 @@ export default function ApplicationsPage() {
     matchesSearch: (row, needle) =>
       (row.candidate_name || '').toLowerCase().includes(needle) ||
       (row.job_title || '').toLowerCase().includes(needle),
-    matchesFilter: (row, filters) => filters.length === 0 || filters.includes(row.status),
+    matchesFilter,
     compare: (a, b, sortKey, needle) => {
       if (needle) {
         const relDiff = relevance(a, needle) - relevance(b, needle)
@@ -325,8 +340,14 @@ export default function ApplicationsPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-neutral-50 border-b border-neutral-100">
-                  {Object.keys(SORT_COLUMNS).map((col) => (
-                    <SortableHeader key={col} col={col} sortKey={table.sortKey} onSort={table.setSortKey} />
+                  {HEADER_COLUMNS.map((col) => (
+                    PLAIN_HEADERS[col] ? (
+                      <th key={col} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-neutral-500">
+                        {PLAIN_HEADERS[col]}
+                      </th>
+                    ) : (
+                      <SortableHeader key={col} col={col} sortKey={table.sortKey} onSort={table.setSortKey} />
+                    )
                   ))}
                   <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-neutral-500">
                     Actions
