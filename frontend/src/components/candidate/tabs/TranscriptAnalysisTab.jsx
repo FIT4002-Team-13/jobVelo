@@ -51,6 +51,67 @@ function ScoreBar({ label, score }) {
   );
 }
 
+// A ScoreBar that expands to the explanation and transcript evidence behind
+// the score. Clicking a quote jumps the transcript to that entry.
+function ScoreEvidenceRow({ row, open, onToggle, onJump }) {
+  return (
+    <div className={`${flex.col} gap-1.5`}>
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={open}
+        aria-label={`${row.label} evidence`}
+        className={`${flex.row} w-full items-end gap-2 rounded-lg -mx-1.5 px-1.5 py-1 text-left transition-colors hover:bg-neutral-50`}
+      >
+        <div className="flex-1 min-w-0">
+          <ScoreBar label={row.label} score={row.score} />
+        </div>
+        <svg
+          className={`mb-[-3px] shrink-0 text-neutral-300 transition-transform duration-200 ${open ? "rotate-180" : ""}`}
+          width="14" height="14" viewBox="0 0 24 24" fill="none"
+          stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+        >
+          <polyline points="6 9 12 15 18 9" />
+        </svg>
+      </button>
+      {open && (
+        <div className={`${flex.col} gap-1.5 pb-1`}>
+          {row.explanation && (
+            <p className="text-xs text-neutral-500 leading-relaxed pl-1">{row.explanation}</p>
+          )}
+          {row.evidence.length > 0 ? (
+            <div className={`${flex.col} gap-1 pl-1 pt-0.5`}>
+              {row.evidence.map((ev, i) => (
+                <button
+                  key={i}
+                  onClick={() => onJump(ev.transcript_entry_id?.split("+")[0], ev.timestamp)}
+                  className="w-full text-left group flex items-start gap-2 rounded-lg px-2.5 py-2 border border-neutral-100 hover:border-primary-200 hover:bg-primary-50 transition-colors"
+                >
+                  <div className={`${flex.col} gap-0.5 flex-1 min-w-0`}>
+                    <span className="text-[10px] font-bold tabular-nums text-neutral-400">{ev.timestamp}</span>
+                    <p className="text-xs italic leading-relaxed text-neutral-600 group-hover:text-neutral-800 transition-colors line-clamp-3">
+                      &ldquo;{ev.text}&rdquo;
+                    </p>
+                  </div>
+                  <svg
+                    className="mt-1 shrink-0 text-neutral-300 group-hover:text-primary-400 transition-colors"
+                    width="11" height="11" viewBox="0 0 24 24" fill="none"
+                    stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+                  >
+                    <polyline points="9 18 15 12 9 6" />
+                  </svg>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <p className="text-xs text-neutral-400 italic pl-1">No evidence recorded.</p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function HighlightedText({ text, query }) {
   if (!query) return <>{text}</>;
   const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -245,6 +306,15 @@ export default function TranscriptAnalysisTab({
   const [search, setSearch] = useState("");
   const [localHighlightId, setLocalHighlightId] = useState(null);
   const [activeTab, setActiveTab] = useState("candidate");
+  const [openScores, setOpenScores] = useState(() => new Set());
+
+  function toggleScore(label) {
+    setOpenScores((prev) => {
+      const next = new Set(prev);
+      next.has(label) ? next.delete(label) : next.add(label);
+      return next;
+    });
+  }
 
   // Built from the full transcript (not the search-filtered one) so a
   // speaker's color doesn't shift while searching - and with the same pinned
@@ -443,7 +513,6 @@ export default function TranscriptAnalysisTab({
               {[
                 { id: "candidate", label: "Candidate" },
                 { id: "interviewer", label: "Interviewer" },
-                { id: "evidence", label: "Evidence" },
                 { id: "bias", label: "Bias" },
               ].map((tab) => (
                 <button
@@ -469,12 +538,21 @@ export default function TranscriptAnalysisTab({
               <div className={`${flex.col} gap-5`}>
                 {scoreRows.length > 0 && (
                   <div className="rounded-2xl border border-neutral-200 p-5">
-                    <h4 className="mb-3 text-xs font-bold uppercase tracking-wide text-neutral-400">Result</h4>
-                    <div className={`${flex.row} gap-6`}>
+                    <div className={`${flex.rowBetween} mb-3 items-baseline`}>
+                      <h4 className="text-xs font-bold uppercase tracking-wide text-neutral-400">Result</h4>
+                      <span className="text-[10px] text-neutral-400">Select a score to see its evidence</span>
+                    </div>
+                    <div className={`${flex.row} items-start gap-6`}>
                       <ScoreDonut value={overall} />
-                      <div className={`${flex.col} flex-1 gap-2.5`}>
+                      <div className={`${flex.col} flex-1 min-w-0 gap-1.5`}>
                         {scoreRows.map((r) => (
-                          <ScoreBar key={r.label} label={r.label} score={r.score} />
+                          <ScoreEvidenceRow
+                            key={r.label}
+                            row={r}
+                            open={openScores.has(r.label)}
+                            onToggle={() => toggleScore(r.label)}
+                            onJump={jumpToEntry}
+                          />
                         ))}
                       </div>
                     </div>
@@ -492,50 +570,6 @@ export default function TranscriptAnalysisTab({
                 </div>
               ) : (
                 <p className="text-sm text-neutral-400 text-center mt-8">No interviewer report available.</p>
-              )
-            )}
-
-            {activeTab === "evidence" && (
-              scoreRows.length > 0 ? (
-                <div className={`${flex.col} gap-4`}>
-                  {scoreRows.map((r) => (
-                    <div key={r.label} className={`${flex.col} gap-1.5`}>
-                      <ScoreBar label={r.label} score={r.score} />
-                      {r.explanation && (
-                        <p className="text-xs text-neutral-500 leading-relaxed pl-1">{r.explanation}</p>
-                      )}
-                      {r.evidence.length > 0 ? (
-                        <div className={`${flex.col} gap-1 pl-1 pt-0.5`}>
-                          {r.evidence.map((ev, i) => (
-                            <button
-                              key={i}
-                              onClick={() => jumpToEntry(ev.transcript_entry_id?.split("+")[0], ev.timestamp)}
-                              className="w-full text-left group flex items-start gap-2 rounded-lg px-2.5 py-2 border border-neutral-100 hover:border-primary-200 hover:bg-primary-50 transition-colors"
-                            >
-                              <div className={`${flex.col} gap-0.5 flex-1 min-w-0`}>
-                                <span className="text-[10px] font-bold tabular-nums text-neutral-400">{ev.timestamp}</span>
-                                <p className="text-xs italic leading-relaxed text-neutral-600 group-hover:text-neutral-800 transition-colors line-clamp-3">
-                                  &ldquo;{ev.text}&rdquo;
-                                </p>
-                              </div>
-                              <svg
-                                className="mt-1 shrink-0 text-neutral-300 group-hover:text-primary-400 transition-colors"
-                                width="11" height="11" viewBox="0 0 24 24" fill="none"
-                                stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
-                              >
-                                <polyline points="9 18 15 12 9 6" />
-                              </svg>
-                            </button>
-                          ))}
-                        </div>
-                      ) : (
-                        <p className="text-xs text-neutral-400 italic pl-1">No evidence recorded.</p>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-sm text-neutral-400 text-center mt-8">No evidence available for this interview.</p>
               )
             )}
 

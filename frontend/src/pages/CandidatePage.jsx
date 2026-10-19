@@ -417,11 +417,9 @@ export default function CandidatePage() {
             <InterviewPrepTab
               analysis={cvAnalysis}
               scheduledLabel={scheduledLabel}
-              onViewFullAnalysis={
-                jobCand?.jobcand_id
-                  ? () => navigate(`/cv-analysis/${jobCand.jobcand_id}`)
-                  : null
-              }
+              // The CV tab already holds the full analysis, so stay on this
+              // page rather than leaving for the standalone /cv-analysis view.
+              onViewFullAnalysis={() => setCenterView("cv")}
               jobId={jobId}
               candId={candId}
               jobCand={jobCand}
@@ -434,11 +432,7 @@ export default function CandidatePage() {
               analysis={cvAnalysis}
               interviewerLabel={interviewerLabel}
               onResume={() => setShowStartWarning(true)}
-              onViewFullAnalysis={
-                jobCand?.jobcand_id
-                  ? () => navigate(`/cv-analysis/${jobCand.jobcand_id}`)
-                  : null
-              }
+              onViewFullAnalysis={() => setCenterView("cv")}
             />
           )}
 

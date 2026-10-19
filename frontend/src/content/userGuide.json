@@ -269,10 +269,10 @@
           "intro": "A completed interview shows the candidate's results and the interviewer's feedback together, so you can judge both from one place.",
           "steps": [
             { "text": "Open the candidate detail page from Candidates page or from the job detail page's candidate list." },
-            { "text": "The completed interview opens on the Transcript tab. Its sub-tabs are Candidate, Interviewer, Evidence and Bias." },
+            { "text": "The completed interview opens on the Transcript tab. Its sub-tabs are Candidate, Interviewer and Bias." },
             { "text": "Candidate tab shows the Result (the overall score and the Technical skills, Communication and Problem solving scores) and the candidate report." },
             { "text": "Interviewer tab shows the interviewer report and the questioning patterns, which show how the interview was run." },
-            { "text": "Evidence tab shows the explanation behind each score and the evidence that supports it." },
+            { "text": "Select a score on the Candidate tab to see the explanation behind it and the evidence that supports it." },
             { "text": "Bias tab shows any questions flagged during this interview as biased." },
             { "text": "In the transcript panel use Search transcript to find a word, click Add note to write a note for a specific line and check the section markers to see where each interview section started." },
             { "text": "Use the Download button at the top right of the Transcript tab to download the Candidate Report, the Interviewer Report or the Transcript as a PDF." },
@@ -320,7 +320,7 @@
           "steps": [
             { "text": "Open the job and switch to Rankings to compare candidates by overall score, Communication, Skill and Problem Solving." },
             { "text": "Open each candidate you are assessing. On the Transcript tab, read the Result on the Candidate tab." },
-            { "text": "Check the Evidence tab for the explanation and evidence behind each score." },
+            { "text": "Select a score on the Candidate tab to check the explanation and evidence behind it." },
             { "text": "On the CV tab, read the CV analysis: Strengths, Improvements, Inconsistencies and the position fit verdict." },
             { "text": "Open each completed interview and read the Interviewer report. It shows how the interview was run." },
             { "text": "Use these information to decide whether to shortlist, hire or reject each candidate.", "roles": ["hiring_manager"] }
