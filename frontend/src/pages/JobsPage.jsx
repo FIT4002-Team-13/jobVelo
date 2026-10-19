@@ -41,7 +41,7 @@ export default function JobsPage() {
   const jobs = data?.jobs ?? []
   const completedByJob = data?.completedByJob ?? {}
   const { user } = useAuth()
-  const canManageJobs = user?.role === 'admin' || user?.role === 'recruiter'
+  const canManageJobs = user?.role === 'recruiter'
   const [formModal, setFormModal]   = useState(null)
   const [deleteTarget, setDeleteTarget] = useState(null)
 
