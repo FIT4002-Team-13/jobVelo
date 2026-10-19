@@ -1,6 +1,6 @@
 import { flex } from "../../styles/layout";
 import { formatTimer } from "../../utils/time.js";
-import { SECTION_COLORS } from "../../utils/constants.js";
+import { sectionColor } from "../../utils/constants.js";
 
 export function SectionCard({ section, st, color, onStart, onPause, onResume, onDone, locked }) {
   const budget = section.suggested_minutes * 60;
@@ -120,7 +120,7 @@ export function InterviewSectionTimeline({
             const startSec = hasReal
               ? section.start_at
               : sections.slice(0, i).reduce((sum, s) => sum + (s.suggested_minutes || 0) * 60, 0);
-            const color = SECTION_COLORS[i % SECTION_COLORS.length];
+            const color = sectionColor(section, i);
 
             return (
               <button
@@ -150,7 +150,7 @@ export function InterviewSectionTimeline({
                 <SectionCard
                   section={section}
                   st={sectionStates[i] ?? { status: "idle", elapsed: 0 }}
-                  color={SECTION_COLORS[i % SECTION_COLORS.length]}
+                  color={sectionColor(section, i)}
                   locked={!isMicActive}
                   onStart={() => startSection(i)}
                   onPause={() => pauseSection(i)}

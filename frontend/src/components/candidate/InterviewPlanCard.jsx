@@ -1,24 +1,30 @@
 import { useState, useRef, useEffect } from 'react'
 import { api } from '../../lib/api.js'
 import { card, flex } from '../../styles/layout'
-import { SECTION_COLORS } from '../../utils/constants.js'
+import { sectionColor, withSectionColors } from '../../utils/constants.js'
 
 export default function InterviewPlanCard({ jobId, candId, jobCand }) {
   const [state, setState] = useState('idle')
   const [editMode, setEditMode] = useState(false)
   const [sections, setSections] = useState([])
   const [errorMsg, setErrorMsg] = useState('')
-  const [totalMinutes, setTotalMinutes] = useState(60)
+  // Raw text so the field can be cleared while typing; an empty field
+  // reads as 0 and is caught by generate()'s range check.
+  const [totalInput, setTotalInput] = useState('60')
+  const totalMinutes = Number(totalInput) || 0
   const [editingIndex, setEditingIndex] = useState(null)
   const [editDraft, setEditDraft] = useState(null)
   const [addingNew, setAddingNew] = useState(false)
   const dragSrcIndex = useRef(null)
-  const [dragOverIndex, setDragOverIndex] = useState(null)
+  const cardRefs = useRef([])
+  // Insertion point for the dragged section: 0..sections.length, where k means
+  // "before card k" and sections.length means "after the last card".
+  const [dropIndex, setDropIndex] = useState(null)
   const [newDraft, setNewDraft] = useState({ name: '', description: '', suggested_minutes: 10 })
 
   useEffect(() => {
     if (Array.isArray(jobCand?.plan_sections) && jobCand.plan_sections.length > 0) {
-      setSections(jobCand.plan_sections)
+      setSections(withSectionColors(jobCand.plan_sections))
       setState('done')
     } else {
       setSections([])
@@ -32,6 +38,13 @@ export default function InterviewPlanCard({ jobId, candId, jobCand }) {
   }
 
   async function generate() {
+    // The input's min/max aren't enforced while typing; the API rejects the
+    // same range (5-min intro + at least one 5-min section).
+    if (totalMinutes < 10 || totalMinutes > 240) {
+      setErrorMsg('Total duration must be between 10 and 240 minutes.')
+      setState('error')
+      return
+    }
     setState('loading')
     setErrorMsg('')
     setEditingIndex(null)
@@ -42,7 +55,7 @@ export default function InterviewPlanCard({ jobId, candId, jobCand }) {
         cand_id: candId,
         total_minutes: totalMinutes,
       })
-      const plan = Array.isArray(data) ? data : []
+      const plan = withSectionColors(Array.isArray(data) ? data : [])
       if (plan.length === 0) throw new Error('No sections were returned. Please try again.')
       setSections(plan)
       setState('done')
@@ -75,6 +88,37 @@ export default function InterviewPlanCard({ jobId, candId, jobCand }) {
   function startAdd() { setAddingNew(true); setNewDraft({ name: '', description: '', suggested_minutes: 10 }); setEditingIndex(null); setEditDraft(null) }
   function cancelAdd() { setAddingNew(false) }
 
+  // Drop position from the pointer: before the first card whose midpoint is
+  // below it. Works over the gaps between cards, not just on top of them.
+  function dropIndexAt(clientY) {
+    const i = sections.findIndex((_, k) => {
+      const el = cardRefs.current[k]
+      if (!el) return false
+      const r = el.getBoundingClientRect()
+      return clientY < r.top + r.height / 2
+    })
+    return i === -1 ? sections.length : i
+  }
+
+  function handleListDragOver(e) {
+    if (dragSrcIndex.current === null) return
+    e.preventDefault()
+    const at = dropIndexAt(e.clientY)
+    const src = dragSrcIndex.current
+    // Dropping right above or below itself wouldn't move it.
+    setDropIndex(at === src || at === src + 1 ? null : at)
+  }
+
+  function handleListDrop(e) {
+    e.preventDefault()
+    const src = dragSrcIndex.current
+    if (src !== null && dropIndex !== null) {
+      reorderSection(src, dropIndex > src ? dropIndex - 1 : dropIndex)
+    }
+    dragSrcIndex.current = null
+    setDropIndex(null)
+  }
+
   function reorderSection(from, to) {
     const updated = [...sections]; const [moved] = updated.splice(from, 1); updated.splice(to, 0, moved)
     setSections(updated); persist(updated)
@@ -82,7 +126,7 @@ export default function InterviewPlanCard({ jobId, candId, jobCand }) {
 
   function commitAdd() {
     if (!newDraft.name.trim()) return
-    const updated = [...sections, { name: newDraft.name.trim(), description: newDraft.description.trim(), suggested_minutes: Number(newDraft.suggested_minutes) || 10 }]
+    const updated = withSectionColors([...sections, { name: newDraft.name.trim(), description: newDraft.description.trim(), suggested_minutes: Number(newDraft.suggested_minutes) || 10 }])
     setSections(updated); setAddingNew(false); setState('done'); persist(updated)
   }
 
@@ -130,7 +174,7 @@ export default function InterviewPlanCard({ jobId, candId, jobCand }) {
         <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2 rounded-xl bg-neutral-50 px-3 py-2">
           <label className="flex items-center gap-2">
             <span className="whitespace-nowrap text-xs font-semibold text-neutral-500">Total duration</span>
-            <input type="number" min={10} max={240} value={totalMinutes} onChange={(e) => setTotalMinutes(Number(e.target.value) || 60)}
+            <input type="number" min={10} max={240} value={totalInput} onChange={(e) => setTotalInput(e.target.value)} onBlur={() => { if (totalInput.trim() === '') setTotalInput('60') }}
               className="w-16 rounded-lg border border-neutral-200 bg-white px-2 py-1 text-center text-xs text-neutral-800 focus:outline-none focus:ring-1 focus:ring-primary-400" />
             <span className="text-xs text-neutral-400">min</span>
           </label>
@@ -182,7 +226,7 @@ export default function InterviewPlanCard({ jobId, candId, jobCand }) {
       {state === 'done' && !editMode && (
         <ol className={`${flex.col} gap-1.5`}>
           {sections.map((section, i) => {
-            const color = SECTION_COLORS[i % SECTION_COLORS.length]
+            const color = sectionColor(section, i)
             return (
               <li
                 key={i}
@@ -204,12 +248,17 @@ export default function InterviewPlanCard({ jobId, candId, jobCand }) {
       )}
 
       {state === 'done' && editMode && (
-        <div className={`${flex.col} gap-1.5`}>
+        <div
+          className={`${flex.col} gap-1.5`}
+          onDragOver={handleListDragOver}
+          onDrop={handleListDrop}
+          onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) setDropIndex(null) }}
+        >
           {sections.map((section, i) => {
-            const color = SECTION_COLORS[i % SECTION_COLORS.length]
+            const color = sectionColor(section, i)
             if (editingIndex === i) {
               return (
-                <div key={i} className={`${flex.col} gap-2 rounded-xl border-2 border-primary-300 bg-primary-50 p-3`}>
+                <div key={i} ref={(el) => { cardRefs.current[i] = el }} className={`${flex.col} gap-2 rounded-xl border-2 border-primary-300 bg-primary-50 p-3`}>
                   <input className={fieldClass} value={editDraft.name} onChange={(e) => setEditDraft((d) => ({ ...d, name: e.target.value }))} placeholder="Section name" autoFocus />
                   <textarea className={`${fieldClass} resize-none`} rows={2} value={editDraft.description} onChange={(e) => setEditDraft((d) => ({ ...d, description: e.target.value }))} placeholder="Description" />
                   <div className={`${flex.row} items-center gap-2`}>
@@ -226,13 +275,26 @@ export default function InterviewPlanCard({ jobId, candId, jobCand }) {
             }
             return (
               <div key={i} draggable
+                ref={(el) => { cardRefs.current[i] = el }}
                 onDragStart={() => { dragSrcIndex.current = i }}
-                onDragOver={(e) => { e.preventDefault(); if (dragSrcIndex.current !== i) setDragOverIndex(i) }}
-                onDragLeave={() => setDragOverIndex(null)}
-                onDrop={(e) => { e.preventDefault(); if (dragSrcIndex.current !== null && dragSrcIndex.current !== i) reorderSection(dragSrcIndex.current, i); setDragOverIndex(null) }}
-                onDragEnd={() => { dragSrcIndex.current = null; setDragOverIndex(null) }}
-                className={`flex items-center gap-3 rounded-xl border border-neutral-100 bg-neutral-0 px-3 py-2.5 transition-all active:cursor-grabbing active:opacity-50 ${dragOverIndex === i ? 'ring-2 ring-primary-400' : ''}`}
+                onDragEnd={() => { dragSrcIndex.current = null; setDropIndex(null) }}
+                // The drop line sits in the 6px gap: above this card, or below
+                // the last card when dropping at the end.
+                className={`relative flex items-center gap-3 rounded-xl border border-neutral-100 bg-neutral-0 px-3 py-2.5 transition-all active:cursor-grabbing active:opacity-50 ${
+                  dropIndex === i ? "before:absolute before:inset-x-0 before:-top-1 before:h-0.5 before:rounded-full before:bg-primary-400 before:content-['']" : ''
+                } ${
+                  dropIndex === sections.length && i === sections.length - 1 ? "after:absolute after:inset-x-0 after:-bottom-1 after:h-0.5 after:rounded-full after:bg-primary-400 after:content-['']" : ''
+                }`}
               >
+                {/* Reorder arrows stacked on the left, next to the drag grip. */}
+                <div className={`${flex.col} -my-1 -ml-1 shrink-0`}>
+                  <button type="button" disabled={i === 0} onClick={() => reorderSection(i, i - 1)} title="Move up" className="p-0.5 rounded-md text-neutral-400 hover:text-neutral-600 hover:bg-black/5 transition-colors disabled:opacity-30 disabled:cursor-not-allowed">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M18 15l-6-6-6 6"/></svg>
+                  </button>
+                  <button type="button" disabled={i === sections.length - 1} onClick={() => reorderSection(i, i + 1)} title="Move down" className="p-0.5 rounded-md text-neutral-400 hover:text-neutral-600 hover:bg-black/5 transition-colors disabled:opacity-30 disabled:cursor-not-allowed">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+                  </button>
+                </div>
                 <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor" className="shrink-0 cursor-grab text-neutral-300">
                   <circle cx="2" cy="2" r="1"/><circle cx="8" cy="2" r="1"/><circle cx="2" cy="5" r="1"/><circle cx="8" cy="5" r="1"/><circle cx="2" cy="8" r="1"/><circle cx="8" cy="8" r="1"/>
                 </svg>
@@ -245,12 +307,6 @@ export default function InterviewPlanCard({ jobId, candId, jobCand }) {
                 </div>
                 <span className="shrink-0 text-xs font-semibold tabular-nums text-neutral-500">{section.suggested_minutes} min</span>
                 <div className={`${flex.row} shrink-0 gap-0.5`}>
-                  <button type="button" disabled={i === 0} onClick={() => reorderSection(i, i - 1)} title="Move up" className="p-1 rounded-lg text-neutral-400 hover:text-neutral-600 hover:bg-black/5 transition-colors disabled:opacity-30 disabled:cursor-not-allowed">
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M18 15l-6-6-6 6"/></svg>
-                  </button>
-                  <button type="button" disabled={i === sections.length - 1} onClick={() => reorderSection(i, i + 1)} title="Move down" className="p-1 rounded-lg text-neutral-400 hover:text-neutral-600 hover:bg-black/5 transition-colors disabled:opacity-30 disabled:cursor-not-allowed">
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M6 9l6 6 6-6"/></svg>
-                  </button>
                   <button type="button" onClick={() => startEdit(i)} title="Edit section" className="p-1 rounded-lg text-neutral-400 hover:text-neutral-600 hover:bg-black/5 transition-colors">
                     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                       <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
