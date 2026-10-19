@@ -217,7 +217,6 @@ test('US15 - Start Interview button is also present on the candidate detail page
   )
   // Navigate directly to the interview prep page (CandidateDetailPage redirects here)
   await page.goto(`/interview/${INTV_ID}`)
-  // The Prep tab contains the Begin Interview button; default view is CV tab
-  await page.getByRole('button', { name: 'Prep' }).click()
+  // Begin Interview sits in the pre-interview footer, under every tab
   await expect(page.getByRole('button', { name: /begin interview/i })).toBeVisible()
 })

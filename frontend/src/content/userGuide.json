@@ -151,12 +151,12 @@
           "intro": "Read the candidate's materials before you begin. The preparation view shows the CV analysis and the interview plan.",
           "steps": [
             { "text": "Open the candidate detail page for the interview." },
-            { "text": "The page opens on the CV tab. Read the CV document, the position fit summary, the Strengths, Improvements and Inconsistencies and the suggested questions." },
-            { "text": "Use the Cover Letter tab to read the candidate's cover letter." },
-            { "text": "In the Prep tab, the Briefing lists strengths and areas to probe and View full CV analysis opens the full report." },
+            { "text": "The page opens on the Prep tab. The Briefing lists strengths and areas to probe and View full CV analysis opens the full report." },
             { "text": "Read the Question Plan and the interview plan. The interviewplan lists each section, what it covers and the suggested time for it." },
+            { "text": "Use the CV tab to read the CV document, the position fit summary, the Strengths, Improvements and Inconsistencies and the suggested questions." },
+            { "text": "Use the Cover Letter tab to read the candidate's cover letter." },
             { "text": "Check your microphone and internet connection." },
-            { "text": "When you are ready, click Begin Interview at the bottom of the Prep tab and confirm the warning. From the Candidates table in the Candidate, Dashboard and Job detail pages you can also use Start Interview or Resume Interview if it is already running." }
+            { "text": "When you are ready, click Begin Interview at the bottom of the page (it is there on every tab) and confirm the warning. From the Candidates table in the Candidate, Dashboard and Job detail pages you can also use Start Interview or Resume Interview if it is already running." }
           ]
         },
         {
