@@ -30,6 +30,18 @@ export function useTranscript(id, { serverData, candidateName, userId, isComplet
     transcriptRef.current = transcript;
   }, [transcript]);
 
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(`speaker-assignments-${id}`) || "null");
+      if (saved && typeof saved === "object") {
+        speakerAssignmentsRef.current = saved;
+        setSpeakerAssignments(saved);
+      }
+    } catch {
+      localStorage.removeItem(`speaker-assignments-${id}`);
+    }
+  }, [id]);
+
   // Track how close to the bottom the interviewer is scrolled. Re-attaches when
   // the panel is shown/hidden (the container unmounts while hidden). 160px of
   // slack counts as "at the bottom" so a just-arrived line doesn't flip it.
@@ -235,6 +247,10 @@ export function useTranscript(id, { serverData, candidateName, userId, isComplet
 
     speakerAssignmentsRef.current = updatedAssignments;
     setSpeakerAssignments(updatedAssignments);
+    try {
+      localStorage.setItem(`speaker-assignments-${id}`, JSON.stringify(updatedAssignments));
+    } catch {
+    }
 
     return assignment;
   }
@@ -285,7 +301,10 @@ export function useTranscript(id, { serverData, candidateName, userId, isComplet
   function assignSpeaker(entry, person) {
     const key = detectedSpeakerKey(entry);
 
-    if (!key) return;
+    if (!key) {
+      assignSpeakerForEntry(entry, person);
+      return;
+    }
 
     const demotedKeys = new Set();
     if (person?.role === "interviewer" || person?.role === "candidate") {
@@ -314,6 +333,8 @@ export function useTranscript(id, { serverData, candidateName, userId, isComplet
       speaker_role: person?.role ?? null
     });
 
+    const exclusiveRole = person?.role === "interviewer" || person?.role === "candidate";
+
     setTranscript(prev => {
       const updated = prev.map(item => {
         const itemKey = detectedSpeakerKey(item);
@@ -322,7 +343,10 @@ export function useTranscript(id, { serverData, candidateName, userId, isComplet
           const fallback = Number.isInteger(item.speaker_id) ? `Speaker ${item.speaker_id + 1}` : "Speaker";
           return {...item, speaker: person?.name || fallback, participant_id: person?.id ?? null, speaker_role: person?.role ?? null};
         }
-        if (itemKey && demotedKeys.has(itemKey)) {
+
+        const demoted = (itemKey && demotedKeys.has(itemKey))
+          || (exclusiveRole && item.speaker_role === person.role);
+        if (demoted) {
           const fallback = Number.isInteger(item.speaker_id) ? `Speaker ${item.speaker_id + 1}` : "Speaker";
           return { ...item, speaker: fallback, participant_id: null, speaker_role: null};
         }

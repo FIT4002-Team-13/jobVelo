@@ -107,10 +107,13 @@ def _transcript_to_text(entries: list[dict] | None) -> str:
 
     lines = []
     for e in entries:
-        speaker = (e.get("speaker") or "Speaker").strip()
+        name = (e.get("speaker") or "Speaker").strip()
         text = (e.get("text") or "").strip()
-        if text:
-            lines.append(f"{speaker}: {text}")
+        if not text:
+            continue
+        role = (e.get("speaker_role") or "").strip().casefold()
+        who = {"interviewer": "Interviewer", "candidate": "Candidate"}.get(role)
+        lines.append(f"{who} ({name}): {text}" if who else f"{name}: {text}")
 
     return "\n".join(lines)
 

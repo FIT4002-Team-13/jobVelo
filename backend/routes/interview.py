@@ -818,10 +818,16 @@ async def _detect_interruptions(
     interruptions is not treated equally in a short and long interview.
     """
 
+    def _line_role(entry: dict, role: str, default_source: str) -> bool:
+        tagged = (entry.get("speaker_role") or "").strip().casefold()
+        if tagged:
+            return tagged == role
+        return entry.get("source") == default_source
+
     interviewer_entries = [
         entry
         for entry in entries
-        if entry.get("source") == "mic"
+        if _line_role(entry, "interviewer", "mic")
         and entry.get("start") is not None
         and entry.get("end") is not None
     ]
@@ -829,7 +835,7 @@ async def _detect_interruptions(
     candidate_entries = [
         entry
         for entry in entries
-        if entry.get("source") == "screen"
+        if _line_role(entry, "candidate", "screen")
         and entry.get("start") is not None
         and entry.get("end") is not None
     ]
@@ -1269,7 +1275,8 @@ def _merge_consecutive_turns(entries: list[dict]) -> list[dict]:
         if not text:
             continue
         speaker = e.get("speaker") or "Unknown"
-        if merged and merged[-1]["speaker"] == speaker:
+        speaker_role = (e.get("speaker_role") or "").strip().casefold() or None
+        if merged and merged[-1]["speaker"] == speaker and merged[-1]["speaker_role"] == speaker_role:
             # Same speaker still talking - append to the open turn. A space
             # joins fragments; existing terminal punctuation is preserved.
             merged[-1]["text"] = f"{merged[-1]['text']} {text}".strip()
@@ -1277,6 +1284,7 @@ def _merge_consecutive_turns(entries: list[dict]) -> list[dict]:
             merged.append(
                 {
                     "speaker": speaker,
+                    "speaker_role": speaker_role,
                     "timestamp": e.get("timestamp") or "",
                     "text": text,
                 }
@@ -1298,7 +1306,9 @@ def _transcript_to_text(entries: list[dict]) -> str:
     for e in _merge_consecutive_turns(entries):
         timestamp = e.get("timestamp") or ""
         prefix = f"[{timestamp}] " if timestamp else ""
-        lines.append(f"{prefix}{e['speaker']}: {e['text']}")
+        who = {"interviewer": "Interviewer", "candidate": "Candidate"}.get(e["speaker_role"])
+        label = f"{who} ({e['speaker']})" if who else e["speaker"]
+        lines.append(f"{prefix}{label}: {e['text']}")
 
     full = "\n".join(lines)
     if len(full) <= _TRANSCRIPT_CHAR_BUDGET:

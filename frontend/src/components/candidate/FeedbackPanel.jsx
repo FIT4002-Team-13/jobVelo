@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useLayoutEffect, useRef, useState } from 'react'
 import { card, flex } from '../../styles/layout'
 import ReportSections from '../interview/ReportSections.jsx'
 
@@ -91,6 +91,11 @@ function BiasTabContent({ incidents, completed }) {
 
 export default function FeedbackPanel({ interview, onDownloadCandidateReport, onDownloadInterviewerReport }) {
   const [activeTab, setActiveTab] = useState('candidate')
+  const reportBoxRef = useRef(null)
+
+  useLayoutEffect(() => {
+    if (reportBoxRef.current) reportBoxRef.current.scrollTop = 0
+  }, [activeTab])
 
   const candidateReport   = interview?.intv_candidate_report
   const interviewerReport = interview?.intv_interviewer_report
@@ -176,11 +181,17 @@ export default function FeedbackPanel({ interview, onDownloadCandidateReport, on
       {isBiasTab ? (
         <BiasTabContent incidents={biasIncidents} completed={interviewCompleted} />
       ) : hasActiveReport ? (
-        <ReportSections
-          report={activeReport}
-          showRequirements={activeTab === 'candidate'}
-          variant="grid"
-        />
+        <div
+          ref={reportBoxRef}
+          key={activeTab}
+          className="scrollbar-primary flex max-h-[480px] flex-1 flex-col overflow-y-auto pr-1"
+        >
+          <ReportSections
+            report={activeReport}
+            showRequirements={activeTab === 'candidate'}
+            variant="grid"
+          />
+        </div>
       ) : (
         <PanelEmptyState tone="neutral">
           <p className="text-md font-semibold text-neutral-500">

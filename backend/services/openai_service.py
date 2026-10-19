@@ -801,14 +801,21 @@ async def rate_candidate_skills(
         "interviewee",
     }
 
-    candidate_entries = [
-        entry
-        for entry in final_entries
-        if entry.speaker.strip().casefold() in candidate_labels
-    ]
+    def _is_candidate_line(entry) -> bool:
+        role = (entry.speaker_role or "").strip().casefold()
+        if role:
+            return role == "candidate"
+        return entry.speaker.strip().casefold() in candidate_labels
+
+    candidate_entries = [entry for entry in final_entries if _is_candidate_line(entry)]
+
+    def _speaker_label(entry) -> str:
+        role = (entry.speaker_role or "").strip().casefold()
+        who = {"interviewer": "Interviewer", "candidate": "Candidate"}.get(role)
+        return f"{who} ({entry.speaker})" if who else entry.speaker
 
     transcript_text = "\n".join(
-        (f"[{entry.id}] {entry.speaker} ({entry.timestamp}): {entry.text.strip()}")
+        f"[{entry.id}] {_speaker_label(entry)} ({entry.timestamp}): {entry.text.strip()}"
         for entry in final_entries
     )
 

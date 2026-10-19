@@ -133,8 +133,12 @@ def _build_session_block(iv: dict) -> str:
     lines = []
     for e in transcript:
         text = (e.get("text") or "").strip()
-        if text:
-            lines.append(f"{e.get('speaker') or '?'}: {text}")
+        if not text:
+            continue
+        role = (e.get("speaker_role") or "").strip().casefold()
+        who = {"interviewer": "Interviewer", "candidate": "Candidate"}.get(role)
+        name = e.get("speaker") or "?"
+        lines.append(f"{who} ({name}): {text}" if who else f"{name}: {text}")
     joined = "\n".join(lines)
     if len(joined) > _TRANSCRIPT_CAP:
         joined = joined[:_TRANSCRIPT_CAP] + " …[truncated]"
