@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
-import { badge, button } from "../../styles/layout";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { ChevronLeft, ChevronRight, CircleHelp, CornerDownRight, Sparkles, X } from "lucide-react";
+import { badge } from "../../styles/layout";
 
 // Three topic categories, matching the CV-analysis report. US "behavioral" and
 // anything unexpected fold into behavioural.
@@ -30,6 +31,8 @@ export function normaliseQuestion(question, index = 0, isFollowUp = false, isNew
   };
 }
 
+// The question text is the focal point of the card. Dismissing is a small
+// corner action; "More like this" and "Why?" sit in one quiet footer row.
 export function QuestionCard({ q, onMoreLike, onIgnore, isGeneratingSimilar }) {
   const [whyOpen, setWhyOpen] = useState(false);
   // A light, brief glow marking a newly generated question - clears itself just
@@ -44,27 +47,33 @@ export function QuestionCard({ q, onMoreLike, onIgnore, isGeneratingSimilar }) {
 
   return (
     <div
-      className={`flex w-[290px] short:w-[268px] shrink-0 flex-col rounded-2xl border bg-neutral-0 p-4 short:p-3.5 ${
+      className={`flex w-[300px] short:w-[272px] shrink-0 snap-start flex-col rounded-2xl border bg-neutral-0 p-4 short:p-3.5 ${
         glow ? "new-question-glow" : "border-neutral-200"
       }`}
     >
-      <div className="mb-3 short:mb-2 flex items-center justify-between gap-2 shrink-0">
-        <div className="flex min-w-0 items-center gap-1.5">
+      <div className="mb-2.5 flex shrink-0 items-start justify-between gap-2">
+        <div className="flex min-w-0 flex-wrap items-center gap-1.5">
           <span className={`${badge.sm} ${q.categoryColor}`}>{q.category}</span>
           {q.isFollowUp && (
             <span className="inline-flex items-center gap-1 whitespace-nowrap rounded-pill bg-primary-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-primary-600">
-              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <polyline points="9 14 4 9 9 4" />
-                <path d="M4 9h10a6 6 0 0 1 6 6v2" />
-              </svg>
+              <CornerDownRight size={10} strokeWidth={2.5} />
               Follow-up
             </span>
           )}
         </div>
+        <button
+          type="button"
+          onClick={() => onIgnore?.(q)}
+          aria-label="Ignore"
+          title="Ignore this question"
+          className="-mr-1 -mt-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-lg text-neutral-300 transition-colors hover:bg-coral-50 hover:text-coral-500"
+        >
+          <X size={14} strokeWidth={2.5} />
+        </button>
       </div>
 
-      <div className="scrollbar-hide flex-1 overflow-y-auto">
-        <p className="text-sm leading-relaxed text-neutral-800">{q.text}</p>
+      <div className="scrollbar-hide min-h-0 flex-1 overflow-y-auto">
+        <p className="text-[15px] font-medium leading-relaxed text-neutral-800">{q.text}</p>
         {whyOpen && (
           <p className="mt-3 rounded-xl bg-neutral-50 p-3 text-xs leading-relaxed text-neutral-500">
             {q.why}
@@ -72,32 +81,88 @@ export function QuestionCard({ q, onMoreLike, onIgnore, isGeneratingSimilar }) {
         )}
       </div>
 
-      <div className="mt-3 short:mt-2 flex flex-col gap-1.5 shrink-0">
+      <div className="mt-3 flex shrink-0 items-center justify-between gap-2 border-t border-neutral-100 pt-2.5 short:mt-2 short:pt-2">
         <button
-          onClick={() => onIgnore?.(q)}
-          className={`${button.danger} w-full py-1.5 text-xs font-semibold rounded-lg`}
-        >
-          Ignore
-        </button>
-        <button
+          type="button"
           onClick={() => onMoreLike(q)}
           disabled={isGeneratingSimilar}
-          className="w-full rounded-lg bg-neutral-100 py-1.5 text-xs font-semibold text-neutral-600 transition-colors hover:bg-neutral-200 disabled:cursor-not-allowed disabled:opacity-60"
+          className="-ml-1.5 inline-flex items-center gap-1.5 rounded-lg px-1.5 py-1 text-xs font-semibold text-primary-600 transition-colors hover:bg-primary-50 disabled:cursor-not-allowed disabled:opacity-60"
         >
+          <Sparkles size={13} />
           {isGeneratingSimilar ? "Generating…" : "More like this"}
         </button>
         <button
+          type="button"
           onClick={() => setWhyOpen((o) => !o)}
-          className="flex items-center justify-start gap-1.5 pt-0.5 text-xs font-medium text-neutral-400 transition-colors hover:text-neutral-600"
+          aria-expanded={whyOpen}
+          className="-mr-1.5 inline-flex items-center gap-1.5 rounded-lg px-1.5 py-1 text-xs font-medium text-neutral-400 transition-colors hover:bg-neutral-50 hover:text-neutral-600"
         >
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <circle cx="12" cy="12" r="10" />
-            <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
-            <line x1="12" y1="17" x2="12.01" y2="17" />
-          </svg>
+          <CircleHelp size={13} />
           {whyOpen ? "Hide" : "Why?"}
         </button>
       </div>
+    </div>
+  );
+}
+
+// Horizontal strip with arrow buttons and an edge fade only on the side that
+// still has cards hidden, so it is obvious there is more to scroll to.
+function QuestionStrip({ children, resetKey }) {
+  const ref = useRef(null);
+  const [edges, setEdges] = useState({ left: false, right: false });
+
+  const measure = useCallback(() => {
+    const el = ref.current;
+    if (!el) return;
+    setEdges({
+      left: el.scrollLeft > 4,
+      right: el.scrollLeft + el.clientWidth < el.scrollWidth - 4,
+    });
+  }, []);
+
+  useEffect(() => {
+    measure();
+    const el = ref.current;
+    if (!el || typeof ResizeObserver === "undefined") return undefined;
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [measure, resetKey]);
+
+  function scrollBy(dir) {
+    const el = ref.current;
+    if (el) el.scrollBy({ left: dir * Math.max(240, el.clientWidth * 0.8), behavior: "smooth" });
+  }
+
+  const arrow =
+    "absolute top-1/2 z-10 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full border border-neutral-200 bg-neutral-0 text-neutral-500 shadow-sm transition-colors hover:bg-neutral-50 hover:text-neutral-800";
+
+  // Inset by px-6 - the same gutter the section panel uses - so both panels
+  // share left and right edges. Hidden cards fade out via a mask on the
+  // scroller instead of bleeding to the card border.
+  const fade = 28;
+  const mask = `linear-gradient(to right, ${edges.left ? "transparent" : "#000"} 0, #000 ${fade}px, #000 calc(100% - ${fade}px), ${edges.right ? "transparent" : "#000"} 100%)`;
+
+  return (
+    <div className="relative min-h-0 flex-1 px-6 py-3 short:py-2">
+      <div
+        ref={ref}
+        onScroll={measure}
+        style={{ WebkitMaskImage: mask, maskImage: mask }}
+        className="scrollbar-hide flex h-full snap-x snap-proximity items-stretch gap-3 overflow-x-auto overflow-y-hidden"
+      >
+        {children}
+      </div>
+      {edges.left && (
+        <button type="button" onClick={() => scrollBy(-1)} aria-label="Previous questions" className={`${arrow} left-3`}>
+          <ChevronLeft size={16} />
+        </button>
+      )}
+      {edges.right && (
+        <button type="button" onClick={() => scrollBy(1)} aria-label="Next questions" className={`${arrow} right-3`}>
+          <ChevronRight size={16} />
+        </button>
+      )}
     </div>
   );
 }
@@ -116,7 +181,7 @@ export function SuggestedQuestionDeck({
       <div className="flex items-center justify-between border-b border-neutral-100 px-6 pt-2.5 short:pt-2 pb-2 short:pb-1.5 shrink-0">
         <h2 className="text-base font-semibold text-neutral-800">Suggested Questions</h2>
         {questions.length > 0 && (
-          <span className="text-xs font-semibold text-neutral-300">{questions.length}</span>
+          <span className="text-xs font-semibold text-neutral-400">{displayedQuestions.length} to ask</span>
         )}
       </div>
 
@@ -133,19 +198,17 @@ export function SuggestedQuestionDeck({
           <p className="text-sm text-neutral-400">No suggested questions available.</p>
         </div>
       ) : (
-        <div className="flex-1 overflow-x-auto overflow-y-hidden px-6 py-3 short:py-2">
-          <div className="flex h-full items-stretch gap-4">
-            {displayedQuestions.map((q) => (
-              <QuestionCard
-                key={q.id}
-                q={q}
-                onMoreLike={onMoreLike}
-                onIgnore={onIgnore}
-                isGeneratingSimilar={similarQuestionId === q.id}
-              />
-            ))}
-          </div>
-        </div>
+        <QuestionStrip resetKey={displayedQuestions.length}>
+          {displayedQuestions.map((q) => (
+            <QuestionCard
+              key={q.id}
+              q={q}
+              onMoreLike={onMoreLike}
+              onIgnore={onIgnore}
+              isGeneratingSimilar={similarQuestionId === q.id}
+            />
+          ))}
+        </QuestionStrip>
       )}
     </div>
   );

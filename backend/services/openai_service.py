@@ -320,14 +320,20 @@ async def check_bias(question: str) -> dict[str, Any]:
                     "content": (
                         "You review interview questions for bias and legal risk. "
                         "Flag a question ONLY if it touches a protected category - "
-                        "age, marital/family status, pregnancy, religion, national "
+                        "gender, age, marital/family status, pregnancy, religion, national "
                         "origin, disability, race, or sexual orientation - or is "
                         "otherwise discriminatory or inappropriate for a job "
                         "interview. Ordinary role-relevant questions (skills, "
                         "experience, availability, work authorization when asked "
                         "generically) are NOT flagged. Reply with valid JSON only: "
                         '{"flagged": bool, "category": string|null, "reason": '
-                        'string|null, "suggestion": string|null}. "reason" is a '
+                        'string|null, "suggestion": string|null}. "category" '
+                        "lists EVERY label that applies, comma-separated, chosen "
+                        "only from: gender, age, race/ethnicity, religion, "
+                        "national origin, disability, marital/family status, "
+                        "pregnancy, sexual orientation, appearance, personal "
+                        "attack, discriminatory hiring intent, other. "
+                        '"reason" is a '
                         'short explanation of the risk. "suggestion" is a neutral, '
                         "job-relevant rephrasing that gets at the same underlying "
                         "intent, or null if there isn't a reasonable one."

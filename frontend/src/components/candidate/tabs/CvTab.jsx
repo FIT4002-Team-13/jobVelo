@@ -2,6 +2,7 @@ import { flex } from "../../../styles/layout";
 import DocumentSlot from "../DocumentSlot.jsx";
 import FitVerdict from "../FitVerdict.jsx";
 import InsightTabs from "../InsightTabs.jsx";
+import QuestionCategoryPill from "../QuestionCategoryPill.jsx";
 
 export default function CvTab({ cvUrl, uploading, onUpload, onDelete, cvAnalysis, candidate, onEdit }) {
   return (
@@ -62,9 +63,7 @@ export default function CvTab({ cvUrl, uploading, onUpload, onDelete, cvAnalysis
                     <li key={i} className={`${flex.row} items-start gap-3`}>
                       <span className="w-4 shrink-0 pt-px text-right text-sm font-semibold tabular-nums text-neutral-300">{i + 1}</span>
                       <span className="flex-1 text-sm leading-snug text-neutral-700">{q.question}</span>
-                      {q.category && (
-                        <span className="shrink-0 pt-px text-[10px] font-semibold uppercase tracking-wide text-neutral-300">{q.category}</span>
-                      )}
+                      <QuestionCategoryPill category={q.category} />
                     </li>
                   ))}
                 </ol>
