@@ -174,7 +174,7 @@ export default function ApplicationsPage() {
   const [deleteTarget, setDeleteTarget] = useState(null)
   // application_id currently being analysed (click guard for the CV cell).
   const [analysingId, setAnalysingId] = useState(null)
-  const canManageCandidates = user?.role === 'admin' || user?.role === 'recruiter'
+  const canManageCandidates = user?.role === 'recruiter'
 
   // Lighter-weight than a full reload() - only re-fetches the rows (jobs
   // rarely change as a side effect of a candidate action).
@@ -279,7 +279,7 @@ export default function ApplicationsPage() {
               Manage all candidates across jobs
             </p>
           </div>
-          {(user?.role === "recruiter" || user?.role === "admin") && (
+          {(user?.role === "recruiter" ) && (
             <button
               type="button"
               onClick={() => setShowAddModal(true)}

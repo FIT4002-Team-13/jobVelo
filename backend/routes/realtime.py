@@ -33,17 +33,16 @@ async def realtime_transcribe(websocket: WebSocket, role: str | None = None) -> 
     bias_tasks: set[asyncio.Task] = set()
 
     async def run_bias_check(text: str) -> None:
-        # Each final is now a complete utterance (DeepgramSession assembles the
-        # phrase fragments into whole sentences before flushing), so we check
-        # the sentence on its own - no cross-final window needed - and report
-        # it verbatim as the quote the frontend rendered.
+        # Checked per sentence (DeepgramSession's on_sentence), not per
+        # utterance: an utterance only ends after a silence, so a speaker who
+        # never pauses would otherwise get one late warning quoting everything.
         result = await check_bias(text)
         if result.get("flagged"):
             await transcript_queue.put(
                 {"type": "bias_warning", "quote": text, **result}
             )
 
-    def spawn_bias_check(text: str) -> None:
+    async def spawn_bias_check(text: str) -> None:
         task = asyncio.create_task(run_bias_check(text))
         bias_tasks.add(task)
         task.add_done_callback(bias_tasks.discard)
@@ -52,8 +51,6 @@ async def realtime_transcribe(websocket: WebSocket, role: str | None = None) -> 
         await transcript_queue.put(
             {"type": "transcript", "text": text, "is_final": is_final}
         )
-        if is_final and role == "interviewer":
-            spawn_bias_check(text)
 
     async def on_diarization(groups: list[dict], is_final: bool) -> None:
         await transcript_queue.put(
@@ -66,7 +63,11 @@ async def realtime_transcribe(websocket: WebSocket, role: str | None = None) -> 
             }
         )
 
-    session = DeepgramSession(on_transcript, on_diarization=on_diarization)
+    session = DeepgramSession(
+        on_transcript,
+        on_diarization=on_diarization,
+        on_sentence=spawn_bias_check if role == "interviewer" else None,
+    )
 
     try:
         await session.open()

@@ -260,10 +260,10 @@ async def get_job(
 async def require_job_manager(
     user: dict = Depends(get_current_user),
 ) -> dict:
-    if user.get("role") not in ("admin", "recruiter"):
+    if user.get("role") not in ("recruiter"):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only recruiters and admins can manage jobs.",
+            detail="Only recruiters can manage jobs.",
         )
     return user
 
@@ -278,10 +278,10 @@ async def create_job(
     """Create a job in the caller's company. Any comp_id in the body is
     IGNORED - we substitute the JWT one so a user can't create jobs in a
     company they don't belong to."""
-    if user.get("role") not in ("admin", "recruiter"):
+    if user.get("role") not in ("recruiter"):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only recruiters and admins can manage jobs.",
+            detail="Only recruiters can manage jobs.",
         )
     now = datetime.now(UTC)
     body = payload.model_dump()
@@ -308,10 +308,10 @@ async def update_job(
     user: dict = Depends(require_job_manager),
 ) -> JobOut:
     db = get_db()
-    if user.get("role") not in ("admin", "recruiter"):
+    if user.get("role") not in ("recruiter"):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only recruiters and admins can manage jobs.",
+            detail="Only recruiters can manage jobs.",
         )
     oid = _validate_oid(job_id)
 
@@ -366,10 +366,10 @@ async def delete_job(
     dashboard status rollup (pinning candidates at "SCHEDULED" forever)
     and analysis PDFs accumulated on disk unreachably."""
 
-    if user.get("role") not in ("admin", "recruiter"):
+    if user.get("role") not in ("recruiter"):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only recruiters and admins can manage jobs.",
+            detail="Only recruiters can manage jobs.",
         )
     oid = _validate_oid(job_id)
 
