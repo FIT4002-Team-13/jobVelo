@@ -1,11 +1,6 @@
 import { useState } from 'react'
 import { card } from '../../styles/layout'
-
-const QUESTION_CATEGORY_STYLES = {
-  technical:  'bg-primary-100 text-primary-600',
-  behavioral: 'bg-mint-100 text-mint-700',
-  experience: 'bg-coral-100 text-coral-700',
-}
+import QuestionCategoryPill from './QuestionCategoryPill.jsx'
 
 export default function QuestionCard({ items, emptyText }) {
   const [expanded, setExpanded] = useState(() => new Set())
@@ -29,11 +24,7 @@ export default function QuestionCard({ items, emptyText }) {
           {items.map((q, i) => (
             <li key={i} className="flex flex-col gap-2 rounded-xl border border-neutral-100 bg-neutral-50 p-4 text-sm">
               <div className="flex items-center justify-between gap-2">
-                <span className={`rounded-pill px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide ${
-                  QUESTION_CATEGORY_STYLES[q.category] ?? 'bg-neutral-100 text-neutral-500'
-                }`}>
-                  {q.category}
-                </span>
+                <QuestionCategoryPill category={q.category} />
                 {q.rationale && (
                   <button
                     type="button"
