@@ -61,7 +61,7 @@ function ScoreEvidenceRow({ row, open, onToggle, onJump }) {
         onClick={onToggle}
         aria-expanded={open}
         aria-label={`${row.label} evidence`}
-        className={`${flex.row} w-full items-end gap-2 rounded-lg -mx-1.5 px-1.5 py-1 text-left transition-colors hover:bg-neutral-50`}
+        className="flex w-full items-end gap-2 rounded-lg -mx-1.5 px-1.5 py-1 text-left transition-colors hover:bg-neutral-50"
       >
         <div className="flex-1 min-w-0">
           <ScoreBar label={row.label} score={row.score} />
@@ -542,7 +542,9 @@ export default function TranscriptAnalysisTab({
                       <h4 className="text-xs font-bold uppercase tracking-wide text-neutral-400">Result</h4>
                       <span className="text-[10px] text-neutral-400">Select a score to see its evidence</span>
                     </div>
-                    <div className={`${flex.row} items-start gap-6`}>
+                    {/* Plain flex, not flex.row: its items-center would win over
+                        items-start and re-centre the donut as scores expand. */}
+                    <div className="flex items-start gap-6">
                       <ScoreDonut value={overall} />
                       <div className={`${flex.col} flex-1 min-w-0 gap-1.5`}>
                         {scoreRows.map((r) => (
