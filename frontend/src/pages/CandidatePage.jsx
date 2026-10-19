@@ -25,6 +25,7 @@ export default function CandidatePage() {
   const navigate = useNavigate();
   const toast = useToast();
   const { user } = useAuth();
+  const isRecruiter = user?.role === "recruiter";
   const [searchParams] = useSearchParams();
 
   // A link into this page (e.g. a CV/Cover Letter "View" button elsewhere in
@@ -465,20 +466,23 @@ export default function CandidatePage() {
             <CvTab
               cvUrl={cvUrl}
               uploading={cvUploading}
-              onUpload={handleCvUpload}
-              onDelete={cvUrl || cvAnalysis ? handleCvDelete : null}
+              onUpload={isRecruiter ? handleCvUpload : undefined}
+              onDelete={isRecruiter && (cvUrl || cvAnalysis) ? handleCvDelete : undefined}
               cvAnalysis={cvAnalysis}
               candidate={candidate}
-              onEdit={() => { setShowEditMode(true); setShowProfile(true); }}
-            />
+              onEdit={isRecruiter ? () => {
+                setShowEditMode(true);
+                setShowProfile(true);
+              } : undefined}
+              />
           )}
 
           {centerView === "cover-letter" && (
             <CoverLetterTab
               coverLetterUrl={coverLetterUrl}
               uploading={clUploading}
-              onUpload={handleCoverLetterUpload}
-              onDelete={coverLetterUrl ? handleCoverLetterDelete : null}
+              onUpload={isRecruiter ? handleCoverLetterUpload : undefined}
+              onDelete={isRecruiter && coverLetterUrl ? handleCoverLetterDelete : undefined}
             />
           )}
 
