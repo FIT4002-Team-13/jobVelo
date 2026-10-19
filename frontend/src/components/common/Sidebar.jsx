@@ -9,6 +9,7 @@ import {
   Search,
   BarChart3,
   BookOpen,
+  Building2,
 } from "lucide-react";
 import logoFull from "../../assets/logo-final.png";
 import { useAuth } from "../../lib/AuthContext.jsx";
@@ -99,6 +100,12 @@ export default function Sidebar({ user: userProp }) {
       group: "ADMIN",
     },
     {
+      label: "Company Profile",
+      path: "/admin/company",
+      icon: <Building2 size={16} />,
+      group: "ADMIN",
+    },
+    {
       label: "User Guide",
       path: "/user-guide",
       icon: <BookOpen size={16} />,
@@ -156,7 +163,9 @@ export default function Sidebar({ user: userProp }) {
     <aside className="w-[200px] shrink-0 bg-neutral-0 border-r border-neutral-200 flex flex-col h-screen sticky top-0">
       {/* Logo */}
       <div className="pt-5 px-4 pb-4 flex items-center justify-center">
-        <img src={logoFull} alt="Logo" className="h-16 w-auto" />
+        <Link to="/dashboard" aria-label="Go to dashboard" className="rounded-lg transition-opacity hover:opacity-80">
+          <img src={logoFull} alt="Logo" className="h-16 w-auto" />
+        </Link>
       </div>
 
       {/* Master search - opens the global command palette (also Ctrl/Cmd+K). */}

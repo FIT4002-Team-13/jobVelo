@@ -31,7 +31,7 @@ const FAKE_SCHEDULED_CANDIDATE = {
   status: 'SCHEDULED', score: null,
   interviewer: 'Interviewer User', interviewer_user_id: '507f1f77bcf86cd799439011',
   intv_id: INTV_ID, intv_completed: false,
-  scheduled_at: '2027-09-20T14:00:00Z', ratings: null,
+  scheduled_at: '2026-01-20T14:00:00Z', ratings: null,
 }
 
 const FAKE_EXISTING_INTERVIEW = {
@@ -172,6 +172,20 @@ test('US15 - new interview is created when no existing scheduled/in-progress int
   await expect(page).toHaveURL(new RegExp(`/interview/${NEW_INTV_ID}`))
 })
 
+test('US15 - Start is disabled until 10 minutes before the scheduled time', async ({ page }) => {
+  await seedAuth(page)
+  await mockJobDetail(page)
+  // Override with an interview scheduled well into the future
+  const future = { ...FAKE_SCHEDULED_CANDIDATE, scheduled_at: '2099-01-01T10:00:00Z' }
+  await page.route(`**/api/jobs/${JOB_ID}/candidates`, (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([future]) })
+  )
+  await page.goto(`/jobs/${JOB_ID}`)
+  await page.getByRole('button', { name: 'Start Interview' }).first().click()
+  await expect(page.getByRole('button', { name: 'Start', exact: true })).toBeDisabled()
+  await expect(page.getByText(/Available from/)).toBeVisible()
+})
+
 test('US15 - non-SCHEDULED candidate has no Start Interview button', async ({ page }) => {
   await seedAuth(page)
   // Override candidates with a NOT SCHEDULED one
@@ -203,7 +217,6 @@ test('US15 - Start Interview button is also present on the candidate detail page
   )
   // Navigate directly to the interview prep page (CandidateDetailPage redirects here)
   await page.goto(`/interview/${INTV_ID}`)
-  // The Prep tab contains the Begin Interview button; default view is CV tab
-  await page.getByRole('button', { name: 'Prep' }).click()
+  // Begin Interview sits in the pre-interview footer, under every tab
   await expect(page.getByRole('button', { name: /begin interview/i })).toBeVisible()
 })

@@ -17,6 +17,7 @@ import EditCandidateForm from "../components/candidate/EditCandidateForm.jsx";
 import CvTab from "../components/candidate/tabs/CvTab.jsx";
 import CoverLetterTab from "../components/candidate/tabs/CoverLetterTab.jsx";
 import InterviewPrepTab from "../components/candidate/tabs/InterviewPrepTab.jsx";
+import BeginInterviewFooter from "../components/candidate/BeginInterviewFooter.jsx";
 import InterviewResumeTab from "../components/candidate/tabs/InterviewResumeTab.jsx";
 import TranscriptAnalysisTab from "../components/candidate/tabs/TranscriptAnalysisTab.jsx";
 
@@ -120,10 +121,9 @@ export default function CandidatePage() {
       }
       requestedViewRef.current = null;
     } else {
-      // Pre-interview lands on CV (review the person first); mid-interview
-      // lands on the resume checkpoint; post-interview lands on the
-      // transcript/report (the deliverable).
-      setCenterView(phase === "prep" ? "cv" : "transcript");
+      // Every phase lands on its first tab: Prep before the interview, the
+      // resume checkpoint mid-interview, the transcript/report afterwards.
+      setCenterView("transcript");
     }
   }, [phase]);
 
@@ -391,11 +391,11 @@ export default function CandidatePage() {
                   { id: "cover-letter", label: "Cover Letter" },
                 ]
               : [
-                  // Pre-interview: review the source (CV + detail), then the
-                  // cover letter, then prep-and-begin - left-to-right funnel.
+                  // Pre-interview: Prep first (briefing + plan), then the
+                  // source documents. Begin lives in the footer on every tab.
+                  { id: "transcript", label: "Prep" },
                   { id: "cv", label: "CV" },
                   { id: "cover-letter", label: "Cover Letter" },
-                  { id: "transcript", label: "Prep" },
                 ]
             ).map((v) => (
               <button
@@ -418,12 +418,9 @@ export default function CandidatePage() {
             <InterviewPrepTab
               analysis={cvAnalysis}
               scheduledLabel={scheduledLabel}
-              onBegin={() => setShowStartWarning(true)}
-              onViewFullAnalysis={
-                jobCand?.jobcand_id
-                  ? () => navigate(`/cv-analysis/${jobCand.jobcand_id}`)
-                  : null
-              }
+              // The CV tab already holds the full analysis, so stay on this
+              // page rather than leaving for the standalone /cv-analysis view.
+              onViewFullAnalysis={() => setCenterView("cv")}
               jobId={jobId}
               candId={candId}
               jobCand={jobCand}
@@ -436,11 +433,7 @@ export default function CandidatePage() {
               analysis={cvAnalysis}
               interviewerLabel={interviewerLabel}
               onResume={() => setShowStartWarning(true)}
-              onViewFullAnalysis={
-                jobCand?.jobcand_id
-                  ? () => navigate(`/cv-analysis/${jobCand.jobcand_id}`)
-                  : null
-              }
+              onViewFullAnalysis={() => setCenterView("cv")}
             />
           )}
 
@@ -487,6 +480,10 @@ export default function CandidatePage() {
           )}
 
         </div>
+
+        {phase === "prep" && (
+          <BeginInterviewFooter onBegin={() => setShowStartWarning(true)} />
+        )}
       </div>
 
       {showStartWarning && (

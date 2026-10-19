@@ -6,7 +6,7 @@ from datetime import UTC, datetime, timedelta
 
 from bson import ObjectId
 from fastapi import APIRouter, Depends, HTTPException, Response, status
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, Field, ValidationError
 
 from database import get_db
 from dependencies import get_current_comp_id, get_current_user, require_role
@@ -47,7 +47,9 @@ router = APIRouter(prefix="/api/interviews", tags=["interviews"])
 class PlanRequest(BaseModel):
     job_id: str
     cand_id: str
-    total_minutes: int | None = None
+    # 10 leaves room for the fixed 5-minute Introduction plus at least one
+    # 5-minute section; anything shorter can't satisfy the plan prompt.
+    total_minutes: int | None = Field(default=None, ge=10, le=240)
 
 
 @router.post("/generate-plan", summary="Generate an AI interview plan for a candidate.")

@@ -39,8 +39,9 @@
             { "text": "Candidates: every applicant across all jobs. Filter by status, sort by date or name and search by candidate name." },
             { "text": "Insights - Interviewers: the candidate's average score under different interviewer, bias flags and interview consistency across the team.", "roles": ["hiring_manager"] },
             { "text": "Admin - Invitations: generate one-time codes to invite new users and assign roles.", "roles": ["admin"] },
+            { "text": "Admin - Company Profile: edit the company logo, name, industry, description and contact details.", "roles": ["admin"] },
             { "text": "Profile: your interviewing stats and AI feedback on the interviews you have run. Interviewers and Hiring Managers only.", "roles": ["interviewer", "hiring_manager"] },
-            { "text": "Profile: your account details. Admins also see a Company Profile tab.", "roles": ["admin", "recruiter"] },
+            { "text": "Profile: your account details.", "roles": ["admin", "recruiter"] },
             { "text": "User Guide: a guide that walks you through the features and functionality of the app relevant to your role." }
           ]
         }
@@ -150,12 +151,12 @@
           "intro": "Read the candidate's materials before you begin. The preparation view shows the CV analysis and the interview plan.",
           "steps": [
             { "text": "Open the candidate detail page for the interview." },
-            { "text": "The page opens on the CV tab. Read the CV document, the position fit summary, the Strengths, Improvements and Inconsistencies and the suggested questions." },
-            { "text": "Use the Cover Letter tab to read the candidate's cover letter." },
-            { "text": "In the Prep tab, the Briefing lists strengths and areas to probe and View full CV analysis opens the full report." },
+            { "text": "The page opens on the Prep tab. The Briefing lists strengths and areas to probe and View full CV analysis opens the full report." },
             { "text": "Read the Question Plan and the interview plan. The interviewplan lists each section, what it covers and the suggested time for it." },
+            { "text": "Use the CV tab to read the CV document, the position fit summary, the Strengths, Improvements and Inconsistencies and the suggested questions." },
+            { "text": "Use the Cover Letter tab to read the candidate's cover letter." },
             { "text": "Check your microphone and internet connection." },
-            { "text": "When you are ready, click Begin Interview at the bottom of the Prep tab and confirm the warning. From the Candidates table in the Candidate, Dashboard and Job detail pages you can also use Start Interview or Resume Interview if it is already running." }
+            { "text": "When you are ready, click Begin Interview at the bottom of the page (it is there on every tab) and confirm the warning. From the Candidates table in the Candidate, Dashboard and Job detail pages you can also use Start Interview or Resume Interview if it is already running." }
           ]
         },
         {
@@ -268,10 +269,10 @@
           "intro": "A completed interview shows the candidate's results and the interviewer's feedback together, so you can judge both from one place.",
           "steps": [
             { "text": "Open the candidate detail page from Candidates page or from the job detail page's candidate list." },
-            { "text": "The completed interview opens on the Transcript tab. Its sub-tabs are Candidate, Interviewer, Evidence and Bias." },
+            { "text": "The completed interview opens on the Transcript tab. Its sub-tabs are Candidate, Interviewer and Bias." },
             { "text": "Candidate tab shows the Result (the overall score and the Technical skills, Communication and Problem solving scores) and the candidate report." },
             { "text": "Interviewer tab shows the interviewer report and the questioning patterns, which show how the interview was run." },
-            { "text": "Evidence tab shows the explanation behind each score and the evidence that supports it." },
+            { "text": "Select a score on the Candidate tab to see the explanation behind it and the evidence that supports it." },
             { "text": "Bias tab shows any questions flagged during this interview as biased." },
             { "text": "In the transcript panel use Search transcript to find a word, click Add note to write a note for a specific line and check the section markers to see where each interview section started." },
             { "text": "Use the Download button at the top right of the Transcript tab to download the Candidate Report, the Interviewer Report or the Transcript as a PDF." },
@@ -319,7 +320,7 @@
           "steps": [
             { "text": "Open the job and switch to Rankings to compare candidates by overall score, Communication, Skill and Problem Solving." },
             { "text": "Open each candidate you are assessing. On the Transcript tab, read the Result on the Candidate tab." },
-            { "text": "Check the Evidence tab for the explanation and evidence behind each score." },
+            { "text": "Select a score on the Candidate tab to check the explanation and evidence behind it." },
             { "text": "On the CV tab, read the CV analysis: Strengths, Improvements, Inconsistencies and the position fit verdict." },
             { "text": "Open each completed interview and read the Interviewer report. It shows how the interview was run." },
             { "text": "Use these information to decide whether to shortlist, hire or reject each candidate.", "roles": ["hiring_manager"] }
@@ -378,8 +379,8 @@
           "roles": ["admin"],
           "intro": "Company details appear on the signup and the profile pages. Admins are the only role that can change them.",
           "steps": [
-            { "text": "Open Profile and select the Company Profile tab." },
-            { "text": "Click Edit Logo to upload a company logo. It appears on the left of the tab." },
+            { "text": "Open Company Profile under Admin in the sidebar." },
+            { "text": "Click Edit Logo to upload a company logo. It appears on the left of the page." },
             { "text": "Edit the company name and industry, the description, the email and contact number, and the website when needed." },
             { "text": "Click Save Changes when all fields are up to date. A confirmation message appears when the save succeeds." }
           ]

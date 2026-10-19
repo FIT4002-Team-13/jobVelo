@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { flex } from "../../styles/layout";
 import { formatTimer } from "../../utils/time.js";
-import { SECTION_COLORS } from "../../utils/constants.js";
+import { sectionColor } from "../../utils/constants.js";
 
 const STATUS_LABEL = { idle: "Not started", running: "In progress", paused: "Paused", done: "Done" };
 
@@ -182,7 +182,7 @@ export function InterviewSectionTimeline({
             const startSec = hasReal
               ? section.start_at
               : sections.slice(0, i).reduce((sum, s) => sum + (s.suggested_minutes || 0) * 60, 0);
-            const color = SECTION_COLORS[i % SECTION_COLORS.length];
+            const color = sectionColor(section, i);
 
             return (
               <button
@@ -212,7 +212,7 @@ export function InterviewSectionTimeline({
                 chipRef={(el) => (sectionCardRefs.current[i] = el)}
                 section={section}
                 st={sectionStates[i] ?? { status: "idle", elapsed: 0 }}
-                color={SECTION_COLORS[i % SECTION_COLORS.length]}
+                color={sectionColor(section, i)}
                 focused={i === focusIdx}
                 onSelect={() => setPicked(i)}
               />
@@ -223,7 +223,7 @@ export function InterviewSectionTimeline({
             <SectionDetail
               section={focusSection}
               st={sectionStates[focusIdx] ?? { status: "idle", elapsed: 0 }}
-              color={SECTION_COLORS[focusIdx % SECTION_COLORS.length]}
+              color={sectionColor(focusSection, focusIdx)}
               locked={!isMicActive}
               onStart={() => startSection(focusIdx)}
               onPause={() => pauseSection(focusIdx)}

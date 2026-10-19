@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { ArrowDown, ArrowUp, ChevronsUpDown } from 'lucide-react'
 import Sidebar from '../components/common/Sidebar'
 import AddCandidateForm from '../components/candidate/AddCandidateForm'
 import EditCandidateForm from '../components/candidate/EditCandidateForm'
@@ -12,21 +13,118 @@ import { api } from '../lib/api.js'
 import { formatScore, formatShortDate, getAverageScore } from '../utils/format.js'
 import { initials as getInitials, avatarColor } from '../utils/avatar.js'
 import { CANDIDATE_STATUS_STYLES, FALLBACK_STATUS_CLASS } from '../utils/status.js'
-import { CANDIDATE_FILTER_OPTIONS, withAllOption } from '../utils/constants.js'
+import { CANDIDATE_FILTER_OPTIONS, CANDIDATE_STATUSES, withAllOption } from '../utils/constants.js'
 import { useAsync } from '../hooks/useAsync.js'
 import { useTableControls } from '../hooks/useTableControls.js'
 
 
+// Sort state is "<column>:<asc|desc>" so the Sort menu and the clickable
+// column headers drive the same key - picking one highlights the other.
 const SORT_OPTIONS = [
-  { value: 'date', label: 'Date' },
-  { value: 'score', label: 'Score' },
-  { value: 'name_asc', label: 'Name A - Z' },
-  { value: 'name_desc', label: 'Name Z - A' },
+  { value: 'date:desc', label: 'Date' },
+  { value: 'score:desc', label: 'Score' },
+  { value: 'name:asc', label: 'Name A - Z' },
+  { value: 'name:desc', label: 'Name Z - A' },
+  { value: 'status', label: 'Current Status' },
+  { value: 'job:asc', label: 'Job Applied' },
 ]
+
+// Status sort follows the interview lifecycle (Not Scheduled -> Completed);
+// anything off the list (e.g. CANCELLED) sorts after it.
+function statusRank(status) {
+  const i = CANDIDATE_STATUSES.indexOf(status)
+  return i === -1 ? CANDIDATE_STATUSES.length : i
+}
+
+const time = (row) => (row.interview_datetime ? new Date(row.interview_datetime).getTime() : null)
+
+// Sortable columns. `value` is what's compared ascending; `firstDir` is the
+// direction a first header click picks (e.g. highest score first, newest
+// first).
+const SORT_COLUMNS = {
+  name:   { label: 'Candidate',   firstDir: 'asc',  value: (r) => r.candidate_name || '' },
+  job:    { label: 'Job Applied', firstDir: 'asc',  value: (r) => r.job_title || '' },
+  status: { label: 'Status',      firstDir: 'asc',  value: (r) => statusRank(r.status) },
+  score:  { label: 'Score',       firstDir: 'desc', value: (r) => getAverageScore(r.ratings) },
+  date:   { label: 'Date',        firstDir: 'desc', value: time },
+}
+
+// Header order. CV / CL aren't sortable - they're filters instead (see
+// DOCUMENT_FILTERS) - so they render as plain headers.
+const HEADER_COLUMNS = ['name', 'job', 'status', 'cv', 'cl', 'score', 'date']
+const PLAIN_HEADERS = { cv: 'CV', cl: 'CL' }
+
+function parseSortKey(sortKey) {
+  const [col, dir] = (sortKey || '').split(':')
+  return SORT_COLUMNS[col] ? { col, dir: dir === 'asc' ? 'asc' : 'desc' } : { col: 'date', dir: 'desc' }
+}
+
+// Missing values (no score / no date) always sink to the bottom, whichever
+// way the column is sorted.
+function compareValues(x, y) {
+  if (x == null || y == null) return x == null ? (y == null ? 0 : 1) : -1
+  return typeof x === 'string' ? x.localeCompare(y) : x - y
+}
+
+function compareRows(a, b, sortKey) {
+  const { col, dir } = parseSortKey(sortKey)
+  const getValue = SORT_COLUMNS[col].value
+  const va = getValue(a)
+  const vb = getValue(b)
+  const primary = va == null || vb == null
+    ? compareValues(va, vb)
+    : compareValues(va, vb) * (dir === 'asc' ? 1 : -1)
+  if (primary !== 0 || col === 'date') return primary
+  // Ties fall back to newest interview first, then name.
+  return compareValues(time(b), time(a)) || compareValues(a.candidate_name || '', b.candidate_name || '')
+}
+
+function SortableHeader({ col, sortKey, onSort }) {
+  const { col: activeCol, dir } = parseSortKey(sortKey)
+  const active = activeCol === col
+  const { label, firstDir } = SORT_COLUMNS[col]
+  const nextDir = active ? (dir === 'asc' ? 'desc' : 'asc') : firstDir
+  const Icon = !active ? ChevronsUpDown : dir === 'asc' ? ArrowUp : ArrowDown
+  return (
+    <th
+      aria-sort={active ? (dir === 'asc' ? 'ascending' : 'descending') : 'none'}
+      className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide"
+    >
+      <button
+        type="button"
+        onClick={() => onSort(`${col}:${nextDir}`)}
+        className={`group inline-flex items-center gap-1 uppercase tracking-wide transition-colors ${
+          active ? 'text-primary-500' : 'text-neutral-500 hover:text-neutral-700'
+        }`}
+      >
+        {label}
+        <Icon
+          size={12}
+          className={active ? 'text-primary-500' : 'text-neutral-300 group-hover:text-neutral-500'}
+        />
+      </button>
+    </th>
+  )
+}
 
 // Kept in sync with the dashboard candidates panel + JobDetailPage candidate
 // filter so the same statuses are filterable wherever the user looks.
-const FILTER_OPTIONS = withAllOption(CANDIDATE_FILTER_OPTIONS)
+// The document filters sit alongside them; their values are prefixed so they
+// can't collide with a status.
+const DOCUMENT_FILTERS = {
+  'doc:cv': { label: 'CV Uploaded',           field: 'cv_url' },
+  'doc:cl': { label: 'Cover Letter Uploaded', field: 'cover_letter_url' },
+}
+const FILTER_OPTIONS = withAllOption([
+  ...CANDIDATE_FILTER_OPTIONS,
+  ...Object.entries(DOCUMENT_FILTERS).map(([value, { label }]) => ({ value, label })),
+])
+
+function matchesFilter(row, filters) {
+  return filters.every((f) =>
+    DOCUMENT_FILTERS[f] ? Boolean(row[DOCUMENT_FILTERS[f].field]) : row.status === f
+  )
+}
 
 // Previously had a bespoke OptionsPopup component here - replaced by the
 // shared SortMenu / FilterMenu from TableControls so this page reads
@@ -122,25 +220,15 @@ export default function ApplicationsPage() {
     matchesSearch: (row, needle) =>
       (row.candidate_name || '').toLowerCase().includes(needle) ||
       (row.job_title || '').toLowerCase().includes(needle),
-    matchesFilter: (row, filters) => filters.length === 0 || filters.includes(row.status),
+    matchesFilter,
     compare: (a, b, sortKey, needle) => {
       if (needle) {
         const relDiff = relevance(a, needle) - relevance(b, needle)
         if (relDiff !== 0) return relDiff
       }
-      switch (sortKey) {
-        case 'score':
-          return (getAverageScore(b.ratings) ?? -Infinity) - (getAverageScore(a.ratings) ?? -Infinity)
-        case 'name_asc':
-          return (a.candidate_name || '').localeCompare(b.candidate_name || '')
-        case 'name_desc':
-          return (b.candidate_name || '').localeCompare(a.candidate_name || '')
-        case 'date':
-        default:
-          return new Date(b.interview_datetime || 0) - new Date(a.interview_datetime || 0)
-      }
+      return compareRows(a, b, sortKey)
     },
-    defaultSortKey: 'date',
+    defaultSortKey: 'date:desc',
   })
 
   async function handleAddSaved() {
@@ -212,7 +300,7 @@ export default function ApplicationsPage() {
             <input
               value={table.search}
               onChange={(e) => table.setSearch(e.target.value)}
-              placeholder="Candidate Name"
+              placeholder="Search"
               className="w-32 border-none bg-transparent text-sm text-neutral-600 outline-none placeholder:text-neutral-400"
             />
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-neutral-400">
@@ -252,27 +340,15 @@ export default function ApplicationsPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-neutral-50 border-b border-neutral-100">
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-neutral-500">
-                    Candidate
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-neutral-500">
-                    Job Applied
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-neutral-500">
-                    Status
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-neutral-500">
-                    CV
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-neutral-500">
-                    CL
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-neutral-500">
-                    Score
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-neutral-500">
-                    Date
-                  </th>
+                  {HEADER_COLUMNS.map((col) => (
+                    PLAIN_HEADERS[col] ? (
+                      <th key={col} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-neutral-500">
+                        {PLAIN_HEADERS[col]}
+                      </th>
+                    ) : (
+                      <SortableHeader key={col} col={col} sortKey={table.sortKey} onSort={table.setSortKey} />
+                    )
+                  ))}
                   <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-neutral-500">
                     Actions
                   </th>
