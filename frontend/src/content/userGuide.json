@@ -39,8 +39,9 @@
             { "text": "Candidates: every applicant across all jobs. Filter by status, sort by date or name and search by candidate name." },
             { "text": "Insights - Interviewers: the candidate's average score under different interviewer, bias flags and interview consistency across the team.", "roles": ["hiring_manager"] },
             { "text": "Admin - Invitations: generate one-time codes to invite new users and assign roles.", "roles": ["admin"] },
+            { "text": "Admin - Company Profile: edit the company logo, name, industry, description and contact details.", "roles": ["admin"] },
             { "text": "Profile: your interviewing stats and AI feedback on the interviews you have run. Interviewers and Hiring Managers only.", "roles": ["interviewer", "hiring_manager"] },
-            { "text": "Profile: your account details. Admins also see a Company Profile tab.", "roles": ["admin", "recruiter"] },
+            { "text": "Profile: your account details.", "roles": ["admin", "recruiter"] },
             { "text": "User Guide: a guide that walks you through the features and functionality of the app relevant to your role." }
           ]
         }
@@ -378,8 +379,8 @@
           "roles": ["admin"],
           "intro": "Company details appear on the signup and the profile pages. Admins are the only role that can change them.",
           "steps": [
-            { "text": "Open Profile and select the Company Profile tab." },
-            { "text": "Click Edit Logo to upload a company logo. It appears on the left of the tab." },
+            { "text": "Open Company Profile under Admin in the sidebar." },
+            { "text": "Click Edit Logo to upload a company logo. It appears on the left of the page." },
             { "text": "Edit the company name and industry, the description, the email and contact number, and the website when needed." },
             { "text": "Click Save Changes when all fields are up to date. A confirmation message appears when the save succeeds." }
           ]

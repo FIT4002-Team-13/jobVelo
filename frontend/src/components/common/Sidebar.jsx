@@ -9,6 +9,7 @@ import {
   Search,
   BarChart3,
   BookOpen,
+  Building2,
 } from "lucide-react";
 import logoFull from "../../assets/logo-final.png";
 import { useAuth } from "../../lib/AuthContext.jsx";
@@ -96,6 +97,12 @@ export default function Sidebar({ user: userProp }) {
       label: "Invitations",
       path: "/admin/dashboard",
       icon: <KeyRound size={16} />,
+      group: "ADMIN",
+    },
+    {
+      label: "Company Profile",
+      path: "/admin/company",
+      icon: <Building2 size={16} />,
       group: "ADMIN",
     },
     {
