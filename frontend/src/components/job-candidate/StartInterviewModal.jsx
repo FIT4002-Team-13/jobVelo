@@ -1,4 +1,6 @@
 import { modal, button } from '../../styles/layout'
+import { useCanStartInterview } from '../../hooks/useCanStartInterview'
+import { EARLY_START_MINUTES, startAvailableLabel } from '../../lib/interviewWindow'
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -40,6 +42,10 @@ function formatScheduledAt(iso) {
  *                the plan can't change mid-session).
  */
 export default function StartInterviewModal({ candidate, jobTitle, onClose, onConfirm, noPlan = false, resume = false }) {
+  // Resuming is never time-gated - the session has already begun.
+  const withinWindow = useCanStartInterview(candidate?.scheduled_at)
+  const canConfirm = resume || withinWindow
+
   return (
     <div className={modal.overlay}>
       <div className="relative bg-neutral-0 rounded-2xl w-full max-w-md shadow-xl">
@@ -70,8 +76,11 @@ export default function StartInterviewModal({ candidate, jobTitle, onClose, onCo
             {jobTitle && (
               <p className="text-sm text-neutral-500 mt-0.5">{jobTitle}</p>
             )}
-            <p className="text-sm font-bold text-neutral-700 mt-2">
-              {formatScheduledAt(candidate?.scheduled_at)}
+            <p className="text-sm text-neutral-500 mt-2">
+              Scheduled for{' '}
+              <span className="font-bold text-neutral-700">
+                {formatScheduledAt(candidate?.scheduled_at)}
+              </span>
             </p>
           </div>
 
@@ -125,6 +134,13 @@ export default function StartInterviewModal({ candidate, jobTitle, onClose, onCo
             </div>
           )}
 
+          {!canConfirm && (
+            <p className="text-xs text-neutral-500 text-center mb-4">
+              {startAvailableLabel(candidate?.scheduled_at)} - interviews can be
+              started up to {EARLY_START_MINUTES} minutes before the scheduled time.
+            </p>
+          )}
+
           {/* Action buttons - use shared button tokens so primary/cancel pairs
               look identical across every modal in the app. */}
           <div className="flex justify-center gap-3">
@@ -138,7 +154,8 @@ export default function StartInterviewModal({ candidate, jobTitle, onClose, onCo
             <button
               type="button"
               onClick={onConfirm}
-              className={`flex items-center gap-2 ${button.primary}`}
+              disabled={!canConfirm}
+              className={`flex items-center gap-2 ${button.primary} disabled:cursor-not-allowed disabled:opacity-50`}
             >
               <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor">
                 <polygon points="5 3 19 12 5 21 5 3" />

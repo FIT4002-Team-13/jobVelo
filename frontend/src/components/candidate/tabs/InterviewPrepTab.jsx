@@ -1,6 +1,8 @@
 import { card, button, flex } from "../../../styles/layout";
 import FitVerdict from "../FitVerdict.jsx";
 import InterviewPlanCard from "../InterviewPlanCard.jsx";
+import { useCanStartInterview } from "../../../hooks/useCanStartInterview";
+import { EARLY_START_MINUTES, startAvailableLabel } from "../../../lib/interviewWindow";
 
 // Same palette the live suggestion deck uses, so prep questions read as the
 // same system. CV-analysis emits US "behavioral" too.
@@ -127,7 +129,9 @@ export function QuestionPlanCard({ analysis }) {
   );
 }
 
-export default function InterviewPrepTab({ analysis, scheduledLabel, onBegin, onViewFullAnalysis, jobId, candId, jobCand }) {
+export default function InterviewPrepTab({ analysis, scheduledAt, scheduledLabel, onBegin, onViewFullAnalysis, jobId, candId, jobCand }) {
+  const canBegin = useCanStartInterview(scheduledAt);
+
   return (
     <div className="flex h-full min-h-0 w-full flex-col">
       <div className="scrollbar-primary flex-1 overflow-y-auto px-6 py-6">
@@ -150,12 +154,15 @@ export default function InterviewPrepTab({ analysis, scheduledLabel, onBegin, on
       <div className="shrink-0 border-t border-neutral-200 bg-neutral-0 px-6 py-3">
         <div className={`mx-auto max-w-6xl ${flex.rowBetween} gap-4`}>
           <p className="text-xs text-neutral-400">
-            Opens the live recording workspace, where you&apos;ll grant mic access to start.
+            {canBegin
+              ? <>Opens the live recording workspace, where you&apos;ll grant mic access to start.</>
+              : `${startAvailableLabel(scheduledAt)} (${EARLY_START_MINUTES} minutes before the scheduled time).`}
           </p>
           <button
             type="button"
             onClick={onBegin}
-            className={`${flex.row} shrink-0 gap-2 ${button.primary} !px-8 !py-2.5 text-base`}
+            disabled={!canBegin}
+            className={`${flex.row} shrink-0 gap-2 ${button.primary} !px-8 !py-2.5 text-base disabled:cursor-not-allowed disabled:opacity-50`}
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
               <polygon points="5 3 19 12 5 21 5 3" />

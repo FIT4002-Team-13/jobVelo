@@ -416,6 +416,7 @@ export default function CandidatePage() {
           {centerView === "transcript" && phase === "prep" && (
             <InterviewPrepTab
               analysis={cvAnalysis}
+              scheduledAt={intvDateTime}
               scheduledLabel={scheduledLabel}
               onBegin={() => setShowStartWarning(true)}
               onViewFullAnalysis={
