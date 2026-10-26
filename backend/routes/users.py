@@ -16,7 +16,7 @@ from datetime import UTC, datetime
 from bson import ObjectId
 from fastapi import APIRouter, Depends, HTTPException, status
 
-from database import get_db
+from database import fetch_capped, get_db
 from dependencies import get_current_comp_id
 from models.user import UserOut
 
@@ -72,7 +72,9 @@ async def list_users(
     if role:
         query["role"] = role
 
-    users = await db.users.find(query, {"password_hash": 0}).to_list(length=200)
+    users = await fetch_capped(
+        db.users.find(query, {"password_hash": 0}), 1000, "users list"
+    )
     return [_user_row(u) for u in users]
 
 

@@ -5,11 +5,37 @@ via the real API endpoints. The dashboard shows empty-state messaging
 when collections are empty.
 """
 
+import logging
+
 # import certifi
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 from pymongo.errors import ConfigurationError, PyMongoError, ServerSelectionTimeoutError
 
 from config import settings
+
+logger = logging.getLogger(__name__)
+
+# Interview docs embed the full transcript and both reports. List and
+# aggregate endpoints only need these fields, so they project them instead of
+# pulling every transcript out of Mongo on each request.
+INTERVIEW_SUMMARY = {
+    "cand_id": 1,
+    "job_id": 1,
+    "intv_status": 1,
+    "intv_date_time": 1,
+    "intv_updated_at": 1,
+    "intv_bias_incidents": 1,
+}
+
+
+async def fetch_capped(cursor, cap: int, what: str) -> list:
+    """`cursor.to_list(length=cap)` that logs when the cap was reached, so a
+    company outgrowing a limit shows up in the logs instead of silently
+    losing rows."""
+    docs = await cursor.to_list(length=cap)
+    if len(docs) >= cap:
+        logger.warning("%s hit its %d-row cap; results are truncated", what, cap)
+    return docs
 
 
 class _Mongo:
