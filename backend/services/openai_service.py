@@ -13,6 +13,7 @@ them out without coupling to internal state.
 from __future__ import annotations
 
 import json
+import logging
 import math
 from typing import Any
 
@@ -31,6 +32,8 @@ from models.job_candidate import (
     SkillName,
     SkillRating,
 )
+
+logger = logging.getLogger(__name__)
 
 _client: AsyncOpenAI | None = None
 
@@ -353,7 +356,10 @@ async def check_bias(question: str) -> dict[str, Any]:
             "reason": data.get("reason"),
             "suggestion": data.get("suggestion"),
         }
-    except Exception:
+    except Exception as error:
+        # Fail open, but leave a trace: otherwise a broken bias check (bad key,
+        # no credit, rate limit) looks exactly like "nothing to flag".
+        logger.warning("check_bias failed, failing open: %s", error)
         return fallback
 
 
