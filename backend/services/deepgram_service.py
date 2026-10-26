@@ -12,6 +12,7 @@ touching the route.
 from __future__ import annotations
 
 import logging
+import re
 from collections.abc import Awaitable, Callable
 
 from deepgram import (
@@ -28,6 +29,9 @@ logger = logging.getLogger(__name__)
 # (text, is_final) — is_final means DG won't revise this segment.
 TranscriptHandler = Callable[[str, bool], Awaitable[None]]
 DiarizationHandler = Callable[[list[dict], bool], Awaitable[None]]
+SentenceHandler = Callable[[str], Awaitable[None]]
+
+_SENTENCE_BREAK = re.compile(r"(?<=[.?!])\s+")
 
 
 def _join(fragments: list[str]) -> str:
@@ -51,15 +55,22 @@ def group_speaker_words(words):
             continue
 
         speaker_id = getattr(word, "speaker", None)
+        start = getattr(word, "start", None)
+        end = getattr(word, "end", None)
 
         if not groups or groups[-1]["speaker_id"] != speaker_id:
-            groups.append({"speaker_id": speaker_id, "words": []})
+            groups.append({"speaker_id": speaker_id, "start": start, "end": end, "words": []})
+        else:
+            if end is not None:
+                groups[-1]["end"] = end
 
         groups[-1]["words"].append(text)
 
     return [
         {
             "speaker_id": group["speaker_id"],
+            "start": group["start"],
+            "end": group["end"],
             "text": " ".join(group["words"]),
         }
         for group in groups
@@ -80,13 +91,34 @@ class DeepgramSession:
         self,
         on_transcript: TranscriptHandler,
         on_diarization: DiarizationHandler | None = None,
+        on_sentence: SentenceHandler | None = None,
     ):
         self._on_transcript = on_transcript
         self._on_diarization = on_diarization
+        # Fires per finished sentence as soon as it's finalized, without
+        # waiting for speech_final - so a speaker who never pauses still gets
+        # each sentence checked promptly (used by the live bias check).
+        self._on_sentence = on_sentence
         self._connection = None
 
         # Finalized-but-not-yet-flushed fragments of the current utterance.
         self._buffer: list[str] = []
+        # Finalized text not yet emitted to on_sentence (an unfinished sentence).
+        self._pending = ""
+
+    async def _emit_sentences(self, fragment: str, flush: bool) -> None:
+        if self._on_sentence is None:
+            return
+        self._pending = _join([self._pending, fragment])
+        parts = _SENTENCE_BREAK.split(self._pending) if self._pending else []
+        # Keep a trailing unpunctuated piece for the next fragment, unless the
+        # utterance ended.
+        if parts and not flush and parts[-1][-1] not in ".?!":
+            self._pending = parts.pop()
+        else:
+            self._pending = ""
+        for sentence in parts:
+            await self._on_sentence(sentence)
 
     async def _handle_result(
         self, transcript: str, is_final: bool, speech_final: bool
@@ -110,6 +142,8 @@ class DeepgramSession:
             # flushed - stitched onto it - when this speaker's mic picks up
             # new speech later, producing one merged line spanning both
             # turns instead of two separate ones.
+            if is_final and speech_final:
+                await self._emit_sentences("", True)
             if is_final and speech_final and self._buffer:
                 sentence = _join(self._buffer)
                 self._buffer = []
@@ -122,6 +156,7 @@ class DeepgramSession:
             return
 
         self._buffer.append(text)
+        await self._emit_sentences(text, speech_final)
         if speech_final:
             sentence = _join(self._buffer)
             self._buffer = []
@@ -147,12 +182,6 @@ class DeepgramSession:
                 alt = result.channel.alternatives[0]
                 if getattr(result, "is_final", False):
                     groups = group_speaker_words(alt.words or [])
-
-                    print(
-                        "DIARISATION",
-                        f"connection={id(self)}",
-                        groups,
-                    )
                     if groups and self._on_diarization is not None:
                         await self._on_diarization(groups, True)
                 await self._handle_result(

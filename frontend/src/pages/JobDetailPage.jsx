@@ -109,11 +109,9 @@ export default function JobDetailPage() {
         (i) => i.intv_status === "in_progress" || i.intv_status === "scheduled"
       );
       if (resumable) {
-        navigate(
-          resumable.intv_status === "in_progress"
-            ? `/interview/${resumable.intv_id}/live`
-            : `/interview/${resumable.intv_id}`
-        );
+        // Both land on the candidate page - its Prep / Resume tab is the
+        // checkpoint before the live workspace.
+        navigate(`/interview/${resumable.intv_id}`);
         return;
       }
 
@@ -234,7 +232,7 @@ export default function JobDetailPage() {
               {" / "}
               {job.candidates_total ?? 0} candidates
             </span>
-            {(user?.role === "recruiter" || user?.role === "admin") && (
+            {(user?.role === "recruiter") && (
               <button
                 type="button"
                 onClick={() => setShowAddCandidate(true)}
@@ -310,7 +308,7 @@ export default function JobDetailPage() {
                 </p>
               </div>
               <div className={`${flex.row} gap-2`}>
-                {(user?.role === 'admin' || user?.role === 'recruiter') && (
+                {(user?.role === 'recruiter') && (
                   <button
                     onClick={() => setShowEdit(true)}
                     className="text-xs font-medium text-neutral-500 border border-neutral-200 px-3 py-1 rounded-lg hover:bg-neutral-50 transition-colors"
@@ -397,7 +395,15 @@ export default function JobDetailPage() {
             tab={tab}
             setTab={setTab}
             user={user}
-            onStartInterview={(c) => setStartTarget(c)}
+            onStartInterview={(c) => {
+              // Already in progress: skip the "Start" confirm and land on the
+              // Resume checkpoint, which carries its own warning.
+              if (c.status === "IN PROGRESS" && c.intv_id) {
+                navigate(`/interview/${c.intv_id}`);
+                return;
+              }
+              setStartTarget(c);
+            }}
             onEditCandidate={(c) => setEditTarget(c)}
             onDelete={(c) => setDeleteTarget(c)}
             onOpenInterview={(intvId) => navigate(`/interview/${intvId}?view=transcript`)}
@@ -465,6 +471,7 @@ export default function JobDetailPage() {
             phone: editTarget.phone,
             job_id: id,
             interviewer: editTarget.interviewer || "",
+            interviewer_user_id: editTarget.interviewer_user_id || "",
             interview_datetime: editTarget.scheduled_at || null,
             cv_url: editTarget.cv_url,
             cover_letter_url: editTarget.cover_letter_url,

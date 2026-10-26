@@ -15,7 +15,7 @@ Route shape: /api/jobs + /api/jobs/{job_id}
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from bson import ObjectId
 from fastapi import APIRouter, Depends, HTTPException, Response, status
@@ -207,13 +207,13 @@ async def list_jobs(
     query: dict = {"comp_id": comp_id}
     if user.get("role") == "interviewer":
         assigned = [
-            ObjectId(j) for j in await _assigned_job_ids(db, user) if ObjectId.is_valid(j)
+            ObjectId(j)
+            for j in await _assigned_job_ids(db, user)
+            if ObjectId.is_valid(j)
         ]
         query["_id"] = {"$in": assigned}
     jobs = await (
-        db.jobs.find(query)
-        .sort("job_last_update_datetime", -1)
-        .to_list(length=200)
+        db.jobs.find(query).sort("job_last_update_datetime", -1).to_list(length=200)
     )
 
     stats = await _job_stats(db, [str(j["_id"]) for j in jobs])
@@ -227,7 +227,6 @@ async def list_jobs(
         )
         for j in jobs
     ]
-
 
 
 @router.get("/{job_id}", response_model=JobOut)
@@ -257,15 +256,17 @@ async def get_job(
         }
     )
 
+
 async def require_job_manager(
     user: dict = Depends(get_current_user),
 ) -> dict:
-    if user.get("role") not in ("admin", "recruiter"):
+    if user.get("role") not in ("recruiter"):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only recruiters and admins can manage jobs.",
+            detail="Only recruiters can manage jobs.",
         )
     return user
+
 
 @router.post("", response_model=JobOut, status_code=status.HTTP_201_CREATED)
 async def create_job(
@@ -273,17 +274,16 @@ async def create_job(
     comp_id: ObjectId = Depends(get_current_comp_id),
     user: dict = Depends(require_job_manager),
 ) -> JobOut:
-    
     db = get_db()
     """Create a job in the caller's company. Any comp_id in the body is
     IGNORED - we substitute the JWT one so a user can't create jobs in a
     company they don't belong to."""
-    if user.get("role") not in ("admin", "recruiter"):
+    if user.get("role") not in ("recruiter"):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only recruiters and admins can manage jobs.",
+            detail="Only recruiters can manage jobs.",
         )
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     body = payload.model_dump()
     body["comp_id"] = comp_id  # JWT-derived; ignore whatever the client sent
     # `candidates_filled` and `interviewers` are NOT stored on the doc -
@@ -307,19 +307,18 @@ async def update_job(
     comp_id: ObjectId = Depends(get_current_comp_id),
     user: dict = Depends(require_job_manager),
 ) -> JobOut:
-    
     db = get_db()
-    if user.get("role") not in ("admin", "recruiter"):
+    if user.get("role") not in ("recruiter"):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only recruiters and admins can manage jobs.",
+            detail="Only recruiters can manage jobs.",
         )
     oid = _validate_oid(job_id)
 
     updates = {k: v for k, v in payload.model_dump().items() if v is not None}
     if not updates:
         raise HTTPException(status_code=400, detail="No fields to update")
-    updates["job_last_update_datetime"] = datetime.now(timezone.utc)
+    updates["job_last_update_datetime"] = datetime.now(UTC)
 
     # Two-part filter: only updates if the job ALSO belongs to the caller's
     # company. Cross-tenant edits fall into the 404 branch.
@@ -357,7 +356,6 @@ async def delete_job(
     comp_id: ObjectId = Depends(get_current_comp_id),
     user: dict = Depends(require_job_manager),
 ):
-    
     db = get_db()
     """Delete the job AND everything hanging off it: job_candidates links,
     interviews (+ interviewer links), and cv_analyses docs/files. The
@@ -367,11 +365,11 @@ async def delete_job(
     Without the full cascade, orphaned interviews kept feeding the
     dashboard status rollup (pinning candidates at "SCHEDULED" forever)
     and analysis PDFs accumulated on disk unreachably."""
-    
-    if user.get("role") not in ("admin", "recruiter"):
+
+    if user.get("role") not in ("recruiter"):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only recruiters and admins can manage jobs.",
+            detail="Only recruiters can manage jobs.",
         )
     oid = _validate_oid(job_id)
 
@@ -511,7 +509,7 @@ async def add_candidate_to_job(
     if job is None:
         raise HTTPException(status_code=404, detail="Job not found")
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     comp_id = job["comp_id"]  # ObjectId
 
     # Validate the interviewer BEFORE creating anything, so a bad id can't
@@ -522,7 +520,11 @@ async def add_candidate_to_job(
         if not ObjectId.is_valid(payload.interviewer_user_id):
             raise HTTPException(status_code=400, detail="Invalid interviewer_user_id")
         interviewer_user = await db.users.find_one(
-            {"_id": ObjectId(payload.interviewer_user_id), "comp_id": comp_id, "role": {"$in": ["interviewer", "hiring_manager"]}},
+            {
+                "_id": ObjectId(payload.interviewer_user_id),
+                "comp_id": comp_id,
+                "role": {"$in": ["interviewer", "hiring_manager"]},
+            },
             {"_id": 1},
         )
         if interviewer_user is None:

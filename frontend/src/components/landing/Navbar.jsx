@@ -10,6 +10,7 @@ const links = [
   { label: 'Dashboard',    href: '/#dashboard' },
   { label: 'Features',     href: '/#features' },
   { label: 'How it works', href: '/#how' },
+  { label: 'Getting started', href: '/#start' },
 ]
 
 export default function Navbar() {

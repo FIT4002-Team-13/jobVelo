@@ -10,6 +10,7 @@ import CreateCompanyPage from './pages/CreateCompanyPage.jsx'
 import DashboardPage from './pages/DashboardPage.jsx'
 import SchedulesPage from './pages/SchedulesPage.jsx'
 import AdminDashboardPage from './pages/AdminDashboardPage.jsx'
+import CompanyProfilePage from './pages/CompanyProfilePage.jsx'
 import JobsPage from './pages/JobsPage'
 import JobDetailPage from './pages/JobDetailPage'
 import Profile from './pages/ProfilePage.jsx'
@@ -19,6 +20,7 @@ import CandidatePage from './pages/CandidatePage.jsx'
 import CandidateDetailPage from './pages/CandidateDetailPage.jsx'
 import ApplicationsPage from './pages/ApplicationsPage.jsx'
 import InterviewConsistencyPage from './pages/InterviewConsistencyPage.jsx'
+import UserGuidePage from './pages/UserGuidePage.jsx'
 import ErrorPage, { AppErrorBoundary } from './pages/ErrorPage.jsx'
 
 export default function App() {
@@ -54,6 +56,16 @@ export default function App() {
               <RequireAuth>
                 <RequireRole allow={['admin']}>
                   <AdminDashboardPage />
+                </RequireRole>
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/admin/company"
+            element={
+              <RequireAuth>
+                <RequireRole allow={['admin']}>
+                  <CompanyProfilePage />
                 </RequireRole>
               </RequireAuth>
             }
@@ -140,6 +152,14 @@ export default function App() {
                 <RequireRole allow={['hiring_manager']}>
                   <InterviewConsistencyPage />
                 </RequireRole>
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/user-guide"
+            element={
+              <RequireAuth>
+                <UserGuidePage />
               </RequireAuth>
             }
           />

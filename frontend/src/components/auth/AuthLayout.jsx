@@ -1,11 +1,20 @@
 import { motion } from 'framer-motion'
 import { Link } from 'react-router-dom'
+import { ArrowLeft } from 'lucide-react'
 import Logo from '../common/Logo.jsx'
 import HeroIllustration from '../common/HeroIllustration.jsx'
 
 export default function AuthLayout({ title, children }) {
   return (
     <div className="min-h-screen relative overflow-hidden bg-gradient-to-br from-primary-50 via-white to-mint-50">
+      <Link
+        to="/"
+        className="fixed top-5 left-5 z-50 inline-flex items-center gap-2 rounded-lg border border-neutral-200 bg-neutral-0 px-3 py-1.5 text-sm font-semibold text-neutral-600 shadow-sm transition-colors hover:border-primary-200 hover:bg-primary-500/10 hover:text-primary-600"
+      >
+        <ArrowLeft size={14} aria-hidden="true" />
+        Back
+      </Link>
+
       {/* Soft glow */}
       <div className="absolute inset-0 -z-10 bg-hero-glow" />
       <div className="absolute -top-32 -left-24 -z-10 h-[420px] w-[420px] rounded-pill bg-primary-100/60 blur-3xl animate-blob" />

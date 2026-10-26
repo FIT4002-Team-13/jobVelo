@@ -5,6 +5,7 @@ cluster is touched. The same patch.object + httpx.AsyncClient pattern used
 in test_cand_integration.py is applied here for consistency.
 """
 
+from datetime import UTC, datetime
 from unittest.mock import patch
 
 import httpx
@@ -28,6 +29,7 @@ async def db_client():
             yield c, mock_db
     app.dependency_overrides.clear()
 
+
 @pytest.fixture
 async def authed_db_client(db_client):
     client, db = db_client
@@ -41,7 +43,7 @@ async def authed_db_client(db_client):
     }
 
     yield client, db, comp_id
-    
+
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -137,6 +139,126 @@ async def test_create_job_blocked_when_required_fields_missing(
     assert count == 0
 
 
+# ── TC-039: Hiring manager can view and sort all interviewed candidates ────────
+
+
+async def _seed_candidate(db, comp_id: ObjectId, name: str, email: str) -> ObjectId:
+    cand_id = ObjectId()
+    await db.candidates.insert_one(
+        {
+            "_id": cand_id,
+            "cand_full_name": name,
+            "cand_email": email,
+            "comp_id": comp_id,
+            "cand_created_at": datetime.now(UTC),
+            "cand_updated_at": datetime.now(UTC),
+        }
+    )
+    return cand_id
+
+
+async def test_list_candidates_for_job_returns_all_linked_candidates(authed_db_client):
+    """GET /api/jobs/{job_id}/candidates returns every candidate linked to
+    that job, each with name, email, and status fields populated."""
+    client, db, comp_id = authed_db_client
+
+    job_id = ObjectId()
+    await db.jobs.insert_one({"_id": job_id, "comp_id": comp_id, "title": "Dev Role"})
+
+    cand_a = await _seed_candidate(db, comp_id, "Alice Smith", "alice@example.com")
+    cand_b = await _seed_candidate(db, comp_id, "Bob Jones", "bob@example.com")
+
+    await db.job_candidates.insert_one({"cand_id": str(cand_a), "job_id": str(job_id)})
+    await db.job_candidates.insert_one({"cand_id": str(cand_b), "job_id": str(job_id)})
+
+    response = await client.get(f"/api/jobs/{job_id}/candidates")
+
+    assert response.status_code == 200
+    rows = response.json()
+    assert len(rows) == 2
+    names = {r["name"] for r in rows}
+    assert names == {"Alice Smith", "Bob Jones"}
+
+
+async def test_list_candidates_for_job_score_is_average_of_ratings(authed_db_client):
+    """Candidate with AI ratings stored on the job_candidates link shows the
+    correct average score: (communication + technical_skills + problem_solving) / 3."""
+    client, db, comp_id = authed_db_client
+
+    job_id = ObjectId()
+    await db.jobs.insert_one({"_id": job_id, "comp_id": comp_id, "title": "Dev Role"})
+
+    cand_id = await _seed_candidate(db, comp_id, "Rated Candidate", "rated@example.com")
+    await db.job_candidates.insert_one(
+        {
+            "cand_id": str(cand_id),
+            "job_id": str(job_id),
+            "ratings": {
+                "communication": {
+                    "skill": "Communication",
+                    "score": 8.0,
+                    "explanation": None,
+                    "evidence": [],
+                },
+                "technical_skills": {
+                    "skill": "Technical Skills",
+                    "score": 7.0,
+                    "explanation": None,
+                    "evidence": [],
+                },
+                "problem_solving": {
+                    "skill": "Problem Solving",
+                    "score": 9.0,
+                    "explanation": None,
+                    "evidence": [],
+                },
+            },
+            "status": "EVALUATED",
+        }
+    )
+
+    response = await client.get(f"/api/jobs/{job_id}/candidates")
+
+    assert response.status_code == 200
+    rows = response.json()
+    assert len(rows) == 1
+    expected_avg = round((8.0 + 7.0 + 9.0) / 3, 1)
+    assert rows[0]["score"] == expected_avg
+
+
+async def test_list_candidates_for_job_unrated_candidate_has_null_score(
+    authed_db_client,
+):
+    """A candidate with no ratings yet shows score as null rather than 0."""
+    client, db, comp_id = authed_db_client
+
+    job_id = ObjectId()
+    await db.jobs.insert_one({"_id": job_id, "comp_id": comp_id, "title": "Dev Role"})
+
+    cand_id = await _seed_candidate(db, comp_id, "Fresh Candidate", "fresh@example.com")
+    await db.job_candidates.insert_one({"cand_id": str(cand_id), "job_id": str(job_id)})
+
+    response = await client.get(f"/api/jobs/{job_id}/candidates")
+
+    assert response.status_code == 200
+    assert response.json()[0]["score"] is None
+
+
+async def test_list_candidates_for_foreign_job_returns_404(authed_db_client):
+    """A job that belongs to a different company returns 404, not the candidates."""
+    client, db, _ = authed_db_client
+
+    foreign_job_id = ObjectId()
+    other_comp = ObjectId()
+    await db.jobs.insert_one(
+        {"_id": foreign_job_id, "comp_id": other_comp, "title": "Other Job"}
+    )
+
+    response = await client.get(f"/api/jobs/{foreign_job_id}/candidates")
+
+    assert response.status_code == 404
+
+
 # ── Interviewer scoping ───────────────────────────────────────────────────────
 
 
@@ -146,12 +268,18 @@ async def test_interviewer_lists_only_assigned_jobs(authed_db_client):
     client, db, comp_id = authed_db_client
     me = ObjectId()
     app.dependency_overrides[get_current_user] = lambda: {
-        "_id": me, "role": "interviewer", "comp_id": comp_id,
+        "_id": me,
+        "role": "interviewer",
+        "comp_id": comp_id,
     }
     mine = (await db.jobs.insert_one({"comp_id": comp_id, "title": "Mine"})).inserted_id
-    other = (await db.jobs.insert_one({"comp_id": comp_id, "title": "Other"})).inserted_id
+    other = (
+        await db.jobs.insert_one({"comp_id": comp_id, "title": "Other"})
+    ).inserted_id
     intv = await db.interviews.insert_one({"job_id": str(mine), "cand_id": "c1"})
-    await db.interview_users.insert_one({"user_id": str(me), "intv_id": str(intv.inserted_id)})
+    await db.interview_users.insert_one(
+        {"user_id": str(me), "intv_id": str(intv.inserted_id)}
+    )
 
     titles = [j["title"] for j in (await client.get("/api/jobs")).json()]
     assert titles == ["Mine"]
@@ -159,6 +287,8 @@ async def test_interviewer_lists_only_assigned_jobs(authed_db_client):
     assert (await client.get(f"/api/jobs/{mine}")).status_code == 200
 
     app.dependency_overrides[get_current_user] = lambda: {
-        "_id": ObjectId(), "role": "recruiter", "comp_id": comp_id,
+        "_id": ObjectId(),
+        "role": "recruiter",
+        "comp_id": comp_id,
     }
     assert len((await client.get("/api/jobs")).json()) == 2

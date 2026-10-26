@@ -114,9 +114,7 @@ def test_fileless_post_over_completed_analysis_is_cached_read(authed):
         "position_fit": {},
         "cv_path": "cv_analyses/x.pdf",
         "cover_letter_path": None,
-        "created_at": __import__("datetime").datetime.now(
-            __import__("datetime").timezone.utc
-        ),
+        "created_at": __import__("datetime").datetime.now(__import__("datetime").UTC),
     }
 
     mock_db = MagicMock()
