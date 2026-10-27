@@ -7,6 +7,7 @@ Recruiters add jobs and candidates, an AI analyses each CV against the role, and
 By reducing interviewer workload and cognitive overload, jobVelo aims to improve the quality and consistency of hiring while keeping human judgement at the centre of recruitment.
 
 ## Contents
+- [Team Members](#team-members)
 - [Stack](#stack)
 - [Project structure](#project-structure)
 - [Getting started](#getting-started)
@@ -20,6 +21,45 @@ By reducing interviewer workload and cognitive overload, jobVelo aims to improve
 More detail lives next to the code:
 - [backend/README.md](backend/README.md) - API layout, data model, services, auth and tenancy
 - [frontend/README.md](frontend/README.md) - pages, routing, hooks, the interview flow and design tokens
+
+## Team Members
+
+<table>
+    <tbody>
+        <tr>
+            <td align="center" valign="top" width="16.66%">
+                <a href="https://github.com/kamlesa">
+                <img src="https://github.com/kamlesa.png" width="100px;"/><br />
+                <sub><b style="font-size:18px;">Anika</b></sub></a>
+            </td>
+            <td align="center" valign="top" width="16.66%">
+                <a href="https://github.com/cameronh77">
+                <img src="https://github.com/cameronh77.png" width="100px;"/><br />
+                <sub><b style="font-size:18px;">Cameron</b></sub></a>
+            </td>
+            <td align="center" valign="top" width="16.66%">
+                <a href="https://github.com/EasonYeap08">
+                <img src="https://github.com/EasonYeap08.png" width="100px;"/><br />
+                <sub><b style="font-size:18px;">Eason</b></sub></a>
+            </td>
+            <td align="center" valign="top" width="16.66%">
+                <a href="https://github.com/geoff023">
+                <img src="https://github.com/geoff023.png" width="100px;"/><br />
+                <sub><b style="font-size:18px;">Geoff</b></sub></a>
+            </td>
+            <td align="center" valign="top" width="16.66%">
+                <a href="https://github.com/Tinesia">
+                <img src="https://github.com/Tinesia.png" width="100px;"/><br />
+                <sub><b style="font-size:18px;">Tinesia</b></sub></a>
+            </td>
+            <td align="center" valign="top" width="16.66%">
+                <a href="https://github.com/wtho0016">
+                <img src="https://github.com/wtho0016.png" width="100px;"/><br />
+                <sub><b style="font-size:18px;">Wan Mun</b></sub></a>
+            </td>
+        </tr>
+    </tbody>
+</table>
 
 ## Stack
 | Layer | Tech |
