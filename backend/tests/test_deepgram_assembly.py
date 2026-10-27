@@ -87,3 +87,41 @@ async def test_blank_speech_final_flushes_buffered_sentence():
     await session._handle_result("I'm great, let's start.", True, True)
     finals = [text for text, is_final in events if is_final]
     assert finals == ["How are you today?", "I'm great, let's start."]
+
+
+def _sentence_session():
+    sentences = []
+
+    async def noop(text, is_final):
+        pass
+
+    async def on_sentence(text):
+        sentences.append(text)
+
+    return DeepgramSession(noop, on_sentence=on_sentence), sentences
+
+
+@pytest.mark.asyncio
+async def test_sentences_emit_without_waiting_for_speech_final():
+    # A speaker who never pauses gets no speech_final, but each finished
+    # sentence must still surface on its own (live bias check relies on it).
+    session, sentences = _sentence_session()
+
+    await session._handle_result("Do you think being a", True, False)
+    assert sentences == []
+    await session._handle_result("woman held you back? You're short, so", True, False)
+    assert sentences == ["Do you think being a woman held you back?"]
+    await session._handle_result("we won't hire you.", True, False)
+    assert sentences == [
+        "Do you think being a woman held you back?",
+        "You're short, so we won't hire you.",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_unpunctuated_tail_flushes_on_speech_final():
+    session, sentences = _sentence_session()
+
+    await session._handle_result("Tell me about", True, False)
+    await session._handle_result("", True, True)
+    assert sentences == ["Tell me about"]

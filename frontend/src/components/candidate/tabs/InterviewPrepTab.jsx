@@ -1,19 +1,7 @@
-import { card, button, flex } from "../../../styles/layout";
+import { card, flex } from "../../../styles/layout";
 import FitVerdict from "../FitVerdict.jsx";
 import InterviewPlanCard from "../InterviewPlanCard.jsx";
-
-// Same palette the live suggestion deck uses, so prep questions read as the
-// same system. CV-analysis emits US "behavioral" too.
-const CAT_PILL = {
-  technical: "bg-mint-100 text-mint-700",
-  behavioural: "bg-sky-100 text-sky-700",
-  behavioral: "bg-sky-100 text-sky-700",
-  experience: "bg-amber-100 text-amber-700",
-};
-
-function catLabel(c) {
-  return c ? c.charAt(0).toUpperCase() + c.slice(1) : "";
-}
+import QuestionCategoryPill from "../QuestionCategoryPill.jsx";
 
 function PrepInsightList({ title, items, dot }) {
   if (!items?.length) return null;
@@ -108,15 +96,7 @@ export function QuestionPlanCard({ analysis }) {
               {i + 1}
             </span>
             <span className="flex-1 text-sm leading-snug text-neutral-700">{q.question}</span>
-            {q.category && (
-              <span
-                className={`shrink-0 rounded-pill px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${
-                  CAT_PILL[q.category] || "bg-neutral-100 text-neutral-500"
-                }`}
-              >
-                {catLabel(q.category)}
-              </span>
-            )}
+            <QuestionCategoryPill category={q.category} />
           </li>
         ))}
       </ol>
@@ -127,7 +107,7 @@ export function QuestionPlanCard({ analysis }) {
   );
 }
 
-export default function InterviewPrepTab({ analysis, scheduledLabel, onBegin, onViewFullAnalysis, jobId, candId, jobCand }) {
+export default function InterviewPrepTab({ analysis, scheduledLabel, onViewFullAnalysis, jobId, candId, jobCand }) {
   return (
     <div className="flex h-full min-h-0 w-full flex-col">
       <div className="scrollbar-primary flex-1 overflow-y-auto px-6 py-6">
@@ -143,25 +123,6 @@ export default function InterviewPrepTab({ analysis, scheduledLabel, onBegin, on
             </div>
             <InterviewPlanCard jobId={jobId} candId={candId} jobCand={jobCand} />
           </div>
-        </div>
-      </div>
-
-      {/* Sticky footer - Begin is always reachable without scrolling past prep. */}
-      <div className="shrink-0 border-t border-neutral-200 bg-neutral-0 px-6 py-3">
-        <div className={`mx-auto max-w-6xl ${flex.rowBetween} gap-4`}>
-          <p className="text-xs text-neutral-400">
-            Opens the live recording workspace, where you&apos;ll grant mic access to start.
-          </p>
-          <button
-            type="button"
-            onClick={onBegin}
-            className={`${flex.row} shrink-0 gap-2 ${button.primary} !px-8 !py-2.5 text-base`}
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-              <polygon points="5 3 19 12 5 21 5 3" />
-            </svg>
-            Begin Interview
-          </button>
         </div>
       </div>
     </div>

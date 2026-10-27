@@ -243,7 +243,7 @@ async def list_applications(
 async def update_application(
     application_id: str,
     payload: ApplicationUpdate,
-    _user: dict = Depends(require_role("recruiter", "admin")),
+    _user: dict = Depends(require_role("recruiter")),
     comp_id: ObjectId = Depends(get_current_comp_id),
 ):
     db = get_db()

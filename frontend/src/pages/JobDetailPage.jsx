@@ -232,7 +232,7 @@ export default function JobDetailPage() {
               {" / "}
               {job.candidates_total ?? 0} candidates
             </span>
-            {(user?.role === "recruiter" || user?.role === "admin") && (
+            {(user?.role === "recruiter") && (
               <button
                 type="button"
                 onClick={() => setShowAddCandidate(true)}
@@ -308,7 +308,7 @@ export default function JobDetailPage() {
                 </p>
               </div>
               <div className={`${flex.row} gap-2`}>
-                {(user?.role === 'admin' || user?.role === 'recruiter') && (
+                {(user?.role === 'recruiter') && (
                   <button
                     onClick={() => setShowEdit(true)}
                     className="text-xs font-medium text-neutral-500 border border-neutral-200 px-3 py-1 rounded-lg hover:bg-neutral-50 transition-colors"

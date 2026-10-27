@@ -10,6 +10,7 @@ import CreateCompanyPage from './pages/CreateCompanyPage.jsx'
 import DashboardPage from './pages/DashboardPage.jsx'
 import SchedulesPage from './pages/SchedulesPage.jsx'
 import AdminDashboardPage from './pages/AdminDashboardPage.jsx'
+import CompanyProfilePage from './pages/CompanyProfilePage.jsx'
 import JobsPage from './pages/JobsPage'
 import JobDetailPage from './pages/JobDetailPage'
 import Profile from './pages/ProfilePage.jsx'
@@ -55,6 +56,16 @@ export default function App() {
               <RequireAuth>
                 <RequireRole allow={['admin']}>
                   <AdminDashboardPage />
+                </RequireRole>
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/admin/company"
+            element={
+              <RequireAuth>
+                <RequireRole allow={['admin']}>
+                  <CompanyProfilePage />
                 </RequireRole>
               </RequireAuth>
             }

@@ -164,8 +164,8 @@ test('US22 - section cards render for each section in the interview plan', async
   await seedAuth(page)
   await mockInterviewSession(page)
   await goToLiveSession(page)
-  await expect(page.getByText('Introduction')).toBeVisible()
-  await expect(page.getByText('Technical Assessment')).toBeVisible()
+  await expect(page.getByText('Introduction').first()).toBeVisible()
+  await expect(page.getByText('Technical Assessment').first()).toBeVisible()
   await expect(page.getByText('Behavioural').first()).toBeVisible()
 })
 

@@ -58,25 +58,32 @@ async function setupAdminWithCompany(page) {
   )
 }
 
-// Navigate to the Company Profile tab and wait for the form to populate.
+// Open the Company Profile page and wait for the form to populate.
 async function goToCompanyTab(page) {
-  await page.goto('/profile')
-  await page.getByRole('button', { name: 'Company Profile' }).click()
+  await page.goto('/admin/company')
   await expect(page.locator('input[name="comp_name"]')).toHaveValue(FAKE_COMPANY.comp_name)
 }
 
 // ── US3: Manage Company Profile ───────────────────────────────────────────────
 
-test('US3 - admin sees Company Profile tab on profile page', async ({ page }) => {
+test('US3 - admin opens Company Profile from the sidebar', async ({ page }) => {
   await setupAdminWithCompany(page)
   await page.goto('/profile')
-  await expect(page.getByRole('button', { name: 'Company Profile' })).toBeVisible()
+  await page.getByRole('link', { name: 'Company Profile' }).click()
+  await expect(page).toHaveURL('/admin/company')
+  await expect(page.locator('input[name="comp_name"]')).toHaveValue(FAKE_COMPANY.comp_name)
 })
 
-test('US3 - non-admin user does not see Company Profile tab', async ({ page }) => {
+test('US3 - non-admin user does not see Company Profile in the sidebar', async ({ page }) => {
   await seedAuthAndMockBase(page, FAKE_INTERVIEWER)
   await page.goto('/profile')
-  await expect(page.getByRole('button', { name: 'Company Profile' })).not.toBeVisible()
+  await expect(page.getByRole('link', { name: 'Company Profile' })).toHaveCount(0)
+})
+
+test('US3 - non-admin user cannot deep-link to the Company Profile page', async ({ page }) => {
+  await seedAuthAndMockBase(page, FAKE_INTERVIEWER)
+  await page.goto('/admin/company')
+  await expect(page.locator('input[name="comp_name"]')).toHaveCount(0)
 })
 
 test('US3 - Company Profile tab loads and displays current company data', async ({ page }) => {
