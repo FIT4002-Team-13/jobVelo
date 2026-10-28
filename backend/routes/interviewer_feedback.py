@@ -26,6 +26,8 @@ from database import get_db
 from dependencies import get_current_comp_id, get_current_user
 from models.interviewer_feedback import FeedbackItemUpdate
 from services.gemini_service import generate_interviewer_feedback
+from services.queries import assigned_interview_ids
+from services.queries import company_job_ids as load_company_job_ids
 
 router = APIRouter(prefix="/api/interviewer-feedback", tags=["interviewer-feedback"])
 
@@ -149,15 +151,8 @@ async def _recent_completed_interviews(
     """The caller's most recent completed interviews, newest first, capped."""
     user_id_str = str(user["_id"])
 
-    assigned: list[ObjectId] = []
-    async for link in db.interview_users.find({"user_id": user_id_str}, {"intv_id": 1}):
-        intv_id = link.get("intv_id")
-        if intv_id and ObjectId.is_valid(intv_id):
-            assigned.append(ObjectId(intv_id))
-
-    company_job_ids = [
-        str(j["_id"]) async for j in db.jobs.find({"comp_id": comp_id}, {"_id": 1})
-    ]
+    assigned = await assigned_interview_ids(db, user_id_str)
+    company_job_ids = await load_company_job_ids(db, comp_id)
     if not assigned or not company_job_ids:
         return []
 

@@ -14,8 +14,9 @@ from datetime import UTC, datetime, timedelta
 from bson import ObjectId
 from fastapi import APIRouter, Depends, Query
 
-from database import get_db
+from database import INTERVIEW_SUMMARY, get_db
 from dependencies import get_current_comp_id, require_role
+from services.queries import company_job_ids as load_company_job_ids
 
 router = APIRouter(prefix="/api/analytics", tags=["analytics"])
 
@@ -39,9 +40,7 @@ async def interview_consistency(
     db = get_db()
 
     # Resolve the company's job ids (interviews store job_id, not comp_id).
-    company_job_ids: list[str] = [
-        str(j["_id"]) async for j in db.jobs.find({"comp_id": comp_id}, {"_id": 1})
-    ]
+    company_job_ids = await load_company_job_ids(db, comp_id)
     if not company_job_ids:
         return _empty()
 
@@ -57,7 +56,7 @@ async def interview_consistency(
         cutoff = datetime.now(UTC) - timedelta(days=days)
         q["intv_date_time"] = {"$gte": cutoff}
 
-    interviews = [doc async for doc in db.interviews.find(q)]
+    interviews = [doc async for doc in db.interviews.find(q, INTERVIEW_SUMMARY)]
     if not interviews:
         return _empty()
 

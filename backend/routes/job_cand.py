@@ -12,7 +12,6 @@ Cross-tenant safety:
 
 from __future__ import annotations
 
-import json
 import logging
 from datetime import UTC, datetime
 
@@ -29,7 +28,7 @@ from models.job_candidate import (
     JobCandidateScoreUpdate,
 )
 from routes._scoping import link_in_company
-from services.openai_service import generate_interview_plan
+from services.plan_generation import generate_and_store_plan
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/job-candidates", tags=["job_candidates"])
@@ -37,56 +36,7 @@ router = APIRouter(prefix="/api/job-candidates", tags=["job_candidates"])
 
 async def _auto_generate_plan(jobcand_id: str, job_id: str, cand_id: str) -> None:
     """Background: generate and persist an interview plan for a new job-candidate link."""
-    try:
-        db = get_db()
-        job = (
-            await db.jobs.find_one({"_id": ObjectId(job_id)})
-            if ObjectId.is_valid(job_id)
-            else None
-        )
-        cand = (
-            await db.candidates.find_one({"_id": ObjectId(cand_id)})
-            if ObjectId.is_valid(cand_id)
-            else None
-        )
-        jc = (
-            await db.job_candidates.find_one({"_id": ObjectId(jobcand_id)})
-            if ObjectId.is_valid(jobcand_id)
-            else None
-        )
-
-        job_title = (job or {}).get("title", "the role")
-        job_description = (job or {}).get("description")
-        candidate_name = (cand or {}).get("cand_full_name", "the candidate")
-
-        cv_analysis = None
-        if jc:
-            raw = jc.get("cv_analysis")
-            if isinstance(raw, str):
-                try:
-                    cv_analysis = json.loads(raw)
-                except json.JSONDecodeError:
-                    pass
-            elif isinstance(raw, dict):
-                cv_analysis = raw
-
-        sections = await generate_interview_plan(
-            job_title, job_description, candidate_name, cv_analysis
-        )
-        if sections:
-            await db.job_candidates.update_one(
-                {"_id": ObjectId(jobcand_id)},
-                {
-                    "$set": {
-                        "plan_sections": sections,
-                        "updated_at": datetime.now(UTC),
-                    }
-                },
-            )
-    except Exception:
-        logger.warning(
-            "Interview plan generation failed for jobcand %s", jobcand_id, exc_info=True
-        )
+    await generate_and_store_plan(get_db(), jobcand_id, job_id, cand_id)
 
 
 def job_candidate_helper(job_candidate: dict) -> JobCandidateOut:

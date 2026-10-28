@@ -1,3 +1,4 @@
+import { lazy, Suspense } from 'react'
 import { BrowserRouter, Route, Routes } from 'react-router-dom'
 import { AuthProvider } from './lib/AuthContext.jsx'
 import { ToastProvider } from './components/common/ToastContext.jsx'
@@ -7,21 +8,33 @@ import LandingPage from './pages/LandingPage.jsx'
 import LoginPage from './pages/LoginPage.jsx'
 import SignupPage from './pages/SignupPage.jsx'
 import CreateCompanyPage from './pages/CreateCompanyPage.jsx'
-import DashboardPage from './pages/DashboardPage.jsx'
-import SchedulesPage from './pages/SchedulesPage.jsx'
-import AdminDashboardPage from './pages/AdminDashboardPage.jsx'
-import CompanyProfilePage from './pages/CompanyProfilePage.jsx'
-import JobsPage from './pages/JobsPage'
-import JobDetailPage from './pages/JobDetailPage'
-import Profile from './pages/ProfilePage.jsx'
-import CvAnalysisPage from './pages/CvAnalysisPage'
-import InterviewPage from './pages/InterviewPage'
-import CandidatePage from './pages/CandidatePage.jsx'
-import CandidateDetailPage from './pages/CandidateDetailPage.jsx'
-import ApplicationsPage from './pages/ApplicationsPage.jsx'
-import InterviewConsistencyPage from './pages/InterviewConsistencyPage.jsx'
-import UserGuidePage from './pages/UserGuidePage.jsx'
 import ErrorPage, { AppErrorBoundary } from './pages/ErrorPage.jsx'
+
+
+// Pages load on demand so the first visit only downloads the shell, the
+// landing/login pages and the page being opened (not every page up front).
+const DashboardPage = lazy(() => import('./pages/DashboardPage.jsx'))
+const SchedulesPage = lazy(() => import('./pages/SchedulesPage.jsx'))
+const AdminDashboardPage = lazy(() => import('./pages/AdminDashboardPage.jsx'))
+const CompanyProfilePage = lazy(() => import('./pages/CompanyProfilePage.jsx'))
+const JobsPage = lazy(() => import('./pages/JobsPage'))
+const JobDetailPage = lazy(() => import('./pages/JobDetailPage'))
+const Profile = lazy(() => import('./pages/ProfilePage.jsx'))
+const CvAnalysisPage = lazy(() => import('./pages/CvAnalysisPage'))
+const InterviewPage = lazy(() => import('./pages/InterviewPage'))
+const CandidatePage = lazy(() => import('./pages/CandidatePage.jsx'))
+const CandidateDetailPage = lazy(() => import('./pages/CandidateDetailPage.jsx'))
+const ApplicationsPage = lazy(() => import('./pages/ApplicationsPage.jsx'))
+const InterviewConsistencyPage = lazy(() => import('./pages/InterviewConsistencyPage.jsx'))
+const UserGuidePage = lazy(() => import('./pages/UserGuidePage.jsx'))
+
+function PageFallback() {
+  return (
+    <div className="flex min-h-screen items-center justify-center text-sm text-neutral-400">
+      Loading…
+    </div>
+  )
+}
 
 export default function App() {
   return (
@@ -37,6 +50,7 @@ export default function App() {
         {/* Any component that throws during render shows the friendly 500
             screen instead of React's blank white page. */}
         <AppErrorBoundary>
+        <Suspense fallback={<PageFallback />}>
         <Routes>
           <Route path="/" element={<LandingPage />} />
           <Route path="/login" element={<LoginPage />} />
@@ -166,6 +180,7 @@ export default function App() {
           {/* Catch-all: any route not declared above lands on the 404. */}
           <Route path="*" element={<ErrorPage code={404} />} />
         </Routes>
+        </Suspense>
         </AppErrorBoundary>
       </BrowserRouter>
       </ToastProvider>
