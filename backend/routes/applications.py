@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from database import INTERVIEW_SUMMARY, fetch_capped, get_db
 from dependencies import get_current_comp_id, get_current_user, require_role
 from models.application import ApplicationRowOut, ApplicationUpdate
+from services.queries import company_job_ids as load_company_job_ids
 
 router = APIRouter(prefix="/api/applications", tags=["applications"])
 
@@ -56,9 +57,7 @@ async def list_applications(
 
     # Set of the company's job ids - used to drop any application row whose
     # job belongs to a different company (defence-in-depth on the join below).
-    company_job_ids = {
-        str(j["_id"]) async for j in db.jobs.find({"comp_id": comp_id}, {"_id": 1})
-    }
+    company_job_ids = set(await load_company_job_ids(db, comp_id))
     if not company_job_ids:
         return []
 

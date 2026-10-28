@@ -25,6 +25,7 @@ from database import INTERVIEW_SUMMARY, fetch_capped, get_db
 from dependencies import get_current_comp_id, get_current_user
 from models.job import JobCreate, JobOut, JobUpdate
 from services.file_storage import delete_upload
+from services.queries import assigned_interview_ids
 
 router = APIRouter(prefix="/api/jobs", tags=["jobs"])
 
@@ -176,13 +177,7 @@ async def _job_stats(db, job_ids: list[str]) -> dict[str, dict]:
 
 async def _assigned_job_ids(db, user: dict) -> list[str]:
     """job_ids of interviews assigned to `user` (interview_users -> interviews)."""
-    intv_ids = [
-        ObjectId(link["intv_id"])
-        async for link in db.interview_users.find(
-            {"user_id": str(user["_id"])}, {"intv_id": 1}
-        )
-        if ObjectId.is_valid(link.get("intv_id", ""))
-    ]
+    intv_ids = await assigned_interview_ids(db, str(user["_id"]))
     if not intv_ids:
         return []
     return await db.interviews.distinct("job_id", {"_id": {"$in": intv_ids}})
