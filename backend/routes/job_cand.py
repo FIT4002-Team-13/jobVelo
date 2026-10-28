@@ -55,6 +55,11 @@ async def _auto_generate_plan(jobcand_id: str, job_id: str, cand_id: str) -> Non
             else None
         )
 
+        # A plan already exists (e.g. the user hit "Generate Plan" before this
+        # background task ran): don't pay for a second LLM call or overwrite it.
+        if jc and jc.get("plan_sections"):
+            return
+
         job_title = (job or {}).get("title", "the role")
         job_description = (job or {}).get("description")
         candidate_name = (cand or {}).get("cand_full_name", "the candidate")
