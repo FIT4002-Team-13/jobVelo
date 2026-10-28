@@ -12,6 +12,8 @@ import logging
 import time
 from typing import Any
 
+from services.ai_limits import slots
+
 # Own handler + level so the lines appear under uvicorn without having to
 # reconfigure the root logger (which would also surface every httpx request).
 logger = logging.getLogger("ai.usage")
@@ -46,8 +48,9 @@ def _log(
 
 async def timed_openai(operation: str, call):
     """Await an OpenAI chat-completions call and log its latency and usage."""
-    started = time.perf_counter()
-    res = await call
+    async with slots("openai"):
+        started = time.perf_counter()
+        res = await call
     usage = getattr(res, "usage", None)
     _log(
         "openai",
@@ -62,8 +65,9 @@ async def timed_openai(operation: str, call):
 
 async def timed_gemini(operation: str, model: str, call):
     """Await a Gemini generate_content call and log its latency and usage."""
-    started = time.perf_counter()
-    res = await call
+    async with slots("gemini"):
+        started = time.perf_counter()
+        res = await call
     usage = getattr(res, "usage_metadata", None)
     _log(
         "gemini",

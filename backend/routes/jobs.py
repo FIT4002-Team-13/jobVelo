@@ -24,6 +24,7 @@ from pydantic import BaseModel, EmailStr, Field
 from database import INTERVIEW_SUMMARY, fetch_capped, get_db
 from dependencies import get_current_comp_id, get_current_user
 from models.job import JobCreate, JobOut, JobUpdate
+from routes._pagination import Pagination
 from services.file_storage import delete_upload
 from services.queries import assigned_interview_ids
 
@@ -185,6 +186,8 @@ async def _assigned_job_ids(db, user: dict) -> list[str]:
 
 @router.get("", response_model=list[JobOut])
 async def list_jobs(
+    response: Response,
+    page: Pagination = Depends(),
     comp_id: ObjectId = Depends(get_current_comp_id),
     user: dict = Depends(get_current_user),
 ) -> list[JobOut]:
@@ -209,8 +212,12 @@ async def list_jobs(
             if ObjectId.is_valid(j)
         ]
         query["_id"] = {"$in": assigned}
+    if page.active:
+        page.set_total(response, await db.jobs.count_documents(query))
     jobs = await fetch_capped(
-        db.jobs.find(query).sort("job_last_update_datetime", -1), 1000, "jobs list"
+        page.cursor(db.jobs.find(query).sort("job_last_update_datetime", -1)),
+        1000,
+        "jobs list",
     )
 
     stats = await _job_stats(db, [str(j["_id"]) for j in jobs])

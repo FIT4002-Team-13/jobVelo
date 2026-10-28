@@ -11,6 +11,7 @@ from fastapi import (
     Depends,
     File,
     HTTPException,
+    Response,
     UploadFile,
     status,
 )
@@ -27,6 +28,7 @@ from models.candidate import (
     CandidateOut,
     CandidateUpdate,
 )
+from routes._pagination import Pagination
 from services.file_storage import delete_upload, save_upload
 from services.plan_generation import generate_and_store_plan
 
@@ -388,6 +390,8 @@ async def create_candidate_for_job(
 
 @router.get("", response_model=list[CandidateOut])
 async def list_candidates(
+    response: Response,
+    page: Pagination = Depends(),
     comp_id: ObjectId = Depends(get_current_comp_id),
 ) -> list[CandidateOut]:
     """List candidates in the caller's company.
@@ -404,8 +408,14 @@ async def list_candidates(
     """
     db = get_db()
 
+    if page.active:
+        page.set_total(
+            response, await db.candidates.count_documents({"comp_id": comp_id})
+        )
     candidates = await fetch_capped(
-        db.candidates.find({"comp_id": comp_id}), 1000, "candidates list"
+        page.cursor(db.candidates.find({"comp_id": comp_id}), [("_id", 1)]),
+        1000,
+        "candidates list",
     )
     if not candidates:
         return []

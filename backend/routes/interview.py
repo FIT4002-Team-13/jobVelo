@@ -29,6 +29,7 @@ from models.interview import (
 from models.job_candidate import (
     CandidateRatings,
 )
+from routes._pagination import Pagination
 from routes._scoping import get_interview_in_company, job_in_company
 from services.interview_helpers import (
     TRANSCRIPT_CHAR_BUDGET,
@@ -336,8 +337,10 @@ async def create_interview(
     summary="List interviews, optionally filtered by candidate or job.",
 )
 async def list_interviews(
+    response: Response,
     cand_id: str | None = None,
     job_id: str | None = None,
+    page: Pagination = Depends(),
     comp_id: ObjectId = Depends(get_current_comp_id),
 ) -> list[InterviewOut]:
     db = get_db()
@@ -360,7 +363,13 @@ async def list_interviews(
         else "__no_match__"  # asked for another company's job -> empty list
     )
 
-    interviews = await fetch_capped(db.interviews.find(query), 1000, "interviews list")
+    if page.active:
+        page.set_total(response, await db.interviews.count_documents(query))
+    interviews = await fetch_capped(
+        page.cursor(db.interviews.find(query), [("_id", 1)]),
+        1000,
+        "interviews list",
+    )
     return [interview_helper(doc) for doc in interviews]
 
 

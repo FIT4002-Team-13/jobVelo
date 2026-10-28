@@ -13,6 +13,12 @@ class Settings(BaseSettings):
     # startup error instead of a silent per-process random key.
     app_env: str = "development"
 
+    # Throttle login / signup / invitation-code checks (production only).
+    # Set RATE_LIMIT_TRUST_FORWARDED_FOR=true ONLY behind a reverse proxy that
+    # sets X-Forwarded-For; otherwise every user shares the proxy's address.
+    rate_limit_enabled: bool = True
+    rate_limit_trust_forwarded_for: bool = False
+
     # JWT - set JWT_SECRET in .env for any deployment beyond local dev.
     # In dev an empty value falls back to a per-process random key so tokens at
     # least don't survive a server restart (fine - login again). That fallback
@@ -44,6 +50,10 @@ class Settings(BaseSettings):
     # or swapped independently of next-question generation.
     openai_bias_model: str = "gpt-4o-mini"
 
+    # Max simultaneous calls per AI provider (OpenAI and Gemini each get this
+    # many). Extra calls wait briefly instead of tripping provider rate limits.
+    ai_max_concurrent_calls: int = 8
+
     # Gemini — CV analysis. Multimodal model so we can ingest PDFs directly.
     # The "-latest" aliases track Google's current models; pinned versions
     # (e.g. gemini-2.5-*) 404 for API keys created after their retirement.
@@ -67,6 +77,10 @@ class Settings(BaseSettings):
                 )
             self.jwt_secret = secrets.token_urlsafe(48)
         return self
+
+    @property
+    def rate_limit_active(self) -> bool:
+        return self.rate_limit_enabled and self.app_env.lower() == "production"
 
     @property
     def cors_origin_list(self) -> list[str]:

@@ -123,6 +123,12 @@ async def ensure_indexes() -> None:
     await db.interviews.create_index("job_id")
     await db.interviews.create_index("intv_status")
     await db.interviews.create_index("intv_date_time")
+    # Compound indexes for the hot paths: (job, candidate) pair lookups, and
+    # the dashboard / analytics / stats filters (job_id $in + status + date).
+    await db.interviews.create_index([("job_id", 1), ("cand_id", 1)])
+    await db.interviews.create_index(
+        [("job_id", 1), ("intv_status", 1), ("intv_date_time", -1)]
+    )
 
     # Interview-Users - one user can only be linked once to the same interview.
     # NOTE: the collection the app actually reads/writes is `interview_users`;

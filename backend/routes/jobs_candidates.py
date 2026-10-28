@@ -13,6 +13,7 @@ from fastapi import APIRouter, Depends, HTTPException, Response, status
 from database import INTERVIEW_SUMMARY, fetch_capped, get_db
 from dependencies import get_current_comp_id, get_current_user
 from models.job_candidate import JobCandidateRowOut
+from routes._pagination import Pagination
 from routes.jobs import delete_cv_analyses_for_links
 
 router = APIRouter(prefix="/api/jobs", tags=["job candidates"])
@@ -27,6 +28,8 @@ def _validate_oid(value: str, what: str = "job") -> ObjectId:
 @router.get("/{job_id}/candidates", response_model=list[JobCandidateRowOut])
 async def list_candidates_for_job(
     job_id: str,
+    response: Response,
+    page: Pagination = Depends(),
     comp_id: ObjectId = Depends(get_current_comp_id),
     user: dict = Depends(get_current_user),
     db=Depends(get_db),
@@ -84,6 +87,12 @@ async def list_candidates_for_job(
 
         if not links:
             return []
+
+    # Optional paging (default: everything). The sort keeps pages stable.
+    if page.active:
+        links.sort(key=lambda lnk: str(lnk["_id"]))
+        page.set_total(response, len(links))
+        links = page.slice(links)
 
     # Bulk fetch the candidates referenced by the links. Skip any invalid
     # cand_ids defensively so one bad row can't fail the whole query.
