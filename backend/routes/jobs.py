@@ -262,7 +262,7 @@ async def get_job(
 async def require_job_manager(
     user: dict = Depends(get_current_user),
 ) -> dict:
-    if user.get("role") not in ("recruiter"):
+    if user.get("role") != "recruiter":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Only recruiters can manage jobs.",
@@ -274,17 +274,12 @@ async def require_job_manager(
 async def create_job(
     payload: JobCreate,
     comp_id: ObjectId = Depends(get_current_comp_id),
-    user: dict = Depends(require_job_manager),
+    _user: dict = Depends(require_job_manager),
 ) -> JobOut:
-    db = get_db()
     """Create a job in the caller's company. Any comp_id in the body is
     IGNORED - we substitute the JWT one so a user can't create jobs in a
     company they don't belong to."""
-    if user.get("role") not in ("recruiter"):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only recruiters can manage jobs.",
-        )
+    db = get_db()
     now = datetime.now(UTC)
     body = payload.model_dump()
     body["comp_id"] = comp_id  # JWT-derived; ignore whatever the client sent
@@ -307,14 +302,9 @@ async def update_job(
     job_id: str,
     payload: JobUpdate,
     comp_id: ObjectId = Depends(get_current_comp_id),
-    user: dict = Depends(require_job_manager),
+    _user: dict = Depends(require_job_manager),
 ) -> JobOut:
     db = get_db()
-    if user.get("role") not in ("recruiter"):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only recruiters can manage jobs.",
-        )
     oid = _validate_oid(job_id)
 
     updates = {k: v for k, v in payload.model_dump().items() if v is not None}
@@ -356,9 +346,8 @@ async def update_job(
 async def delete_job(
     job_id: str,
     comp_id: ObjectId = Depends(get_current_comp_id),
-    user: dict = Depends(require_job_manager),
+    _user: dict = Depends(require_job_manager),
 ):
-    db = get_db()
     """Delete the job AND everything hanging off it: job_candidates links,
     interviews (+ interviewer links), and cv_analyses docs/files. The
     candidate docs themselves are NOT deleted - candidates are shared
@@ -367,12 +356,7 @@ async def delete_job(
     Without the full cascade, orphaned interviews kept feeding the
     dashboard status rollup (pinning candidates at "SCHEDULED" forever)
     and analysis PDFs accumulated on disk unreachably."""
-
-    if user.get("role") not in ("recruiter"):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only recruiters can manage jobs.",
-        )
+    db = get_db()
     oid = _validate_oid(job_id)
 
     # Collect the dependent ids BEFORE deleting anything.

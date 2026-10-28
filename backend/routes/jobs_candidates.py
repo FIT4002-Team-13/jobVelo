@@ -57,9 +57,7 @@ async def list_candidates_for_job(
         ).to_list(length=500)
 
         assigned_intv_ids = {
-            link["intv_id"]
-            for link in assigned_links
-            if link.get("intv_id")
+            link["intv_id"] for link in assigned_links if link.get("intv_id")
         }
 
         assigned_interviews = await db.interviews.find(
@@ -82,11 +80,7 @@ async def list_candidates_for_job(
             if interview.get("cand_id")
         }
 
-        links = [
-            link
-            for link in links
-            if link.get("cand_id") in assigned_cand_ids
-        ]
+        links = [link for link in links if link.get("cand_id") in assigned_cand_ids]
 
         if not links:
             return []
@@ -111,9 +105,7 @@ async def list_candidates_for_job(
     ).to_list(length=2000)
     interview_by_cand = {i.get("cand_id"): i for i in interviews}
     completed_by_cand = {
-        i.get("cand_id"): i
-        for i in interviews
-        if i.get("intv_status") == "completed"
+        i.get("cand_id"): i for i in interviews if i.get("intv_status") == "completed"
     }
 
     # Bulk-fetch interview_user links for those interviews.

@@ -1,13 +1,11 @@
-"""Realtime LLM helpers backed by OpenAI.
+"""LLM helpers backed by OpenAI.
 
-Used during a live interview to:
-  • generate the next interview question from the running transcript
-  • flag a biased/inappropriate interviewer question, with a rephrasing
-  • summarise the interview so far
-  • score the candidate against a job role
+Live interview: suggested / reactive / similar questions and the bias check.
+Around the interview: the interview plan, the post-interview reports and the
+per-skill ratings.
 
-Each function is a single self-contained call so the WS handler can fan
-them out without coupling to internal state.
+Each function is a single self-contained call, so callers (routes and the
+WebSocket handler) can use them without coupling to internal state.
 """
 
 from __future__ import annotations
@@ -56,45 +54,6 @@ def _get_client() -> AsyncOpenAI:
             max_retries=1,
         )
     return _client
-
-
-async def generate_next_question(
-    transcript: str,
-    job_title: str | None = None,
-    asked: list[str] | None = None,
-) -> str:
-    """Pick the single best follow-up question, given the conversation so far."""
-    asked_block = ""
-    if asked:
-        asked_block = "Already asked:\n" + "\n".join(f"- {q}" for q in asked) + "\n\n"
-
-    job_block = f"Role: {job_title}\n\n" if job_title else ""
-
-    prompt = (
-        f"{job_block}"
-        f"{asked_block}"
-        "Interview transcript so far:\n"
-        f"{transcript}\n\n"
-        "Suggest the single best next question to ask the candidate. "
-        "Build on what they just said. Reply with just the question — no preamble."
-    )
-
-    res = await timed_openai(
-        "generate_next_question",
-        _get_client().chat.completions.create(
-            model=settings.openai_question_model,
-            messages=[
-                {
-                    "role": "system",
-                    "content": "You are an expert technical interviewer. Keep questions focused and ask one at a time.",
-                },
-                {"role": "user", "content": prompt},
-            ],
-            temperature=0.7,
-            max_tokens=120,
-        ),
-    )
-    return (res.choices[0].message.content or "").strip()
 
 
 async def generate_interview_questions(
@@ -377,25 +336,6 @@ async def check_bias(question: str) -> dict[str, Any]:
         # no credit, rate limit) looks exactly like "nothing to flag".
         logger.warning("check_bias failed, failing open: %s", error)
         return fallback
-
-
-async def summarise(transcript: str) -> str:
-    res = await timed_openai(
-        "summarise",
-        _get_client().chat.completions.create(
-            model=settings.openai_analysis_model,
-            messages=[
-                {
-                    "role": "system",
-                    "content": "Summarise interview transcripts crisply: strengths, weaknesses, notable answers. Markdown bullets.",
-                },
-                {"role": "user", "content": transcript},
-            ],
-            temperature=0.3,
-            max_tokens=600,
-        ),
-    )
-    return (res.choices[0].message.content or "").strip()
 
 
 def _plan_budget(total_minutes: int) -> dict:
@@ -861,36 +801,6 @@ async def generate_interview_reports(
             response_format={"type": "json_object"},
             temperature=0.3,
             max_tokens=1400,
-        ),
-    )
-    return json.loads(res.choices[0].message.content or "{}")
-
-
-async def score(transcript: str, job_title: str | None = None) -> dict[str, Any]:
-    """Return a structured 0-100 score with sub-scores and reasoning."""
-    role = job_title or "the role"
-    res = await timed_openai(
-        "score",
-        _get_client().chat.completions.create(
-            model=settings.openai_analysis_model,
-            messages=[
-                {
-                    "role": "system",
-                    "content": "You score interview candidates. Reply with valid JSON only.",
-                },
-                {
-                    "role": "user",
-                    "content": (
-                        f"Score the candidate for {role}. Respond as JSON with keys: "
-                        "overall (0-100), communication (0-100), technical (0-100), "
-                        "culture_fit (0-100), reasoning (string).\n\n"
-                        f"Transcript:\n{transcript}"
-                    ),
-                },
-            ],
-            response_format={"type": "json_object"},
-            temperature=0.2,
-            max_tokens=500,
         ),
     )
     return json.loads(res.choices[0].message.content or "{}")
