@@ -248,29 +248,24 @@ async def generate_reactive_questions(
 async def generate_similar_question(
     job_title: str, job_description: str, original_question: str, category: str
 ) -> SimilarQuestionResult:
-    if not settings.openai_api_key:
-        raise RuntimeError("OPENAI_API_KEY not configured")
-
-    openai_client = AsyncOpenAI(
-        api_key=settings.openai_api_key,
-        timeout=60.0,
-        max_retries=1,
-    )
-
-    completion = await openai_client.beta.chat.completions.parse(
-        model=settings.openai_question_model,
-        messages=[
-            {
-                "role": "system",
-                "content": (
-                    "Generate exactly one new interview question. "
-                    "It must assess the same skill as the original question, but ask in a meaningfully different way and view. "
-                    "Don't just reword the original."
-                ),
-            },
-            {
-                "role": "user",
-                "content": f"""
+    # Shorter timeout than the shared client: this is a quick single-question call.
+    completion = (
+        await _get_client()
+        .with_options(timeout=60.0)
+        .beta.chat.completions.parse(
+            model=settings.openai_question_model,
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "Generate exactly one new interview question. "
+                        "It must assess the same skill as the original question, but ask in a meaningfully different way and view. "
+                        "Don't just reword the original."
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": f"""
                 Job title:
                 {job_title}
 
@@ -283,9 +278,10 @@ async def generate_similar_question(
                 Original question:
                 {original_question}
                 """,
-            },
-        ],
-        response_format=SimilarQuestionResult,
+                },
+            ],
+            response_format=SimilarQuestionResult,
+        )
     )
 
     result = completion.choices[0].message.parsed
@@ -625,9 +621,7 @@ async def generate_interview_reports(
 
     if interruption_analysis is not None:
         interruption_count = int(interruption_analysis.get("count", 0))
-        frequent_interruptions = bool(
-            interruption_analysis.get("frequent", False)
-        )
+        frequent_interruptions = bool(interruption_analysis.get("frequent", False))
         interruption_rate = interruption_analysis.get("rate_per_minute")
         interruption_duration = interruption_analysis.get("duration_seconds")
         interruption_evidence = interruption_analysis.get("evidence", [])
@@ -636,13 +630,15 @@ async def generate_interview_reports(
             evidence_lines = []
             for item in interruption_evidence:
                 evidence_lines.append(
-                    f'- {item.get("timestamp", "")}: '
+                    f"- {item.get('timestamp', '')}: "
                     f'interviewer: "{item.get("interviewer_text", "")}" '
-                    f'(candidate was still speaking; '
-                    f'{item.get("overlap_seconds", 0)}s overlap)'
+                    f"(candidate was still speaking; "
+                    f"{item.get('overlap_seconds', 0)}s overlap)"
                 )
 
-            evidence_text = "\n".join(evidence_lines) or "- No detailed evidence available."
+            evidence_text = (
+                "\n".join(evidence_lines) or "- No detailed evidence available."
+            )
 
             context_parts.append(
                 "INTERVIEWER INTERRUPTION ANALYSIS:\n"
@@ -723,7 +719,6 @@ async def generate_interview_reports(
             "pacing, and structure - do not reference or evaluate any candidate "
             "responses, since none can be reliably attributed."
         )
-    
 
     res = await _get_client().chat.completions.create(
         model=settings.openai_analysis_model,
@@ -1005,4 +1000,3 @@ async def rate_candidate_skills(
         communication=build_skill_rating("communication", "Communication"),
         problem_solving=build_skill_rating("problem_solving", "Problem Solving"),
     )
-
