@@ -446,7 +446,8 @@ export default function TranscriptAnalysisTab({
             )}
           </div>
 
-          <div className="flex-1 overflow-y-auto px-6 py-6">
+          {/* Keyed by tab so each tab opens at the top, not at the last tab's scroll. */}
+          <div key={activeTab} className="flex-1 overflow-y-auto px-6 py-6">
             {activeTab === "candidate" && (
               <div className={`${flex.col} gap-5`}>
                 {scoreRows.length > 0 && (
