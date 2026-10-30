@@ -29,6 +29,7 @@ class TranscriptEntry(BaseModel):
     start: float | None = None
     end: float | None = None
 
+
 class EvidenceRef(BaseModel):
     """One timestamped transcript quote backing a feedback point (US28).
 

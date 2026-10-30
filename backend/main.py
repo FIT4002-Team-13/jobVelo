@@ -66,9 +66,6 @@ app.add_middleware(
 )
 
 
-# Add routers here as features land:
-# from routes import auth, interview, cv
-# app.include_router(auth.router)
 app.include_router(auth.router)
 app.include_router(invitations.router)
 app.include_router(files.router)

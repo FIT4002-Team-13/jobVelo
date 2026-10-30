@@ -28,8 +28,9 @@ def _company_out(doc: dict) -> dict:
 @router.get("/{comp_id}", response_model=CompanyOut)
 async def get_company(
     comp_id: str,
-    current_user=Depends(get_current_user),
+    current_user: dict = Depends(get_current_user),
 ):
+    """Get the caller's company profile."""
     db = get_db()
     if not ObjectId.is_valid(comp_id):
         raise HTTPException(status_code=400, detail="Invalid comp_id")
@@ -52,8 +53,9 @@ async def get_company(
 async def update_company(
     comp_id: str,
     payload: dict,
-    current_user=Depends(get_current_user),
+    current_user: dict = Depends(get_current_user),
 ):
+    """Update the caller's company profile."""
     db = get_db()
     if not ObjectId.is_valid(comp_id):
         raise HTTPException(status_code=400, detail="Invalid comp_id")
@@ -87,8 +89,9 @@ async def update_company(
 async def update_company_logo(
     comp_id: str,
     logo: UploadFile = File(...),
-    current_user=Depends(get_current_user),
+    current_user: dict = Depends(get_current_user),
 ):
+    """Replace the company logo with an uploaded image."""
     db = get_db()
     if not ObjectId.is_valid(comp_id):
         raise HTTPException(status_code=400, detail="Invalid comp_id")
