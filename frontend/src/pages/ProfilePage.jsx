@@ -574,8 +574,9 @@ function CompanyProfileTab({ compId }) {
         </div>
 
         {/* Right — Description + Contact */}
-        <div className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-3">
-          <div className="bg-white border rounded-xl p-4 flex flex-col gap-2">
+        {/* The description takes the spare height; Contact Details stays content-sized. */}
+        <div className="grid min-h-0 grid-rows-[minmax(0,1fr)_auto] gap-3">
+          <div className="bg-white border rounded-xl p-4 flex min-h-0 flex-col gap-2">
             <h2 className="text-lg font-semibold text-neutral-800">Company Description</h2>
             <textarea
               name="comp_description"
@@ -583,14 +584,14 @@ function CompanyProfileTab({ compId }) {
               onChange={handleChange}
               maxLength={500}
               rows={4}
-              className="border rounded-lg px-3 py-2 text-sm text-neutral-800 resize-none focus:outline-none focus:ring-2 focus:ring-primary-300"
+              className="min-h-24 flex-1 border rounded-lg px-3 py-2 text-sm text-neutral-800 resize-none focus:outline-none focus:ring-2 focus:ring-primary-300"
             />
             <p className="text-xs text-neutral-400 text-right">
               {(form.comp_description ?? '').length}/500
             </p>
           </div>
 
-          <div className="bg-white border rounded-xl p-4 flex min-h-0 flex-col overflow-hidden gap-3">
+          <div className="bg-white border rounded-xl p-4 flex flex-col gap-3">
             <h2 className="text-lg font-semibold text-neutral-800">Contact Details</h2>
 
             <div className="flex flex-col gap-1">
