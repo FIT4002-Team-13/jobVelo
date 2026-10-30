@@ -126,6 +126,10 @@ export function useInterviewSections(id, { serverData, timer, timerRef, intvStat
   }
 
   function doneSection(i) {
+    // Ending a section rolls straight into the next untouched one;
+    // startSection closes section i out as done while it's at it.
+    const next = statesRef.current.findIndex((st, j) => j > i && st.status === "idle");
+    if (next !== -1) return startSection(next);
     persistSections((j) => (j === i ? stopped(j, "done") : null));
     setSectionStates((prev) => prev.map((st, j) => (j === i ? { ...st, status: "done" } : st)));
   }
