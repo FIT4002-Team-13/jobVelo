@@ -5,10 +5,13 @@ refuse other roles itself - hiding the sidebar link isn't a gate.
 Auth is faked via dependency overrides, same as test_auth_tenancy.py.
 """
 
+from datetime import UTC, datetime
 from unittest.mock import MagicMock, patch
 
+import httpx
 import pytest
 from bson import ObjectId
+from mongomock_motor import AsyncMongoMockClient
 
 from dependencies import get_current_user
 from main import app
@@ -60,3 +63,60 @@ def test_hiring_manager_is_allowed(client):
 
     assert res.status_code == 200
     assert res.json()["interviewers"] == []
+
+
+async def test_ratings_are_matched_to_each_interviews_cand_job_pair():
+    """The job_candidates lookup is one batched query; each interview must
+    still pick up the ratings for its own (cand_id, job_id) pair."""
+    db = AsyncMongoMockClient()["testdb"]
+    comp_id = ObjectId()
+    job_a, job_b, cand_1, cand_2 = (str(ObjectId()) for _ in range(4))
+    await db.jobs.insert_many(
+        [
+            {"_id": ObjectId(job_a), "comp_id": comp_id},
+            {"_id": ObjectId(job_b), "comp_id": comp_id},
+        ]
+    )
+    now = datetime.now(UTC)
+    await db.interviews.insert_many(
+        [
+            {
+                "cand_id": cand_1,
+                "job_id": job_a,
+                "intv_status": "completed",
+                "intv_date_time": now,
+            },
+            {
+                "cand_id": cand_2,
+                "job_id": job_b,
+                "intv_status": "completed",
+                "intv_date_time": now,
+            },
+        ]
+    )
+
+    def _rated(score):
+        return {"technical_skills": {"score": score}}
+
+    await db.job_candidates.insert_many(
+        [
+            {"cand_id": cand_1, "job_id": job_a, "ratings": _rated(5)},
+            # Decoys sharing only the candidate or only the job with the
+            # unrated cand_2/job_b interview: neither may count for it.
+            {"cand_id": cand_2, "job_id": job_a, "ratings": _rated(1)},
+            {"cand_id": cand_1, "job_id": job_b, "ratings": _rated(3)},
+        ]
+    )
+    app.dependency_overrides[get_current_user] = lambda: {
+        "_id": ObjectId(),
+        "comp_id": comp_id,
+        "role": "hiring_manager",
+    }
+    with patch("routes.analytics.get_db", return_value=db):
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            res = await client.get(URL)
+
+    assert res.status_code == 200
+    assert res.json()["kpis"]["evaluated_count"] == 1

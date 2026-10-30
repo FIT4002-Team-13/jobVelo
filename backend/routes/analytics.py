@@ -79,22 +79,19 @@ async def interview_consistency(
         user_name[str(u["_id"])] = u.get("full_name") or u.get("username") or "Unknown"
 
     # job_candidates ratings: keyed by (cand_id, job_id).
-    pairs = list(
-        {(str(i.get("cand_id", "")), str(i.get("job_id", ""))) for i in interviews}
-    )
+    pairs = {(str(i.get("cand_id", "")), str(i.get("job_id", ""))) for i in interviews}
+    pairs = {(cand_id, jid) for cand_id, jid in pairs if cand_id and jid}
     jc_map: dict[tuple[str, str], dict] = {}
-    for cand_id, jid in pairs:
-        if not cand_id or not jid:
-            continue
-        doc = await db.job_candidates.find_one(
-            {"cand_id": cand_id, "job_id": jid},
-            {"ratings": 1, "status": 1},
-        )
-        if doc:
-            jc_map[(cand_id, jid)] = {
-                "ratings": doc.get("ratings") or {},
-                "status": doc.get("status"),
-            }
+    if pairs:
+        # One query for every pair; setdefault keeps the first match, as find_one did.
+        async for doc in db.job_candidates.find(
+            {"$or": [{"cand_id": c, "job_id": j} for c, j in pairs]},
+            {"cand_id": 1, "job_id": 1, "ratings": 1, "status": 1},
+        ):
+            jc_map.setdefault(
+                (doc.get("cand_id"), doc.get("job_id")),
+                {"ratings": doc.get("ratings") or {}, "status": doc.get("status")},
+            )
 
     # Aggregate per-interviewer data and team-wide scored rows.
     per_intv: dict[str, dict] = {}
