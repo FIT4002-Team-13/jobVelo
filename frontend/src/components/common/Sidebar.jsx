@@ -13,6 +13,7 @@ import {
 import logoFull from "../../assets/logo-final.png";
 import { useAuth } from "../../lib/AuthContext.jsx";
 import CommandPalette from "./CommandPalette.jsx";
+import { formatRole } from "../../utils/constants.js";
 
 // Platform-aware shortcut hint for the search bar (⌘K on Mac, Ctrl K elsewhere).
 const IS_MAC =
@@ -246,14 +247,4 @@ export default function Sidebar({ user: userProp }) {
       <CommandPalette />
     </aside>
   );
-}
-
-// "hiring_manager" -> "Hiring Manager", etc. Inline because Sidebar is the
-// only place that renders the role label right now.
-function formatRole(role) {
-  if (!role) return "";
-  return role
-    .split("_")
-    .map((w) => w[0].toUpperCase() + w.slice(1))
-    .join(" ");
 }

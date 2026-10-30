@@ -1,16 +1,7 @@
 import { modal, button } from '../../styles/layout'
+import { initials } from '../../utils/avatar.js'
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
-
-function initials(name = '') {
-  return name
-    .split(' ')
-    .filter(Boolean)
-    .map((w) => w[0])
-    .join('')
-    .slice(0, 2)
-    .toUpperCase() || '?'
-}
 
 // "2026-04-07T14:00:00" -> "Apr 7, 2:00 PM"
 function formatScheduledAt(iso) {

@@ -17,10 +17,6 @@ export const TEAM_COLOR = colors.primary[900]
 
 export const seriesFor = (idx) => SERIES[idx % SERIES.length]
 
-export function initials(name) {
-  return (name || '?').split(' ').filter(Boolean).map((w) => w[0]).join('').slice(0, 2).toUpperCase()
-}
-
 // "Priya Raman" -> "Priya R."
 export function shortName(name = '') {
   const [first = '', second] = name.split(' ')

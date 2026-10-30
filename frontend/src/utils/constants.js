@@ -32,6 +32,13 @@ export const ROLE_OPTIONS = [
 
 export const ROLE_LABELS = Object.fromEntries(ROLE_OPTIONS.map((r) => [r.value, r.label]))
 
+// "hiring_manager" -> "Hiring Manager". Falls back to title case for roles
+// outside ROLE_OPTIONS (i.e. "admin").
+export function formatRole(role) {
+  if (!role) return ''
+  return ROLE_LABELS[role] ?? toTitleCase(role.replace(/_/g, ' '))
+}
+
 // Rotation of brand accent colors used to distinguish interview sections
 // across the plan editor and the live section timers. Shared here so the
 // two views always agree on which color goes with which section index.
