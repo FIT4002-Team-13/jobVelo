@@ -1,16 +1,11 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Copy, Plus, Trash2 } from 'lucide-react'
 import Sidebar from '../components/common/Sidebar'
 import GenerateCodesModal from '../components/admin/GenerateCodesModal.jsx'
 import { api, ApiError } from '../lib/api.js'
 import { useToast } from '../components/common/ToastContext.jsx'
 import { button, card, modal, page } from '../styles/layout'
-import { ROLE_OPTIONS } from '../utils/constants.js'
-
-function formatRole(role) {
-  const found = ROLE_OPTIONS.find((r) => r.value === role)
-  return found?.label || role || '—'
-}
+import { formatRole } from '../utils/constants.js'
 
 // Admin-only page, rendered inside the SAME app shell as every other page
 // (sidebar + page main) - it used to be a bare standalone screen with its
@@ -29,7 +24,7 @@ export default function AdminDashboardPage() {
   const [deleteTarget, setDeleteTarget] = useState(null)
   const [deleting, setDeleting] = useState(false)
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setError('')
     try {
       const data = await api.listInvitations()
@@ -42,9 +37,9 @@ export default function AdminDashboardPage() {
       }
       setInvitations([])
     }
-  }
+  }, [])
 
-  useEffect(() => { load() }, [])
+  useEffect(() => { load() }, [load])
 
   // Prepend the new codes instead of re-fetching the whole list.
   const onCreated = (created) => setInvitations((prev) => [...created, ...(prev || [])])
