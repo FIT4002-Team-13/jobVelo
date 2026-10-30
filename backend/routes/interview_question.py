@@ -2,7 +2,7 @@ import logging
 
 from bson import ObjectId
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from database import get_db
 from dependencies import get_current_comp_id
@@ -25,6 +25,9 @@ class ReactiveQuestionRequest(BaseModel):
     # The interview section the interviewer is currently in (name + short
     # description), so the suggestion can be steered to fit where they are.
     section_context: str = ""
+    # Questions already shown in the deck (incl. asked/ignored ones), so the
+    # model doesn't suggest them again.
+    existing_questions: list[str] = Field(default_factory=list, max_length=40)
 
 
 router = APIRouter(prefix="/api/interview-questions", tags=["interview_questions"])
@@ -123,6 +126,7 @@ async def create_reactive_questions(
             ).strip(),
             candidate_response=request.candidate_response.strip(),
             section_context=request.section_context.strip(),
+            existing_questions=request.existing_questions,
         )
 
     except RuntimeError as error:
