@@ -107,7 +107,7 @@ export function useTranscript(id, { serverData, candidateName, userId, isComplet
       }
     }, 30000);
     return () => clearInterval(interval);
-  }, [id, isCompleted, autosave]);
+  }, [id, isCompleted, autosave, timerRef]);
 
   function syncCounterFromEntries(entries) {
     const maxId = entries.reduce((max, e) => {

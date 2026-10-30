@@ -56,7 +56,7 @@ export function useAudioCapture({
       }
     }, 1000);
     return () => clearInterval(interval);
-  }, [isMicActive, isScreenSharing, isTimerArmed, isPaused, isCompleted]);
+  }, [isMicActive, isScreenSharing, isTimerArmed, isPaused, isCompleted, startTimeRef, timerRef]);
 
   useEffect(() => {
     if (!serverData || autoStartedRef.current) return;
@@ -87,7 +87,7 @@ export function useAudioCapture({
     startTimeRef.current = Date.now() - priorSeconds * 1000;
     // transcriptionActiveRef stays false until armTimer() runs (the
     // Recording Setup modal's "Ready" button) - see armTimer below.
-  }, [serverData, intvStatus]);
+  }, [serverData, intvStatus, startTimeRef, timerRef]);
 
   useEffect(() => {
     return () => {
@@ -203,11 +203,6 @@ export function useAudioCapture({
         if (micTranscriptStartRef.current === null) {
           micTranscriptStartRef.current =
             (Date.now() - startTimeRef.current) / 1000;
-
-          console.log(
-            "Mic transcription clock started at:",
-            micTranscriptStartRef.current
-          );
         }
           wsRef.current.send(downsampleBuffer(inputBuffer, audioContext.sampleRate, 16000));
       };
@@ -280,11 +275,6 @@ export function useAudioCapture({
           if (displayTranscriptStartRef.current === null) {
             displayTranscriptStartRef.current =
               (Date.now() - startTimeRef.current) / 1000;
-
-            console.log(
-              "Candidate transcription clock started at:",
-              displayTranscriptStartRef.current
-            );
           }
           wsDisplayRef.current.send(downsampleBuffer(inputBuffer, audioContext.sampleRate, 16000));
         };

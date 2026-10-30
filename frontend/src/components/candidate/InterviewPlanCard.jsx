@@ -24,6 +24,8 @@ export default function InterviewPlanCard({ jobId, candId, jobCand }) {
       setSections([])
       setState('idle')
     }
+    // Resync only when a different candidate loads, not on our own plan edits.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [jobCand?.jobcand_id])
 
   function persist(updated) {
