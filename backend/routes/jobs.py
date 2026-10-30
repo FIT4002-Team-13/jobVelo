@@ -19,17 +19,21 @@ from datetime import UTC, datetime
 
 from bson import ObjectId
 from fastapi import APIRouter, Depends, HTTPException, Response, status
+from motor.motor_asyncio import AsyncIOMotorDatabase
 from pydantic import BaseModel, EmailStr, Field
 
 from database import get_db
 from dependencies import get_current_comp_id, get_current_user
 from models.job import JobCreate, JobOut, JobUpdate
+from routes._scoping import validate_oid
 from services.file_storage import delete_upload
 
 router = APIRouter(prefix="/api/jobs", tags=["jobs"])
 
 
-async def delete_cv_analyses_for_links(db, jobcand_ids: list[str]) -> None:
+async def delete_cv_analyses_for_links(
+    db: AsyncIOMotorDatabase, jobcand_ids: list[str]
+) -> None:
     """Cascade helper: remove the cv_analyses docs for these job-candidate
     links AND the PDF files they own. Best-effort on the files (the DB row
     is the source of truth), exact on the docs."""
@@ -69,17 +73,10 @@ def _serialize(doc: dict) -> JobOut:
     )
 
 
-def _validate_oid(job_id: str) -> ObjectId:
-    """ObjectId.is_valid is cheaper than try/except and gives a clean 400."""
-    if not ObjectId.is_valid(job_id):
-        raise HTTPException(status_code=400, detail="Invalid job id")
-    return ObjectId(job_id)
-
-
 # ---------- routes -----------------------------------------------------------
 
 
-async def _job_stats(db, job_ids: list[str]) -> dict[str, dict]:
+async def _job_stats(db: AsyncIOMotorDatabase, job_ids: list[str]) -> dict[str, dict]:
     """Per-job stats derived live from job_candidates + interviews +
     interview_users. Count comes from job_candidates, interviewer names
     come from users linked through interview_users.
@@ -172,7 +169,7 @@ async def _job_stats(db, job_ids: list[str]) -> dict[str, dict]:
     return out
 
 
-async def _assigned_job_ids(db, user: dict) -> list[str]:
+async def _assigned_job_ids(db: AsyncIOMotorDatabase, user: dict) -> list[str]:
     """job_ids of interviews assigned to `user` (interview_users -> interviews)."""
     intv_ids = [
         ObjectId(link["intv_id"])
@@ -235,8 +232,9 @@ async def get_job(
     comp_id: ObjectId = Depends(get_current_comp_id),
     user: dict = Depends(get_current_user),
 ) -> JobOut:
+    """Get one job in the caller's company."""
     db = get_db()
-    oid = _validate_oid(job_id)
+    oid = validate_oid(job_id)
     # Filter by comp_id so jobs in another company return 404 (not 403) -
     # we don't reveal the existence of records the caller can't see.
     job = await db.jobs.find_one({"_id": oid, "comp_id": comp_id})
@@ -260,6 +258,7 @@ async def get_job(
 async def require_job_manager(
     user: dict = Depends(get_current_user),
 ) -> dict:
+    """Dependency: allow only admins and recruiters to manage jobs."""
     if user.get("role") not in ("admin", "recruiter"):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -274,6 +273,7 @@ async def create_job(
     comp_id: ObjectId = Depends(get_current_comp_id),
     user: dict = Depends(require_job_manager),
 ) -> JobOut:
+    """Create a job in the caller's company."""
     db = get_db()
     """Create a job in the caller's company. Any comp_id in the body is
     IGNORED - we substitute the JWT one so a user can't create jobs in a
@@ -307,13 +307,14 @@ async def update_job(
     comp_id: ObjectId = Depends(get_current_comp_id),
     user: dict = Depends(require_job_manager),
 ) -> JobOut:
+    """Update a job in the caller's company."""
     db = get_db()
     if user.get("role") not in ("admin", "recruiter"):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Only recruiters and admins can manage jobs.",
         )
-    oid = _validate_oid(job_id)
+    oid = validate_oid(job_id)
 
     updates = {k: v for k, v in payload.model_dump().items() if v is not None}
     if not updates:
@@ -356,7 +357,6 @@ async def delete_job(
     comp_id: ObjectId = Depends(get_current_comp_id),
     user: dict = Depends(require_job_manager),
 ):
-    db = get_db()
     """Delete the job AND everything hanging off it: job_candidates links,
     interviews (+ interviewer links), and cv_analyses docs/files. The
     candidate docs themselves are NOT deleted - candidates are shared
@@ -365,13 +365,14 @@ async def delete_job(
     Without the full cascade, orphaned interviews kept feeding the
     dashboard status rollup (pinning candidates at "SCHEDULED" forever)
     and analysis PDFs accumulated on disk unreachably."""
+    db = get_db()
 
     if user.get("role") not in ("admin", "recruiter"):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Only recruiters and admins can manage jobs.",
         )
-    oid = _validate_oid(job_id)
+    oid = validate_oid(job_id)
 
     # Collect the dependent ids BEFORE deleting anything.
     link_ids = [
@@ -413,7 +414,7 @@ class AddCandidateToJob(BaseModel):
 
 
 async def _link_row(
-    db,
+    db: AsyncIOMotorDatabase,
     link: dict,
     job_id: str,
     name,
@@ -504,7 +505,7 @@ async def add_candidate_to_job(
       { candidate: {flat shape with name/email/etc.}, job: <updated job> }
     """
     db = get_db()
-    oid = _validate_oid(job_id)
+    oid = validate_oid(job_id)
     job = await db.jobs.find_one({"_id": oid, "comp_id": comp_id})
     if job is None:
         raise HTTPException(status_code=404, detail="Job not found")

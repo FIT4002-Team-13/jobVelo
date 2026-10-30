@@ -13,15 +13,10 @@ from fastapi import APIRouter, Depends, HTTPException, Response, status
 from database import get_db
 from dependencies import get_current_comp_id, get_current_user
 from models.job_candidate import JobCandidateRowOut
+from routes._scoping import validate_oid
 from routes.jobs import delete_cv_analyses_for_links
 
 router = APIRouter(prefix="/api/jobs", tags=["job candidates"])
-
-
-def _validate_oid(value: str, what: str = "job") -> ObjectId:
-    if not ObjectId.is_valid(value):
-        raise HTTPException(status_code=400, detail=f"Invalid {what} id")
-    return ObjectId(value)
 
 
 @router.get("/{job_id}/candidates", response_model=list[JobCandidateRowOut])
@@ -38,7 +33,7 @@ async def list_candidates_for_job(
     Tenant guard: 404s if the job belongs to a different company.
     """
     db = get_db()
-    oid = _validate_oid(job_id)
+    oid = validate_oid(job_id)
     if not await db.jobs.find_one({"_id": oid, "comp_id": comp_id}, {"_id": 1}):
         raise HTTPException(status_code=404, detail="Job not found")
 
@@ -55,9 +50,7 @@ async def list_candidates_for_job(
         ).to_list(length=500)
 
         assigned_intv_ids = {
-            link["intv_id"]
-            for link in assigned_links
-            if link.get("intv_id")
+            link["intv_id"] for link in assigned_links if link.get("intv_id")
         }
 
         assigned_interviews = await db.interviews.find(
@@ -80,11 +73,7 @@ async def list_candidates_for_job(
             if interview.get("cand_id")
         }
 
-        links = [
-            link
-            for link in links
-            if link.get("cand_id") in assigned_cand_ids
-        ]
+        links = [link for link in links if link.get("cand_id") in assigned_cand_ids]
 
         if not links:
             return []
@@ -107,9 +96,7 @@ async def list_candidates_for_job(
     interviews = await db.interviews.find({"job_id": job_id}).to_list(length=500)
     interview_by_cand = {i.get("cand_id"): i for i in interviews}
     completed_by_cand = {
-        i.get("cand_id"): i
-        for i in interviews
-        if i.get("intv_status") == "completed"
+        i.get("cand_id"): i for i in interviews if i.get("intv_status") == "completed"
     }
 
     # Bulk-fetch interview_user links for those interviews.
@@ -220,7 +207,7 @@ async def remove_candidate_from_job(
     if not ObjectId.is_valid(jobcand_id):
         raise HTTPException(status_code=400, detail="Invalid jobcand_id")
 
-    oid = _validate_oid(job_id)
+    oid = validate_oid(job_id)
     if not await db.jobs.find_one({"_id": oid, "comp_id": comp_id}, {"_id": 1}):
         raise HTTPException(status_code=404, detail="Job not found")
 

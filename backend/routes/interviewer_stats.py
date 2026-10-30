@@ -12,6 +12,7 @@ Endpoints:
 
 from __future__ import annotations
 
+import asyncio
 import calendar
 from datetime import UTC, datetime, timedelta
 from typing import Literal
@@ -22,6 +23,7 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from database import get_db
 from dependencies import get_current_comp_id, get_current_user
+from routes._scoping import assigned_interview_ids, company_job_ids
 
 router = APIRouter(prefix="/api/interviewer-stats", tags=["interviewer-stats"])
 
@@ -134,21 +136,6 @@ def _build_score_trend(
     return points, range_label
 
 
-async def _assigned_interview_ids(
-    db: AsyncIOMotorDatabase, user_id_str: str
-) -> list[ObjectId]:
-    ids: list[ObjectId] = []
-    async for link in db.interview_users.find({"user_id": user_id_str}, {"intv_id": 1}):
-        intv_id = link.get("intv_id")
-        if intv_id and ObjectId.is_valid(intv_id):
-            ids.append(ObjectId(intv_id))
-    return ids
-
-
-async def _company_job_ids(db: AsyncIOMotorDatabase, comp_id: ObjectId) -> list[str]:
-    return [str(j["_id"]) async for j in db.jobs.find({"comp_id": comp_id}, {"_id": 1})]
-
-
 async def _compute_interviewer_stats(
     db: AsyncIOMotorDatabase,
     user: dict,
@@ -164,21 +151,21 @@ async def _compute_interviewer_stats(
     caller's company, restricted to completed ones (`evaluated`/`completed`).
     """
     user_id_str = str(user["_id"])
-    assigned_ids, company_job_ids = (
-        await _assigned_interview_ids(db, user_id_str),
-        await _company_job_ids(db, comp_id),
+    assigned_ids, comp_job_ids = (
+        await assigned_interview_ids(db, user_id_str),
+        await company_job_ids(db, comp_id),
     )
 
     now = datetime.now(UTC)
     interviews: list[dict] = []
     sessions: list[dict] = []  # {when, score}
 
-    if assigned_ids and company_job_ids:
+    if assigned_ids and comp_job_ids:
         interviews = (
             await db.interviews.find(
                 {
                     "_id": {"$in": assigned_ids},
-                    "job_id": {"$in": company_job_ids},
+                    "job_id": {"$in": comp_job_ids},
                     "intv_status": {"$in": ["evaluated", "completed"]},
                 }
             )
@@ -293,7 +280,8 @@ async def get_interviewer_stats_report(
         or user.get("email")
         or "Interviewer"
     )
-    pdf_bytes = build_interviewer_stats_pdf(
+    pdf_bytes = await asyncio.to_thread(  # fpdf2 is CPU-bound; keep the event loop free
+        build_interviewer_stats_pdf,
         interviewer_name=interviewer_name,
         stats=stats,
         trend_heading=_TREND_HEADINGS[range],

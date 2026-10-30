@@ -28,7 +28,7 @@ from models.job_candidate import (
     JobCandidatePlanUpdate,
     JobCandidateScoreUpdate,
 )
-from routes._scoping import link_in_company
+from routes._scoping import link_in_company, validate_oid
 from services.openai_service import generate_interview_plan
 
 logger = logging.getLogger(__name__)
@@ -107,12 +107,6 @@ def job_candidate_helper(job_candidate: dict) -> JobCandidateOut:
     )
 
 
-def _validate_oid(value: str, what: str) -> ObjectId:
-    if not ObjectId.is_valid(value):
-        raise HTTPException(status_code=400, detail=f"Invalid {what} id")
-    return ObjectId(value)
-
-
 @router.post("", response_model=JobCandidateOut, status_code=status.HTTP_201_CREATED)
 async def create_job_candidate(
     payload: JobCandidateCreate,
@@ -126,8 +120,8 @@ async def create_job_candidate(
     """
     db = get_db()
 
-    cand_oid = _validate_oid(payload.cand_id, "candidate")
-    job_oid = _validate_oid(payload.job_id, "job")
+    cand_oid = validate_oid(payload.cand_id, "candidate")
+    job_oid = validate_oid(payload.job_id, "job")
 
     # Both records must exist AND belong to the caller's company. Scoping the
     # find by comp_id means a user can't link across tenants even if they
@@ -297,7 +291,7 @@ async def get_job_candidate(
     comp_id: ObjectId = Depends(get_current_comp_id),
 ) -> JobCandidateOut:
     db = get_db()
-    oid = _validate_oid(jobcand_id, "job-candidate")
+    oid = validate_oid(jobcand_id, "job-candidate")
     job_candidate = await db.job_candidates.find_one({"_id": oid})
     if not job_candidate or not await _link_in_company(db, job_candidate, comp_id):
         raise HTTPException(
@@ -325,7 +319,7 @@ async def update_job_candidate_scores(
     the status - that's an explicit "undo" gesture.
     """
     db = get_db()
-    oid = _validate_oid(jobcand_id, "job-candidate")
+    oid = validate_oid(jobcand_id, "job-candidate")
 
     # Tenant guard: the link must belong to the caller's company.
     existing = await db.job_candidates.find_one({"_id": oid})
@@ -368,7 +362,7 @@ async def update_job_candidate_plan(
 ) -> JobCandidateOut:
     """Save or replace the AI-generated interview plan sections for a job-candidate link."""
     db = get_db()
-    oid = _validate_oid(jobcand_id, "job-candidate")
+    oid = validate_oid(jobcand_id, "job-candidate")
 
     existing = await db.job_candidates.find_one({"_id": oid})
     if not existing or not await _link_in_company(db, existing, comp_id):
