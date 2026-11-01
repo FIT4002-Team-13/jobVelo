@@ -6,7 +6,7 @@ from typing import Any
 from bson import ObjectId
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from database import get_db
+from database import INTERVIEW_SUMMARY, fetch_capped, get_db
 from dependencies import get_current_comp_id, get_current_user, require_role
 from models.application import ApplicationRowOut, ApplicationUpdate
 
@@ -77,7 +77,7 @@ async def list_applications(
         interviews = []
         if interview_oids:
             interviews = await db.interviews.find(
-                {"_id": {"$in": interview_oids}}
+                {"_id": {"$in": interview_oids}}, INTERVIEW_SUMMARY
             ).to_list(length=2000)
 
         assigned_pairs = {
@@ -102,11 +102,13 @@ async def list_applications(
         ).to_list(length=len(pair_filters))
     else:
         # Recruiter / admin / hiring manager: the whole company pipeline.
-        matched_job_candidates = await db.job_candidates.find(
-            {"job_id": {"$in": list(company_job_ids)}}
-        ).to_list(length=2000)
+        matched_job_candidates = await fetch_capped(
+            db.job_candidates.find({"job_id": {"$in": list(company_job_ids)}}),
+            2000,
+            "applications list",
+        )
         interviews = await db.interviews.find(
-            {"job_id": {"$in": list(company_job_ids)}}
+            {"job_id": {"$in": list(company_job_ids)}}, INTERVIEW_SUMMARY
         ).to_list(length=2000)
 
     if not matched_job_candidates:

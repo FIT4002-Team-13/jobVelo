@@ -1,5 +1,6 @@
 import secrets
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -8,10 +9,17 @@ class Settings(BaseSettings):
     mongodb_db: str = "jobvelo"
     cors_origins: str = "http://localhost:5173"
 
-    # JWT — set JWT_SECRET in .env for any deployment beyond local dev.
-    # In dev we fall back to a per-process random key so tokens at least
-    # don't survive a server restart (which is fine — login again).
-    jwt_secret: str = secrets.token_urlsafe(48)
+    # Set APP_ENV=production on the deployed server so a missing JWT_SECRET is a
+    # startup error instead of a silent per-process random key.
+    app_env: str = "development"
+
+    # JWT - set JWT_SECRET in .env for any deployment beyond local dev.
+    # In dev an empty value falls back to a per-process random key so tokens at
+    # least don't survive a server restart (fine - login again). That fallback
+    # is wrong for a real server (restarts and multiple workers would each
+    # reject the others' tokens), so APP_ENV=production refuses to start
+    # without one.
+    jwt_secret: str = ""
     jwt_algorithm: str = "HS256"
     jwt_expire_minutes: int = 60 * 24 * 7  # 7 days
 
@@ -48,6 +56,17 @@ class Settings(BaseSettings):
     uploads_dir: str = "uploads"
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
+
+    @model_validator(mode="after")
+    def _resolve_jwt_secret(self) -> "Settings":
+        if not self.jwt_secret:
+            if self.app_env.lower() == "production":
+                raise ValueError(
+                    "JWT_SECRET must be set when APP_ENV=production. Generate one "
+                    'with: python -c "import secrets; print(secrets.token_urlsafe(48))"'
+                )
+            self.jwt_secret = secrets.token_urlsafe(48)
+        return self
 
     @property
     def cors_origin_list(self) -> list[str]:

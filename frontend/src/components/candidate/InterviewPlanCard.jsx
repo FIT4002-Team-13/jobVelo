@@ -1,9 +1,11 @@
 import { useState, useRef, useEffect } from 'react'
 import { api } from '../../lib/api.js'
+import { useToast } from '../common/ToastContext.jsx'
 import { card, flex } from '../../styles/layout'
 import { sectionColor, withSectionColors } from '../../utils/constants.js'
 
 export default function InterviewPlanCard({ jobId, candId, jobCand }) {
+  const toast = useToast()
   const [state, setState] = useState('idle')
   const [editMode, setEditMode] = useState(false)
   const [sections, setSections] = useState([])
@@ -34,7 +36,9 @@ export default function InterviewPlanCard({ jobId, candId, jobCand }) {
 
   function persist(updated) {
     if (!jobCand?.jobcand_id) return
-    api.updateJobCandidatePlan(jobCand.jobcand_id, updated).catch(() => {})
+    api
+      .updateJobCandidatePlan(jobCand.jobcand_id, updated)
+      .catch(() => toast.error('Could not save the plan. Your changes are only on this screen.'))
   }
 
   async function generate() {

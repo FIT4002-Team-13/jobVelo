@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { api } from "../lib/api.js";
+import { useToast } from "../components/common/ToastContext.jsx";
 
 // Section progress is persisted on each section in intv_sections so it
 // survives leaving and re-entering an in-progress interview:
@@ -22,6 +23,7 @@ export function restoreSectionStates(sections, priorSeconds) {
 }
 
 export function useInterviewSections(id, { serverData, timer, timerRef, intvStatus, isMicActive }) {
+  const toast = useToast();
   const [sections, setSections] = useState([]);
   const [sectionStates, setSectionStates] = useState([]);
   // Index of the section to (re)start once the mic goes live, or null.
@@ -78,7 +80,9 @@ export function useInterviewSections(id, { serverData, timer, timerRef, intvStat
         const patch = patchFor(j, s);
         return patch ? { ...s, ...patch } : s;
       });
-      api.updateInterview(id, { intv_sections: updated }).catch(() => {});
+      api
+        .updateInterview(id, { intv_sections: updated })
+        .catch(() => toast.error("Could not save section progress. Check your connection."));
       return updated;
     });
   }
@@ -163,7 +167,9 @@ export function useInterviewSections(id, { serverData, timer, timerRef, intvStat
           setSections(plan);
           setSectionStates(plan.map(() => ({ status: "idle", elapsed: 0 })));
           setPendingSection(0);
-          api.updateInterview(id, { intv_sections: plan }).catch(() => {});
+          api
+            .updateInterview(id, { intv_sections: plan })
+            .catch(() => toast.error("Could not save the interview plan. Check your connection."));
         })
         .catch(() => {});
     }

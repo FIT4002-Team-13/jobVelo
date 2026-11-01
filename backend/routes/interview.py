@@ -8,7 +8,7 @@ from bson import ObjectId
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from pydantic import BaseModel, Field, ValidationError
 
-from database import get_db
+from database import fetch_capped, get_db
 from dependencies import get_current_comp_id, get_current_user, require_role
 from models.interview import (
     BiasIncident,
@@ -347,7 +347,7 @@ async def list_interviews(
         else "__no_match__"  # asked for another company's job -> empty list
     )
 
-    interviews = await db.interviews.find(query).to_list(length=100)
+    interviews = await fetch_capped(db.interviews.find(query), 1000, "interviews list")
     return [interview_helper(doc) for doc in interviews]
 
 

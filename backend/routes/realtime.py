@@ -5,8 +5,11 @@ import logging
 from typing import Any
 from uuid import uuid4
 
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from bson import ObjectId
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, status
 
+from database import get_db
+from security import TokenError, decode_access_token
 from services.deepgram_service import DeepgramSession
 from services.openai_service import check_bias
 
@@ -14,18 +17,43 @@ logger = logging.getLogger(__name__)
 # No prefix: the WS path is hard-coded below. tags= only groups it in /docs.
 router = APIRouter(tags=["realtime"])
 
+# Same roles that may complete an interview (routes/interview.py).
+_LIVE_ROLES = {"interviewer", "hiring_manager"}
+
+
+async def _authenticate_ws(token: str | None) -> dict | None:
+    """Resolve the JWT passed as ?token= to a user allowed to run an
+    interview, or None. Browsers can't set an Authorization header on a
+    WebSocket, so the token rides in the query string."""
+    if not token:
+        return None
+    try:
+        payload = decode_access_token(token)
+    except TokenError:
+        return None
+    user_id = payload.get("sub")
+    if not user_id or not ObjectId.is_valid(user_id):
+        return None
+    user = await get_db().users.find_one({"_id": ObjectId(user_id)}, {"role": 1})
+    return user if user and user.get("role") in _LIVE_ROLES else None
+
 
 @router.websocket("/api/realtime/transcribe")
-async def realtime_transcribe(websocket: WebSocket, role: str | None = None) -> None:
+async def realtime_transcribe(
+    websocket: WebSocket, role: str | None = None, token: str | None = None
+) -> None:
+    # Reject before accepting: an open socket spends paid Deepgram minutes.
+    if await _authenticate_ws(token) is None:
+        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+        return
     await websocket.accept()
     transcript_queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
     stream_id = uuid4().hex
 
-    # `role` is a plain, client-supplied query param with no validation
-    # beyond the strict "interviewer" check below. That's fine here: this
-    # socket has no auth at all (pre-existing, separate gap), so the worst
-    # case of a spoofed/wrong role is one wasted OpenAI call - never a
-    # data-exposure issue.
+    # `role` is a plain, client-supplied query param (which audio side this
+    # connection carries), validated only by the strict "interviewer" check
+    # below. The socket itself is authenticated above, so the worst case of a
+    # wrong role is one wasted OpenAI call - never a data-exposure issue.
     #
     # Bias-checking only ever runs on the interviewer's own mic connection,
     # never on candidate/display audio - the two sides open separate

@@ -20,7 +20,7 @@ from bson import ObjectId
 from fastapi import APIRouter, Depends, Query, Response
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
-from database import get_db
+from database import INTERVIEW_SUMMARY, get_db
 from dependencies import get_current_comp_id, get_current_user
 
 router = APIRouter(prefix="/api/interviewer-stats", tags=["interviewer-stats"])
@@ -180,7 +180,8 @@ async def _compute_interviewer_stats(
                     "_id": {"$in": assigned_ids},
                     "job_id": {"$in": company_job_ids},
                     "intv_status": {"$in": ["evaluated", "completed"]},
-                }
+                },
+                INTERVIEW_SUMMARY,
             )
             .sort("intv_date_time", 1)
             .to_list(length=2000)
