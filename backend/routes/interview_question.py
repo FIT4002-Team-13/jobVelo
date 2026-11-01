@@ -1,3 +1,5 @@
+import logging
+
 from bson import ObjectId
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -25,6 +27,7 @@ class ReactiveQuestionRequest(BaseModel):
     section_context: str = ""
 
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/interview-questions", tags=["interview_questions"])
 
 
@@ -69,7 +72,7 @@ async def suggest_questions(
 
     except Exception as error:
         # Invalid AI output or request failures
-        print("QUESTION GENERATION ERROR:", repr(error))
+        logger.exception("Question generation failed")
         raise HTTPException(
             status_code=502,
             detail=f"Question generation failed: {error}",
@@ -129,7 +132,7 @@ async def create_reactive_questions(
         ) from error
 
     except Exception as error:
-        print("REACTIVE QUESTION ERROR:", repr(error))
+        logger.exception("Reactive question generation failed")
 
         raise HTTPException(
             status_code=502,
@@ -169,7 +172,7 @@ async def create_similar_question(
         )
 
     except Exception as error:
-        print("SIMILAR QUESTION ERROR:", repr(error))
+        logger.exception("Similar question generation failed")
 
         raise HTTPException(
             status_code=502,

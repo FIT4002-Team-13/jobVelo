@@ -1,5 +1,10 @@
 import { useState, useRef, useEffect } from "react";
 import { downsampleBuffer } from "../utils/audio.js";
+import { getToken } from "../lib/authStore.js";
+
+// An unexpected socket drop is retried a few times with a growing delay; the
+// mic keeps recording, so only the gap while reconnecting is lost.
+const MAX_RECONNECTS = 3;
 
 export function useAudioCapture({
   candidateName,
@@ -27,6 +32,7 @@ export function useAudioCapture({
   const [isMicMuted, setIsMicMuted] = useState(false);
 
   const wsRef = useRef(null);
+  const reconnectsRef = useRef({ interviewer: 0, candidate: 0 });
   const wsDisplayRef = useRef(null);
   const audioContextRef = useRef(null);
   const processorRef = useRef(null);
@@ -106,10 +112,22 @@ export function useAudioCapture({
 
   function createTranscriptionSocket(speaker, partialRef, role) {
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const socket = new WebSocket(`${protocol}//${window.location.host}/api/realtime/transcribe?role=${role}`);
+    // Browsers can't send an Authorization header on a WebSocket, so the JWT
+    // goes in the query string (the server rejects the socket without it).
+    const token = encodeURIComponent(getToken() ?? "");
+    const socket = new WebSocket(
+      `${protocol}//${window.location.host}/api/realtime/transcribe?role=${role}&token=${token}`
+    );
     socket.binaryType = "arraybuffer";
 
-    socket.onopen = () => setStatus("Listening…");
+    // Each role owns one socket ref and one stream-start anchor.
+    const socketRef = role === "interviewer" ? wsRef : wsDisplayRef;
+    const startRef = role === "interviewer" ? micTranscriptStartRef : displayTranscriptStartRef;
+
+    socket.onopen = () => {
+      reconnectsRef.current[role] = 0;
+      setStatus("Listening…");
+    };
     socket.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
@@ -170,7 +188,27 @@ export function useAudioCapture({
       }
     };
     socket.onerror = () => setStatus("Connection error");
-    socket.onclose = () => {};
+    socket.onclose = (event) => {
+      // Closed on purpose (stop / replaced): the ref no longer points here.
+      if (socketRef.current !== socket) return;
+      if (event.code === 1008) {
+        setStatus("Transcription not authorised. Sign in again, then reload.");
+        return;
+      }
+      const attempt = reconnectsRef.current[role]++;
+      if (attempt >= MAX_RECONNECTS) {
+        setStatus("Transcription connection lost. Reload the page to resume.");
+        return;
+      }
+      setStatus("Connection lost, reconnecting…");
+      setTimeout(() => {
+        if (socketRef.current !== socket) return; // stopped while waiting
+        // Deepgram's timestamps restart with a new stream, so re-anchor it to
+        // the interview clock on the next audio chunk.
+        startRef.current = null;
+        socketRef.current = createTranscriptionSocket(speaker, partialRef, role);
+      }, 1000 * 2 ** attempt);
+    };
     return socket;
   }
 

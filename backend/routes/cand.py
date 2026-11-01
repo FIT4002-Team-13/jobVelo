@@ -16,7 +16,7 @@ from fastapi import (
     status,
 )
 
-from database import get_db
+from database import fetch_capped, get_db
 from dependencies import get_current_comp_id, require_role
 from models.candidate import (
     CandidateCreate,
@@ -54,6 +54,11 @@ async def _auto_generate_plan(jobcand_id: str, job_id: str, cand_id: str) -> Non
             if ObjectId.is_valid(jobcand_id)
             else None
         )
+
+        # A plan already exists (e.g. the user hit "Generate Plan" before this
+        # background task ran): don't pay for a second LLM call or overwrite it.
+        if jc and jc.get("plan_sections"):
+            return
 
         job_title = (job or {}).get("title", "the role")
         job_description = (job or {}).get("description")
@@ -454,7 +459,9 @@ async def list_candidates(
     """
     db = get_db()
 
-    candidates = await db.candidates.find({"comp_id": comp_id}).to_list(length=100)
+    candidates = await fetch_capped(
+        db.candidates.find({"comp_id": comp_id}), 1000, "candidates list"
+    )
     if not candidates:
         return []
 

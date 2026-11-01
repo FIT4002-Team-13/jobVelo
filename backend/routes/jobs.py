@@ -21,7 +21,7 @@ from bson import ObjectId
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from pydantic import BaseModel, EmailStr, Field
 
-from database import get_db
+from database import INTERVIEW_SUMMARY, fetch_capped, get_db
 from dependencies import get_current_comp_id, get_current_user
 from models.job import JobCreate, JobOut, JobUpdate
 from services.file_storage import delete_upload
@@ -100,8 +100,10 @@ async def _job_stats(db, job_ids: list[str]) -> dict[str, dict]:
         out[row["_id"]]["count"] = row["count"]
 
     # Pull all interviews for these jobs.
-    interviews = await db.interviews.find({"job_id": {"$in": job_ids}}).to_list(
-        length=5000
+    interviews = await fetch_capped(
+        db.interviews.find({"job_id": {"$in": job_ids}}, INTERVIEW_SUMMARY),
+        5000,
+        "job stats interviews",
     )
 
     if not interviews:
@@ -212,8 +214,8 @@ async def list_jobs(
             if ObjectId.is_valid(j)
         ]
         query["_id"] = {"$in": assigned}
-    jobs = await (
-        db.jobs.find(query).sort("job_last_update_datetime", -1).to_list(length=200)
+    jobs = await fetch_capped(
+        db.jobs.find(query).sort("job_last_update_datetime", -1), 1000, "jobs list"
     )
 
     stats = await _job_stats(db, [str(j["_id"]) for j in jobs])
