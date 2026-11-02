@@ -5,6 +5,7 @@ import FeedbackItemRow from '../components/profile/FeedbackItemRow';
 import { useEffect, useState } from "react";
 import { api, downloadFileWithAuth } from "../lib/api";
 import { initials } from "../utils/avatar";
+import { formatRole } from "../utils/constants";
 
 export default function Profile() {
   const { user } = useAuth();
@@ -56,12 +57,7 @@ export default function Profile() {
 
   const avatarInitials = initials(displayName);
 
-  const roleLabel = user?.role
-    ? user.role
-        .split('_')
-        .map(w => w[0].toUpperCase() + w.slice(1))
-        .join(' ')
-    : '';
+  const roleLabel = formatRole(user?.role);
 
   const trend = stats?.score_trend || [];
 
