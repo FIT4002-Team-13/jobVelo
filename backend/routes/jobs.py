@@ -22,11 +22,13 @@ from fastapi import APIRouter, Depends, HTTPException, Response, status
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from pydantic import BaseModel, EmailStr, Field
 
-from database import get_db
+from database import INTERVIEW_SUMMARY, fetch_capped, get_db
 from dependencies import get_current_comp_id, get_current_user
 from models.job import JobCreate, JobOut, JobUpdate
+from routes._pagination import Pagination
 from routes._scoping import validate_oid
 from services.file_storage import delete_upload
+from services.queries import assigned_interview_ids
 
 router = APIRouter(prefix="/api/jobs", tags=["jobs"])
 
@@ -97,8 +99,10 @@ async def _job_stats(db: AsyncIOMotorDatabase, job_ids: list[str]) -> dict[str, 
         out[row["_id"]]["count"] = row["count"]
 
     # Pull all interviews for these jobs.
-    interviews = await db.interviews.find({"job_id": {"$in": job_ids}}).to_list(
-        length=5000
+    interviews = await fetch_capped(
+        db.interviews.find({"job_id": {"$in": job_ids}}, INTERVIEW_SUMMARY),
+        5000,
+        "job stats interviews",
     )
 
     if not interviews:
@@ -171,13 +175,7 @@ async def _job_stats(db: AsyncIOMotorDatabase, job_ids: list[str]) -> dict[str, 
 
 async def _assigned_job_ids(db: AsyncIOMotorDatabase, user: dict) -> list[str]:
     """job_ids of interviews assigned to `user` (interview_users -> interviews)."""
-    intv_ids = [
-        ObjectId(link["intv_id"])
-        async for link in db.interview_users.find(
-            {"user_id": str(user["_id"])}, {"intv_id": 1}
-        )
-        if ObjectId.is_valid(link.get("intv_id", ""))
-    ]
+    intv_ids = await assigned_interview_ids(db, str(user["_id"]))
     if not intv_ids:
         return []
     return await db.interviews.distinct("job_id", {"_id": {"$in": intv_ids}})
@@ -185,6 +183,8 @@ async def _assigned_job_ids(db: AsyncIOMotorDatabase, user: dict) -> list[str]:
 
 @router.get("", response_model=list[JobOut])
 async def list_jobs(
+    response: Response,
+    page: Pagination = Depends(),
     comp_id: ObjectId = Depends(get_current_comp_id),
     user: dict = Depends(get_current_user),
 ) -> list[JobOut]:
@@ -209,8 +209,12 @@ async def list_jobs(
             if ObjectId.is_valid(j)
         ]
         query["_id"] = {"$in": assigned}
-    jobs = await (
-        db.jobs.find(query).sort("job_last_update_datetime", -1).to_list(length=200)
+    if page.active:
+        page.set_total(response, await db.jobs.count_documents(query))
+    jobs = await fetch_capped(
+        page.cursor(db.jobs.find(query).sort("job_last_update_datetime", -1)),
+        1000,
+        "jobs list",
     )
 
     stats = await _job_stats(db, [str(j["_id"]) for j in jobs])
@@ -258,11 +262,11 @@ async def get_job(
 async def require_job_manager(
     user: dict = Depends(get_current_user),
 ) -> dict:
-    """Dependency: allow only admins and recruiters to manage jobs."""
-    if user.get("role") not in ("admin", "recruiter"):
+    """Dependency: allow only recruiters to manage jobs."""
+    if user.get("role") != "recruiter":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only recruiters and admins can manage jobs.",
+            detail="Only recruiters can manage jobs.",
         )
     return user
 
@@ -271,18 +275,12 @@ async def require_job_manager(
 async def create_job(
     payload: JobCreate,
     comp_id: ObjectId = Depends(get_current_comp_id),
-    user: dict = Depends(require_job_manager),
+    _user: dict = Depends(require_job_manager),
 ) -> JobOut:
-    """Create a job in the caller's company."""
-    db = get_db()
     """Create a job in the caller's company. Any comp_id in the body is
     IGNORED - we substitute the JWT one so a user can't create jobs in a
     company they don't belong to."""
-    if user.get("role") not in ("admin", "recruiter"):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only recruiters and admins can manage jobs.",
-        )
+    db = get_db()
     now = datetime.now(UTC)
     body = payload.model_dump()
     body["comp_id"] = comp_id  # JWT-derived; ignore whatever the client sent
@@ -305,15 +303,10 @@ async def update_job(
     job_id: str,
     payload: JobUpdate,
     comp_id: ObjectId = Depends(get_current_comp_id),
-    user: dict = Depends(require_job_manager),
+    _user: dict = Depends(require_job_manager),
 ) -> JobOut:
     """Update a job in the caller's company."""
     db = get_db()
-    if user.get("role") not in ("admin", "recruiter"):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only recruiters and admins can manage jobs.",
-        )
     oid = validate_oid(job_id)
 
     updates = {k: v for k, v in payload.model_dump().items() if v is not None}
@@ -355,7 +348,7 @@ async def update_job(
 async def delete_job(
     job_id: str,
     comp_id: ObjectId = Depends(get_current_comp_id),
-    user: dict = Depends(require_job_manager),
+    _user: dict = Depends(require_job_manager),
 ):
     """Delete the job AND everything hanging off it: job_candidates links,
     interviews (+ interviewer links), and cv_analyses docs/files. The
@@ -366,12 +359,6 @@ async def delete_job(
     dashboard status rollup (pinning candidates at "SCHEDULED" forever)
     and analysis PDFs accumulated on disk unreachably."""
     db = get_db()
-
-    if user.get("role") not in ("admin", "recruiter"):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only recruiters and admins can manage jobs.",
-        )
     oid = validate_oid(job_id)
 
     # Collect the dependent ids BEFORE deleting anything.

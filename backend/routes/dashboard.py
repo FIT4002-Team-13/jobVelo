@@ -19,7 +19,7 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from database import get_db
 from dependencies import get_current_comp_id, get_current_user
-from routes._scoping import assigned_interview_ids, company_job_ids
+from services.queries import assigned_interview_ids, company_job_ids
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
 

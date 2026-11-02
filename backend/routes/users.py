@@ -14,11 +14,12 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 from bson import ObjectId
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 
-from database import get_db
+from database import fetch_capped, get_db
 from dependencies import get_current_comp_id
 from models.user import UserOut
+from routes._pagination import Pagination
 
 router = APIRouter(prefix="/api/users", tags=["users"])
 
@@ -58,7 +59,9 @@ def _user_out(doc: dict) -> UserOut:
 
 @router.get("")
 async def list_users(
+    response: Response,
     role: str | None = None,
+    page: Pagination = Depends(),
     comp_id: ObjectId = Depends(get_current_comp_id),
 ):
     """Return teammates in the caller's company, optionally filtered by role.
@@ -72,7 +75,13 @@ async def list_users(
     if role:
         query["role"] = role
 
-    users = await db.users.find(query, {"password_hash": 0}).to_list(length=200)
+    if page.active:
+        page.set_total(response, await db.users.count_documents(query))
+    users = await fetch_capped(
+        page.cursor(db.users.find(query, {"password_hash": 0}), [("_id", 1)]),
+        1000,
+        "users list",
+    )
     return [_user_row(u) for u in users]
 
 

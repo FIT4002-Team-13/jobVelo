@@ -27,6 +27,7 @@ class ReactiveQuestionRequest(BaseModel):
     section_context: str = ""
 
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/interview-questions", tags=["interview_questions"])
 logger = logging.getLogger(__name__)
 

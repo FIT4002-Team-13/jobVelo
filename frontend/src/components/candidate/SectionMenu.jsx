@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { flex } from "../../styles/layout";
-import { SECTION_COLORS } from "../../utils/constants.js";
+import { sectionColor } from "../../utils/constants.js";
 import { formatTimer } from "../../utils/time.js";
 
 const icon = { fill: "none", stroke: "currentColor", strokeLinecap: "round", strokeLinejoin: "round" };
@@ -79,7 +79,7 @@ export default function SectionMenu({ sections, visible, onToggleVisible, onSele
       {open && (
         <div role="listbox" className="absolute left-0 top-full mt-2 z-20 w-72 max-h-72 overflow-y-auto rounded-xl border border-neutral-200 bg-white py-1 shadow-lg">
           {sections.map((section) => {
-            const color = SECTION_COLORS[section._idx % SECTION_COLORS.length];
+            const color = sectionColor(section, section._idx);
             return (
               <button
                 key={section._idx}
