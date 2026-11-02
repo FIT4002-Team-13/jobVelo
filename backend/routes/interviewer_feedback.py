@@ -26,6 +26,8 @@ from database import get_db
 from dependencies import get_current_comp_id, get_current_user
 from models.interviewer_feedback import FeedbackItemUpdate
 from services.gemini_service import generate_interviewer_feedback
+from services.queries import assigned_interview_ids
+from services.queries import company_job_ids as load_company_job_ids
 
 router = APIRouter(prefix="/api/interviewer-feedback", tags=["interviewer-feedback"])
 
@@ -106,9 +108,27 @@ def _serialise(doc: dict) -> dict:
     }
 
 
-def _build_session_block(iv: dict) -> str:
+def _speaker_tag(entry: dict, interviewer_names: set[str]) -> str:
+    """INTERVIEWER / CANDIDATE / OTHER for one transcript line. The assigned
+    speaker_role wins; unassigned lines fall back to matching the label
+    against the interviewer's name, and anything else is OTHER so a third
+    person in the room is never read as the interviewer."""
+    role = (entry.get("speaker_role") or "").strip().casefold()
+    if role in ("interviewer", "candidate"):
+        return role.upper()
+    if (
+        not role
+        and (entry.get("speaker") or "").strip().casefold() in interviewer_names
+    ):
+        return "INTERVIEWER"
+    return "OTHER"
+
+
+def _build_session_block(iv: dict, interviewer_names: set[str]) -> str:
     """One evidence block per interview: date, duration, bias flags, transcript
-    excerpt. Deterministic + compact so the LLM only phrases the narrative."""
+    excerpt. Deterministic + compact so the LLM only phrases the narrative.
+    Each transcript line is tagged with the speaker's role so only the
+    interviewer's own lines are judged."""
     parts: list[str] = []
 
     when = iv.get("intv_date_time") or iv.get("intv_updated_at")
@@ -134,7 +154,8 @@ def _build_session_block(iv: dict) -> str:
     for e in transcript:
         text = (e.get("text") or "").strip()
         if text:
-            lines.append(f"{e.get('speaker') or '?'}: {text}")
+            tag = _speaker_tag(e, interviewer_names)
+            lines.append(f"[{tag}] {e.get('speaker') or '?'}: {text}")
     joined = "\n".join(lines)
     if len(joined) > _TRANSCRIPT_CAP:
         joined = joined[:_TRANSCRIPT_CAP] + " …[truncated]"
@@ -149,15 +170,8 @@ async def _recent_completed_interviews(
     """The caller's most recent completed interviews, newest first, capped."""
     user_id_str = str(user["_id"])
 
-    assigned: list[ObjectId] = []
-    async for link in db.interview_users.find({"user_id": user_id_str}, {"intv_id": 1}):
-        intv_id = link.get("intv_id")
-        if intv_id and ObjectId.is_valid(intv_id):
-            assigned.append(ObjectId(intv_id))
-
-    company_job_ids = [
-        str(j["_id"]) async for j in db.jobs.find({"comp_id": comp_id}, {"_id": 1})
-    ]
+    assigned = await assigned_interview_ids(db, user_id_str)
+    company_job_ids = await load_company_job_ids(db, comp_id)
     if not assigned or not company_job_ids:
         return []
 
@@ -201,10 +215,11 @@ async def regenerate_feedback(
             detail="No completed interviews to generate feedback from yet.",
         )
 
-    sessions = [_build_session_block(iv) for iv in interviews]
     interviewer_name = (
         user.get("full_name") or user.get("username") or user.get("email") or "you"
     )
+    interviewer_names = {"interviewer", interviewer_name.strip().casefold()}
+    sessions = [_build_session_block(iv, interviewer_names) for iv in interviews]
 
     try:
         generated = await generate_interviewer_feedback(interviewer_name, sessions)

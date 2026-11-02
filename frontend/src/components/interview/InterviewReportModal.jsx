@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { flex, button, modal } from "../../styles/layout";
 import { avatarColor, initials } from "../../utils/avatar";
 import ReportSections from "./ReportSections.jsx";
@@ -94,7 +94,14 @@ export function InterviewReportModal({
   onRetry,
 }) {
   const [activeTab, setActiveTab] = useState("candidate");
+  const panelRef = useRef(null);
   const { phase, data, error } = state;
+
+  // Both tabs share the modal's scroll, so start each one back at the top.
+  const selectTab = (tab) => {
+    setActiveTab(tab);
+    panelRef.current?.scrollTo({ top: 0 });
+  };
 
   const tabClass = (isActive) =>
     `rounded-xl px-4 py-0.5 text-sm font-semibold transition-colors ${
@@ -107,7 +114,7 @@ export function InterviewReportModal({
 
   return (
     <div className={modal.overlay}>
-      <div className={`${modal.panel} scrollbar-primary max-w-xl max-h-[92vh] overflow-y-auto`}>
+      <div ref={panelRef} className={`${modal.panel} scrollbar-primary max-w-xl max-h-[92vh] overflow-y-auto`}>
         {phase === "generating" && (
           <div className={`${flex.colCenter} gap-3 py-16 text-center`}>
             <svg className="h-9 w-9 animate-spin text-primary-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round">
@@ -144,10 +151,10 @@ export function InterviewReportModal({
                 {headerRole && <p className="text-sm text-neutral-400">{headerRole}</p>}
               </div>
               <div className={`${flex.row} gap-3 pt-1`}>
-                <button type="button" onClick={() => setActiveTab("candidate")} className={tabClass(isCandidateTab)}>
+                <button type="button" onClick={() => selectTab("candidate")} className={tabClass(isCandidateTab)}>
                   CANDIDATE
                 </button>
-                <button type="button" onClick={() => setActiveTab("interviewer")} className={tabClass(!isCandidateTab)}>
+                <button type="button" onClick={() => selectTab("interviewer")} className={tabClass(!isCandidateTab)}>
                   INTERVIEWER
                 </button>
               </div>

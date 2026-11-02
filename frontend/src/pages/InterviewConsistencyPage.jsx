@@ -4,7 +4,8 @@ import {
 } from 'lucide-react'
 import Sidebar from '../components/common/Sidebar.jsx'
 import ConsistencyChart from '../components/analytics/ConsistencyChart.jsx'
-import { initials, seriesFor, TEAM_COLOR } from '../components/analytics/chartSeries.js'
+import { seriesFor, TEAM_COLOR } from '../components/analytics/chartSeries.js'
+import { initials } from '../utils/avatar.js'
 import { card, page } from '../styles/layout.js'
 import { api } from '../lib/api.js'
 import { useAsync } from '../hooks/useAsync.js'
@@ -496,8 +497,8 @@ export default function InterviewConsistencyPage() {
 
   const jobs         = Array.isArray(jobsData) ? jobsData : []
   const kpis         = data?.kpis         || { avg_overall_score: 0, score_variance: 0, evaluated_count: 0, bias_flag_count: 0 }
-  const interviewers = data?.interviewers || []
-  const teamSeries   = data?.team_series  || { all: [], technical: [], communication: [], problem_solving: [] }
+  const interviewers = useMemo(() => data?.interviewers || [], [data])
+  const teamSeries   = useMemo(() => data?.team_series  || { all: [], technical: [], communication: [], problem_solving: [] }, [data])
 
   const allMonths = useMemo(() => {
     const s = new Set()

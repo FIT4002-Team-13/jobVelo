@@ -3,12 +3,12 @@ import { test, expect } from '@playwright/test'
 const COMP_ID = '507f1f77bcf86cd799439012'
 const JOB_ID  = '507f1f77bcf86cd799439020'
 
-const FAKE_ADMIN = {
+const FAKE_RECRUITER = {
   userid:    '507f1f77bcf86cd799439010',
-  username:  'adminuser',
-  full_name: 'Admin User',
-  email:     'admin@testcompany.com',
-  role:      'admin',
+  username:  'recruiteruser',
+  full_name: 'Recruiter User',
+  email:     'recruiter@testcompany.com',
+  role:      'recruiter',
   comp_id:   COMP_ID,
   created_at: '2024-01-01T00:00:00Z',
 }
@@ -97,16 +97,16 @@ test('A01 - interviewer role cannot access /admin/dashboard (shows 403)', async 
 
 // ── A04: Insecure Design — input boundary validation ─────────────────────────
 
-async function seedAdmin(page) {
+async function seedRecruiter(page) {
   await page.addInitScript(
     (auth) => localStorage.setItem('smartrecruit.auth', JSON.stringify(auth)),
-    { token: 'fake-token', user: FAKE_ADMIN }
+    { token: 'fake-token', user: FAKE_RECRUITER }
   )
   await page.route('**/api/**', (route) =>
     route.fulfill({ status: 200, contentType: 'application/json', body: '[]' })
   )
   await page.route('**/api/auth/me', (route) =>
-    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(FAKE_ADMIN) })
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(FAKE_RECRUITER) })
   )
   await page.route('**/api/jobs', (route) =>
     route.fulfill({ status: 200, contentType: 'application/json', body: '[]' })
@@ -132,7 +132,7 @@ async function seedAdmin(page) {
 
 test('A04 - candidate name under 2 characters is rejected client-side', async ({ page }) => {
   let serverCalled = false
-  await seedAdmin(page)
+  await seedRecruiter(page)
   await page.route('**/api/candidates/create-for-job', (route) => {
     serverCalled = true
     route.fulfill({ status: 201, contentType: 'application/json', body: '{}' })

@@ -2,12 +2,12 @@ import { test, expect } from '@playwright/test'
 
 const COMP_ID = '507f1f77bcf86cd799439012'
 
-const FAKE_ADMIN = {
+const FAKE_RECRUITER = {
   userid: '507f1f77bcf86cd799439011',
-  username: 'adminuser',
-  full_name: 'Admin User',
-  email: 'admin@testcompany.com',
-  role: 'admin',
+  username: 'recruiteruser',
+  full_name: 'Recruiter User',
+  email: 'recruiter@testcompany.com',
+  role: 'recruiter',
   comp_id: COMP_ID,
   created_at: '2024-01-01T00:00:00Z',
 }
@@ -35,7 +35,7 @@ const FAKE_JOB = {
 async function seedAuth(page) {
   await page.addInitScript(
     (auth) => localStorage.setItem('smartrecruit.auth', JSON.stringify(auth)),
-    { token: 'fake-token', user: FAKE_ADMIN }
+    { token: 'fake-token', user: FAKE_RECRUITER }
   )
   // Catch-all registered first = lowest priority
   await page.route('**/api/**', (route) =>
@@ -43,7 +43,7 @@ async function seedAuth(page) {
   )
   // Specific mocks registered last = higher priority (last-registered wins)
   await page.route('**/api/auth/me', (route) =>
-    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(FAKE_ADMIN) })
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(FAKE_RECRUITER) })
   )
 }
 

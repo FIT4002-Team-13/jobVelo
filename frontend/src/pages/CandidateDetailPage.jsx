@@ -176,7 +176,7 @@ export default function CandidateDetailPage() {
     }
 
     load()
-  }, [candId, jobId, user?.comp_id, refreshKey])
+  }, [candId, jobId, user?.comp_id, refreshKey, navigate])
 
   async function onConfirmStart() {
     try {

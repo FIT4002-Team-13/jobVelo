@@ -3,6 +3,7 @@ import { LogOut } from 'lucide-react'
 import { Link, useNavigate } from 'react-router-dom'
 import Logo from '../common/Logo.jsx'
 import { useAuth } from '../../lib/AuthContext.jsx'
+import { formatRole } from '../../utils/constants.js'
 
 // Each link's href must match a section id rendered by LandingPage.
 // scroll-mt-24 on each section keeps the heading clear of the sticky navbar.
@@ -82,11 +83,4 @@ export default function Navbar() {
       </div>
     </motion.header>
   )
-}
-
-// "hiring_manager" → "Hiring Manager" etc. Kept inline because it's only
-// used here; lift if other pages start needing it.
-function formatRole(role) {
-  if (!role) return ''
-  return role.split('_').map((w) => w[0].toUpperCase() + w.slice(1)).join(' ')
 }
