@@ -36,6 +36,24 @@ function interleaveByCategory(list) {
   return out;
 }
 
+// Word overlap at or above this counts as the same question reworded.
+const NEAR_DUPLICATE = 0.6;
+
+function wordsOf(text) {
+  return new Set((text || "").toLowerCase().match(/[a-z0-9]+/g) || []);
+}
+
+// Jaccard overlap of question words - same cheap check the backend uses to
+// dedupe interviewer feedback points.
+function overlap(a, b) {
+  const wa = wordsOf(a);
+  const wb = wordsOf(b);
+  if (!wa.size || !wb.size) return 0;
+  let shared = 0;
+  for (const w of wa) if (wb.has(w)) shared++;
+  return shared / (wa.size + wb.size - shared);
+}
+
 export function useInterviewQuestions(
   jobId,
   { isCompleted, intvStatus, transcriptRef, activeSectionRef, cvQuestions, cvAnalysisLoaded }
@@ -49,14 +67,37 @@ export function useInterviewQuestions(
   const initialRequestedRef = useRef(null);
   const reactiveGeneratingRef = useRef(false);
   const topUpGeneratingRef = useRef(false);
+  // Every question text ever shown this interview, including ones since asked
+  // or ignored, so none of them comes back.
+  const seenRef = useRef([]);
 
   useEffect(() => {
     poolRef.current = pool;
   }, [pool]);
 
+  // Drop questions that repeat (or reword, at `threshold` overlap) anything
+  // already shown or earlier in the same batch.
+  function filterFresh(items, threshold = NEAR_DUPLICATE) {
+    const kept = [];
+    for (const q of items) {
+      const text = q.text?.trim();
+      if (!text) continue;
+      const seen = [...seenRef.current, ...kept.map((k) => k.text)];
+      if (seen.some((s) => overlap(text, s) >= threshold)) continue;
+      kept.push(q);
+    }
+    return kept;
+  }
+
+  function remember(items) {
+    seenRef.current.push(...items.map((q) => q.text));
+  }
+
   // Prepend freshly generated questions to the front of the shared pool.
-  function prependToPool(items) {
+  function prependToPool(newItems, threshold) {
+    const items = filterFresh(newItems, threshold);
     if (!items.length) return;
+    remember(items);
     setPool((current) => {
       const next = [...items, ...current].slice(0, POOL_CAP);
       poolRef.current = next;
@@ -67,8 +108,10 @@ export function useInterviewQuestions(
   // Append top-up questions to the BACK of the pool - they're generic JD
   // refills, so they sit below any live follow-ups the interviewer hasn't
   // handled yet.
-  function appendToPool(items) {
+  function appendToPool(newItems) {
+    const items = filterFresh(newItems);
     if (!items.length) return;
+    remember(items);
     setPool((current) => {
       const next = [...current, ...items].slice(0, POOL_CAP);
       poolRef.current = next;
@@ -92,17 +135,9 @@ export function useInterviewQuestions(
       const data = await response.json();
       if (!response.ok) throw new Error(data.detail || "Question generation failed");
 
-      const seen = new Set(
-        poolRef.current.map((q) => q.text?.trim().toLowerCase())
+      const fresh = filterFresh(
+        interleaveByCategory(data.questions).map((q, i) => normaliseQuestion(q, i))
       );
-      const fresh = interleaveByCategory(data.questions)
-        .map((q, i) => normaliseQuestion(q, i))
-        .filter((q) => {
-          const key = q.text?.trim().toLowerCase();
-          if (!key || seen.has(key)) return false;
-          seen.add(key);
-          return true;
-        });
       // Only add enough to reach the floor - a drained pool refills to at most
       // MIN_POOL questions, not the whole generated batch.
       const room = Math.max(0, MIN_POOL - poolRef.current.length);
@@ -137,6 +172,7 @@ export function useInterviewQuestions(
       const seeded = interleaveByCategory(cvQuestions).map((q, i) =>
         normaliseQuestion({ category: q.category, question: q.question, reason: q.rationale }, i)
       );
+      seenRef.current = seeded.map((q) => q.text);
       poolRef.current = seeded;
       setPool(seeded);
       return;
@@ -156,6 +192,7 @@ export function useInterviewQuestions(
       })
       .then((data) => {
         const seeded = interleaveByCategory(data.questions).map((q, i) => normaliseQuestion(q, i));
+        seenRef.current = seeded.map((q) => q.text);
         poolRef.current = seeded;
         setPool(seeded);
       })
@@ -195,6 +232,7 @@ export function useInterviewQuestions(
           candidate_response: candidateResponse.trim(),
           interview_context: recentContext,
           section_context: sectionContext,
+          existing_questions: seenRef.current.slice(-40),
         }),
       });
 
@@ -237,7 +275,9 @@ export function useInterviewQuestions(
       const data = await response.json();
       if (!response.ok) throw new Error(data.detail || "Similar question generation failed");
 
-      prependToPool([normaliseQuestion(data, 0, question.isFollowUp, true)]);
+      // A "more like this" variant is meant to be close to the original, so
+      // only an exact repeat is dropped.
+      prependToPool([normaliseQuestion(data, 0, question.isFollowUp, true)], 1);
     } catch (error) {
       console.error("Similar question generation failed", error);
       setPoolError(error.message || "Unable to generate a similar question");
