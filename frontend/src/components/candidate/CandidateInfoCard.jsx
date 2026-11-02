@@ -130,7 +130,7 @@ export default function CandidateInfoCard({
   const startLabel = status === 'IN PROGRESS' ? 'Resume Interview' : 'Start Interview'
   const statusClass = CANDIDATE_STATUS_STYLES[status] ?? FALLBACK_STATUS_CLASS
   const canManageCandidates =
-    user?.role === 'admin' || user?.role === 'recruiter'
+    user?.role === 'recruiter'
     
   return (
     <section className={`${card.base} ${flex.col} h-full`}>

@@ -5,7 +5,7 @@ import { formatScore } from '../../utils/format.js'
 export default function CandidateScorePanel({
   jobCand, interview, onViewEvidence, onViewTranscription, showActions = true,
 }) {
-  const ratings = jobCand?.ratings
+  const ratings = interview?.intv_ratings
   const hasInterviewRatings = Boolean(ratings)
   const interviewScores = hasInterviewRatings
     ? [ratings.communication?.score, ratings.technical_skills?.score, ratings.problem_solving?.score].filter(

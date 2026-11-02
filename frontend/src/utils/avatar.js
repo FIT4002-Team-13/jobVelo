@@ -26,14 +26,35 @@ export function avatarColor(name = "") {
   return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
 }
 
-// Like avatarColor, but guarantees `name` and `otherName` never come out the
-// same color - two arbitrary real names hashing into the same bucket is a
-// real (1-in-8) possibility, and when both are shown side by side (e.g.
-// interviewer vs candidate in a transcript) a collision makes them
-// impossible to tell apart. Falls back to the next palette color on a clash.
-export function speakerColor(name, otherName) {
-  const color = avatarColor(name);
-  if (!otherName || name === otherName || color !== avatarColor(otherName)) return color;
-  const idx = AVATAR_COLORS.indexOf(color);
-  return AVATAR_COLORS[(idx + 1) % AVATAR_COLORS.length];
+// Transcript speaker palette, ordered for contrast between neighbours: the
+// first few picks are different hues (blue, green, red, amber...) rather than
+// two blues, and shade variants only come in once every hue is used.
+const SPEAKER_COLORS = [
+  "bg-primary-500",
+  "bg-mint-600",
+  "bg-coral-500",
+  "bg-amber-500",
+  "bg-violet-500",
+  "bg-sky-500",
+  "bg-primary-700",
+  "bg-mint-800",
+  "bg-coral-700",
+  "bg-amber-700",
+];
+
+// Maps every speaker in a transcript to its own color. `pinned` names (the
+// interviewer, then the candidate) always take the first slots so they get
+// the same colors whether or not they've spoken yet; everyone else is assigned
+// in order of first appearance. Colors only repeat once the palette runs out.
+// The live and saved transcript views both call this, so a speaker keeps the
+// same color from recording through to the debrief.
+export function buildSpeakerColors(transcript = [], pinned = []) {
+  const colors = new Map();
+  const add = (name) => {
+    if (!name || colors.has(name)) return;
+    colors.set(name, SPEAKER_COLORS[colors.size % SPEAKER_COLORS.length]);
+  };
+  pinned.forEach(add);
+  transcript.forEach((entry) => add(entry.speaker));
+  return colors;
 }

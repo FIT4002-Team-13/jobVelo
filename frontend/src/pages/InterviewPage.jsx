@@ -30,6 +30,17 @@ export default function InterviewPage() {
 
   const { assignedInterviewer } = useAssignedInterviewer(id);
 
+  const [companyName, setCompanyName] = useState("");
+  useEffect(() => {
+    if (!user?.comp_id) return;
+    let cancelled = false;
+    api
+      .getCompany(user.comp_id)
+      .then((c) => { if (!cancelled) setCompanyName(c?.comp_name || ""); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [user?.comp_id]);
+
   const timerRef = useRef(0);
   const startTimeRef = useRef(Date.now());
   const generateFollowUpRef = useRef(null);
@@ -140,7 +151,7 @@ export default function InterviewPage() {
     pauseSection,
     resumeSection,
     doneSection,
-  } = useInterviewSections(id, { serverData, timerRef, intvStatus, isMicActive });
+  } = useInterviewSections(id, { serverData, timer, timerRef, intvStatus, isMicActive });
 
   // The interview section currently running/paused, kept in a ref so the
   // question generator can steer follow-ups to fit where the interview is.
@@ -262,7 +273,7 @@ export default function InterviewPage() {
                 {assignedInterviewer.name || "—"}
               </span>
               <span className="text-sm text-neutral-400">
-                {user?.role || "—"}
+                {companyName || "—"}
               </span>
             </div>
           </div>
@@ -376,10 +387,10 @@ export default function InterviewPage() {
               disabled={isCompleted}
               className={`flex-1 py-2 short:py-1.5 text-sm font-semibold rounded-xl transition-colors ${
                 isCompleted
-                  ? "bg-neutral-300 text-neutral-500 cursor-not-allowed"
+                  ? "bg-neutral-200 text-neutral-400 cursor-not-allowed"
                   : isPaused
-                  ? "bg-mint-400 hover:bg-mint-500 text-white"
-                  : "bg-coral-400 hover:bg-coral-500 text-white"
+                  ? "bg-mint-500 hover:bg-mint-600 text-white"
+                  : "border border-neutral-200 bg-neutral-0 text-neutral-600 hover:bg-neutral-50"
               }`}
             >
               {isPaused ? "Unpause" : "Pause"}
@@ -389,10 +400,8 @@ export default function InterviewPage() {
               disabled={reportState.phase === "generating"}
               className={`flex-1 py-2 short:py-1.5 text-sm font-semibold rounded-xl transition-colors ${
                 reportState.phase === "generating"
-                  ? "bg-neutral-300 text-neutral-500 cursor-wait"
-                  : isCompleted
-                  ? "text-white bg-primary-500 hover:bg-primary-600"
-                  : "text-white bg-sky-300 hover:bg-sky-400"
+                  ? "bg-neutral-200 text-neutral-400 cursor-wait"
+                  : "text-white bg-primary-500 hover:bg-primary-600"
               }`}
             >
               {reportState.phase === "generating"

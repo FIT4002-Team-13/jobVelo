@@ -6,9 +6,9 @@ from datetime import UTC, datetime, timedelta
 
 from bson import ObjectId
 from fastapi import APIRouter, Depends, HTTPException, Response, status
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, Field, ValidationError
 
-from database import get_db
+from database import fetch_capped, get_db
 from dependencies import get_current_comp_id, get_current_user, require_role
 from models.interview import (
     BiasIncident,
@@ -47,7 +47,9 @@ router = APIRouter(prefix="/api/interviews", tags=["interviews"])
 class PlanRequest(BaseModel):
     job_id: str
     cand_id: str
-    total_minutes: int | None = None
+    # 10 leaves room for the fixed 5-minute Introduction plus at least one
+    # 5-minute section; anything shorter can't satisfy the plan prompt.
+    total_minutes: int | None = Field(default=None, ge=10, le=240)
 
 
 @router.post("/generate-plan", summary="Generate an AI interview plan for a candidate.")
@@ -345,7 +347,7 @@ async def list_interviews(
         else "__no_match__"  # asked for another company's job -> empty list
     )
 
-    interviews = await db.interviews.find(query).to_list(length=100)
+    interviews = await fetch_capped(db.interviews.find(query), 1000, "interviews list")
     return [interview_helper(doc) for doc in interviews]
 
 
@@ -779,6 +781,7 @@ async def _persist_completion(
         {"_id": ObjectId(intv_id)}, {"$set": interview_updates}
     )
 
+
 INTERRUPTION_ACKNOWLEDGEMENTS = {
     "yeah",
     "yes",
@@ -806,7 +809,7 @@ async def _detect_interruptions(
 
     Deepgram timestamps are relative to each stream, so this assumes both
     streams use the same interview timer / recording clock.
-    
+
     An overlap is treated as a potential interruption when the interviewer
     starts speaking while the candidate is still speaking. Short
     acknowledgement responses (e.g. "yeah", "okay", "right") are ignored
@@ -877,9 +880,7 @@ async def _detect_interruptions(
 
     if effective_duration_seconds is None:
         all_end_times = [
-            float(entry["end"])
-            for entry in entries
-            if entry.get("end") is not None
+            float(entry["end"]) for entry in entries if entry.get("end") is not None
         ]
         if all_end_times:
             effective_duration_seconds = max(all_end_times)
@@ -891,17 +892,12 @@ async def _detect_interruptions(
     )
 
     # Three or more interruptions per 10 minutes is treated as frequent.
-    frequent = (
-        rate_per_minute is not None
-        and rate_per_minute >= 0.3
-    )
+    frequent = rate_per_minute is not None and rate_per_minute >= 0.3
 
     return {
         "count": count,
         "rate_per_minute": (
-            round(rate_per_minute, 2)
-            if rate_per_minute is not None
-            else None
+            round(rate_per_minute, 2) if rate_per_minute is not None else None
         ),
         "duration_seconds": (
             round(effective_duration_seconds, 2)
@@ -911,6 +907,7 @@ async def _detect_interruptions(
         "frequent": frequent,
         "evidence": interruptions,
     }
+
 
 @router.post(
     "/{intv_id}/complete",

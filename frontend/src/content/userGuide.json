@@ -1,0 +1,454 @@
+{
+  "roleNames": {
+    "admin": "Admin",
+    "recruiter": "Recruiter",
+    "interviewer": "Interviewer",
+    "hiring_manager": "Hiring Manager"
+  },
+
+  "sections": [
+    {
+      "key": "getting-started",
+      "title": "Getting Started",
+      "icon": "BookOpen",
+      "summary": "Your role, the pages you can open, and your profile.",
+      "tasks": [
+        {
+          "key": "your-role",
+          "icon": "ShieldCheck",
+          "title": "Your Role: {role}",
+          "intro": "Your role decides which pages and buttons you see. Pages you do not have access to are hidden from the sidebar.",
+          "steps": [
+            { "text": "Admin: invite new users, assign roles, manage the company profile, and edit jobs and candidates.", "roles": ["admin"] },
+            { "text": "Recruiter: create and edit jobs, add and edit candidates, and schedule interviews by assigning an interviewer and a date.", "roles": ["recruiter"] },
+            { "text": "Interviewer: run the interviews assigned to you. You can see all jobs and only the candidates whose interviews are assigned to you.", "roles": ["interviewer"] },
+            { "text": "Hiring Manager: assess candidates and record recruitment decisions. Assess interviewers using Insights and their interview feedback. You also run the interviews assigned to you, see all jobs and candidates and can be assigned as an interviewer.", "roles": ["hiring_manager"] },
+            { "text": "Everyone: view candidate transcripts and post-interview feedback. Interviewers only see the feedback for interviews they conducted." , "roles": ["interviewer"] },
+            { "text": "Your role cannot be changed from the app. Ask your admin for adjustment.", "roles": ["interviewer", "hiring_manager", "recruiter"] }
+          ]
+        },
+        {
+          "key": "your-pages",
+          "icon": "BookOpen",
+          "title": "Your Pages",
+          "intro": "A quick tour of the sidebar. Pages not listed here are hidden for your account.",
+          "steps": [
+            { "text": "Dashboard: summary of jobs, candidates and recent activity." },
+            { "text": "Schedules: a monthly calendar of interviews by date. Interviewers see only their own assigned interviews." },
+            { "text": "Jobs: the company's job postings. Open a job to see its candidate list and further job details." },
+            { "text": "Candidates: every applicant across all jobs. Filter by status, sort by date or name and search by candidate name." },
+            { "text": "Insights - Interviewers: the candidate's average score under different interviewer, bias flags and interview consistency across the team.", "roles": ["hiring_manager"] },
+            { "text": "Admin - Invitations: generate one-time codes to invite new users and assign roles.", "roles": ["admin"] },
+            { "text": "Admin - Company Profile: edit the company logo, name, industry, description and contact details.", "roles": ["admin"] },
+            { "text": "Profile: your interviewing stats and AI feedback on the interviews you have run. Interviewers and Hiring Managers only.", "roles": ["interviewer", "hiring_manager"] },
+            { "text": "Profile: your account details.", "roles": ["admin", "recruiter"] },
+            { "text": "User Guide: a guide that walks you through the features and functionality of the app relevant to your role." }
+          ]
+        }
+      ]
+    },
+
+    {
+      "key": "jobs-candidates",
+      "title": "Jobs and Candidates",
+      "icon": "Briefcase",
+      "summary": "Create jobs, add and edit candidates, and schedule interviews.",
+      "tasks": [
+        {
+          "key": "create-job",
+          "icon": "Briefcase",
+          "title": "Create, edit and delete a job",
+          "role": "Admin / Recruiter",
+          "roles": ["admin", "recruiter"],
+          "intro": "A job holds the role description, the capacity and every candidate applying to it.",
+          "steps": [
+            { "text": "Open Jobs and click Create Job button." },
+            { "text": "Enter the title, description, employment type, start and end dates as well as the salary." },
+            { "text": "Set the hiring capacity. Once the job reaches it, Add Candidate is disabled until you increase it." },
+            { "text": "Pressing the Save button allows the job to appear on the Jobs page straight away." },
+            { "text": "To edit, open the Jobs page, press the ... button in the specific job panel and choose Edit, or open the relevant job detail page and click Edit button beside the job details." },
+            { "text": "To delete a job, open the Jobs page, press the delete button. Deleting a job also removes its candidate links, interviews and CV analyses." }
+          ]
+        },
+        {
+          "key": "add-candidate",
+          "icon": "UserRoundPlus",
+          "title": "Add a candidate to a job",
+          "role": "Recruiter",
+          "roles": ["recruiter"],
+          "intro": "Each candidate is linked to a job. A candidate can apply to more than one job.",
+          "steps": [
+            { "text": "Open the job detail page or Candidates page and click Add Candidate." },
+            { "text": "Enter the name, email and phone number. If the email already exists in the company, the details will fill in automatically." },
+            { "text": "If adding via the Candidates page, you need to assign the candidate to the relevant job." },
+            { "text": "Attach the CV and cover letter as PDFs. If the candidate already has a CV on file, you do not need to upload it again." },
+            { "text": "Set the interviewer and interview date here if they are known or leave them blank and add them later." },
+            { "text": "Press save to add the candidate. A CV analysis starts in the background." }
+          ]
+        },
+        {
+          "key": "edit-candidate",
+          "icon": "UserPen",
+          "title": "Edit a candidate and remove them from a job",
+          "role": "Admin / Recruiter",
+          "roles": ["admin", "recruiter"],
+          "intro": "Use Edit to correct details, change the job, or change the interviewer and date. Use the row actions on the candidates table to remove a candidate from a job.",
+          "steps": [
+            { "text": "Click the edit icon in the Candidates page or edit button in the candidate's detail page." },
+            { "text": "Change the name, email, phone number, job, interviewer or interview date." },
+            { "text": "Upload, replace or delete the CV and cover letter. Each document has its own upload and delete controls." },
+            { "text": "Once completed, press save. Changes will appear accordingly." },
+            { "text": "To remove a candidate from a job, click the bin icon in the candidates table. This removes only the link to that job. The candidate stays in the company if they have other job applications." }
+          ]
+        },
+        {
+          "key": "schedule",
+          "icon": "CalendarDays",
+          "title": "Assign an interviewer and schedule the interview",
+          "role": "Recruiter",
+          "roles": ["recruiter"],
+          "intro": "The interviewer runs the live interview. Only users with the Interviewer or Hiring Manager role can be picked.",
+          "steps": [
+            { "text": "Open the candidate and click Edit." },
+            { "text": "In the Interviewer box, type a name and pick them from the list." },
+            { "text": "To remove the interviewer, click the × at the right of the box." },
+            { "text": "Set the Interview Date by choosing the specific date and time from the calendar." },
+            { "text": "Press save when the changes are completed. The interview will appear on the assigned interviewer's Schedules page." },
+            { "text": "The candidate status changes to Scheduled once a interview date is set." }
+          ]
+        }
+      ]
+    },
+
+    {
+      "key": "interview",
+      "title": "Conducting an Interview",
+      "icon": "Mic",
+      "summary": "Preparing, recording, the live transcript, bias warnings, questions, sections and completing the interview.",
+      "tasks": [
+        {
+          "key": "find-interviews",
+          "icon": "Search",
+          "title": "Find your assigned interviews",
+          "role": "Interviewer / Hiring Manager",
+          "roles": ["interviewer", "hiring_manager"],
+          "intro": "You only see interviews assigned to you. Other interviews are not shown on your Schedules page.",
+          "steps": [
+            { "text": "Open Schedules from the sidebar. The calendar shows the current month." },
+            { "text": "Use the left and right arrows to move between months and Today to jump back to the current month." },
+            { "text": "Each interview appears as a coloured tab on its day, showing the time and the candidate's name. The colour shows the status: blue for Scheduled, yellow for In progress and green for Completed." },
+            { "text": "Hover over a tab to see the relevant candidate, job, status and interviewer." },
+            { "text": "If a day has more than three interviews, click the more link to open the full interview list for that day." },
+            { "text": "Click a tab to open that candidate's detail page." }
+          ]
+        },
+        {
+          "key": "prepare",
+          "icon": "ListChecks",
+          "title": "Prepare before the interview",
+          "role": "Interviewer / Hiring Manager",
+          "roles": ["interviewer", "hiring_manager"],
+          "intro": "Read the candidate's materials before you begin. The preparation view shows the CV analysis and the interview plan.",
+          "steps": [
+            { "text": "Open the candidate detail page for the interview." },
+            { "text": "The page opens on the Prep tab. The Briefing lists strengths and areas to probe and View full CV analysis opens the full report." },
+            { "text": "Read the Question Plan and the interview plan. The interviewplan lists each section, what it covers and the suggested time for it." },
+            { "text": "Use the CV tab to read the CV document, the position fit summary, the Strengths, Improvements and Inconsistencies and the suggested questions." },
+            { "text": "Use the Cover Letter tab to read the candidate's cover letter." },
+            { "text": "Check your microphone and internet connection." },
+            { "text": "When you are ready, click Begin Interview at the bottom of the page (it is there on every tab) and confirm the warning. From the Candidates table in the Candidate, Dashboard and Job detail pages you can also use Start Interview or Resume Interview if it is already running." }
+          ]
+        },
+        {
+          "key": "recording-setup",
+          "icon": "Mic",
+          "title": "Set up the microphone and screen share",
+          "role": "Interviewer / Hiring Manager",
+          "roles": ["interviewer", "hiring_manager"],
+          "intro": "The Recording Setup window appears when the interview starts. The transcript does not begin until you complete this step.",
+          "steps": [
+            { "text": "The Recording Setup window will say the interview has begun and asks for microphone access." },
+            { "text": "Click Allow when the browser asks for microphone access. This is required and without it, the transcript cannot start." },
+            { "text": "Click Share screen to share the window or tab where the candidate's voice comes from, such as the video call. Screen share is optional, but without it only your microphone voice is captured." },
+            { "text": "In the browser's share screen popup, tick Share tab audio or Share system audio to share the candidate's voice." },
+            { "text": "Click Ready to start the transcript and the interview timer." }
+          ]
+        },
+        {
+          "key": "live-transcript",
+          "icon": "MessageSquareText",
+          "title": "Use the live transcript and speaker labels",
+          "role": "Interviewer / Hiring Manager",
+          "roles": ["interviewer", "hiring_manager"],
+          "intro": "The transcript runs on the left during the interview. It separates the voices and keeps a record of everything said.",
+          "steps": [
+            { "text": "Each finished phrase appears as a line with a speaker label indicating the voice detected." },
+            { "text": "Click a speaker's avatar or name to open the speaker popup." },
+            { "text": "The popup lists the interviewer's name and the candidate's name. Choose one to give the voice that role. Only one voice can hold each role, so choosing it for all line of a new voice moves the old voice back to Speaker N." },
+            { "text": "Under Custom speaker name, type a custom name and click Save." },
+            { "text": "Tick Apply to all lines by this voice to rename every line from that voice. Leave it unticked to rename only the line you clicked." },
+            { "text": "Choose Leave unassigned to clear a label. The line goes back to Speaker N." },
+            { "text": "Click Pause to stop the transcript during a break then click it to continue." },
+            { "text": "Press Mute mic to turn off your microphone without ending the session and press Unmute mic to turn it back on." },
+            { "text": "Click the note icon on a line to add a note. Notes are saved with the transcript." },
+            { "text": "Click the transcript's Hide or Show button to collapse or open the transcript panel." }
+          ]
+        },
+        {
+          "key": "bias",
+          "icon": "ShieldCheck",
+          "title": "Respond to bias warnings",
+          "role": "Interviewer / Hiring Manager",
+          "roles": ["interviewer", "hiring_manager"],
+          "intro": "The system checks each question you ask for possibly biased or inappropriate wording. The check only runs on interviewer lines.",
+          "steps": [
+            { "text": "A red box titled Possibly biased question appears in the transcript panel, with the category (for example age, gender or family circumstances)." },
+            { "text": "Click the box to expand it. It shows the quoted line, the reason it was flagged and a suggestion when available." },
+            { "text": "Rephrase the question if the warning is valid. However, warnings are only advisory." },
+            { "text": "Flags are kept with the interview. Hiring Managers can review them later." }
+          ]
+        },
+        {
+          "key": "questions",
+          "icon": "MessageCircleQuestion",
+          "title": "Use AI question suggestions",
+          "role": "Interviewer / Hiring Manager",
+          "roles": ["interviewer", "hiring_manager"],
+          "intro": "The question panel suggests follow-up and role-based questions, based on the job and what the candidate has said.",
+          "steps": [
+            { "text": "Each question has a category: Technical, Behavioural or Experience." },
+            { "text": "A Follow-up tag marks questions that build on the candidate's last answer." },
+            { "text": "Ask a question as written or use it as a prompt for your own wording." },
+            { "text": "Click Ignore to remove a question that does not fit." },
+            { "text": "Click More like this to generate a question similar to one you like." },
+            { "text": "Questions come from the job description, the transcript and the candidate's CV analysis." }
+          ]
+        },
+        {
+          "key": "sections",
+          "icon": "CirclePlay",
+          "title": "Run the interview sections",
+          "role": "Interviewer / Hiring Manager",
+          "roles": ["interviewer", "hiring_manager"],
+          "intro": "The interview plan is split into timed sections, shown as cards along the bottom of the interview page.",
+          "steps": [
+            { "text": "Each card shows the section name, its suggested minutes and a short description." },
+            { "text": "Click Start on a section to start its timer." },
+            { "text": "While a section is running, click the pause button to pause the section and click resume to continue." },
+            { "text": "Click Done when the section is finished. All finished sections are greyed out." },
+            { "text": "The generated plan is a guide. You can skip or reorder sections as the conversation needs." }
+          ]
+        },
+        {
+          "key": "complete",
+          "icon": "CircleCheck",
+          "title": "Complete the interview and generate reports",
+          "role": "Interviewer / Hiring Manager",
+          "roles": ["interviewer", "hiring_manager"],
+          "intro": "Completing the interview saves the transcript and creates the candidate and interviewer reports.",
+          "steps": [
+            { "text": "When the interview is finished, click Complete." },
+            { "text": "Recording stops and the transcript is saved when the interview is completed." },
+            { "text": "When the reports are ready, a completion summary appears. Click Done to close it. If report generation fails, click Retry." },
+            { "text": "Open the candidate's page to read the ratings, evidence, reports and to download them as PDFs." }
+          ]
+        }
+      ]
+    },
+
+    {
+      "key": "review",
+      "title": "Reviewing Results",
+      "icon": "BarChart3",
+      "summary": "Review completed interviews with candidate results and interviewer feedback together, plus rankings, insights and your profile.",
+      "tasks": [
+        {
+          "key": "review",
+          "icon": "FileCheck",
+          "title": "Review a completed interview",
+          "intro": "A completed interview shows the candidate's results and the interviewer's feedback together, so you can judge both from one place.",
+          "steps": [
+            { "text": "Open the candidate detail page from Candidates page or from the job detail page's candidate list." },
+            { "text": "The completed interview opens on the Transcript tab. Its sub-tabs are Candidate, Interviewer and Bias." },
+            { "text": "Candidate tab shows the Result (the overall score and the Technical skills, Communication and Problem solving scores) and the candidate report." },
+            { "text": "Interviewer tab shows the interviewer report and the questioning patterns, which show how the interview was run." },
+            { "text": "Select a score on the Candidate tab to see the explanation behind it and the evidence that supports it." },
+            { "text": "Bias tab shows any questions flagged during this interview as biased." },
+            { "text": "In the transcript panel use Search transcript to find a word, click Add note to write a note for a specific line and check the section markers to see where each interview section started." },
+            { "text": "Use the Download button at the top right of the Transcript tab to download the Candidate Report, the Interviewer Report or the Transcript as a PDF." },
+            { "text": "On the CV tab, read the CV analysis showing the Strengths, Improvements, Inconsistencies and the position fit verdict." },
+            { "text": "The Cover Letter tab shows the cover letter of the candidate." },
+            { "text": "Interviewers only see the interviewer feedback for interviews they conducted. Other interviews show the transcript and results only.", "roles": ["interviewer"] }
+          ]
+        },
+        {
+          "key": "rankings",
+          "icon": "ChartColumnStacked",
+          "title": "Compare candidates with Rankings",
+          "intro": "The job page lists its candidates. Rankings sorts them by overall score so you can compare them quickly.",
+          "steps": [
+            { "text": "Open the job detail page and switch from the Schedules tab on the candidate list to Rankings." },
+            { "text": "Candidates are sorted by overall score from highest to lowest." },
+            { "text": "The columns show Communication, Skill and Problem Solving scores next to each candidate." },
+            { "text": "Use Filter to show only certain statuses, or search by candidate name." }
+          ]
+        },
+        {
+          "key": "profile",
+          "icon": "UserCircle2",
+          "title": "Profile and AI feedback",
+          "role": "Interviewer / Hiring Manager",
+          "roles": ["interviewer", "hiring_manager"],
+          "intro": "Your profile summarises the interviews you have run. Acknowledgements and notes carry forward when you regenerate. Feedback is only available once you have completed at least one interview.",
+          "steps": [
+            { "text": "Open your profile from the name at the bottom of the sidebar." },
+            { "text": "Top left section shows your name, role and email. Below that, the Performance Stats card shows total interviews, average candidate score and a score trend chart." },
+            { "text": "Use the Score trends period buttons and the range dropdown (This month, Past 6 months, Past year) to change the chart." },
+            { "text": "Click Export PDF to download your stats report." },
+            { "text": "The Feedback card on the right shows Strengths and Improvements, summarised from your completed interviews." },
+            { "text": "Click the tick on a strength or improvement to acknowledge it. Click the note icon to add a reflection." },
+            { "text": "Click Regenerate to generate new feedback. Items you acknowledged or noted are kept." }
+          ]
+        },
+        {
+          "key": "assess-candidates",
+          "icon": "FileChartColumn",
+          "title": "Assess candidates and record a decision",
+          "role": "Hiring Manager",
+          "roles": ["hiring_manager"],
+          "intro": "Use the scores, evidence and interviewer reports to decide which candidates move forward. A recruitment decision is recorded against the candidate.",
+          "steps": [
+            { "text": "Open the job and switch to Rankings to compare candidates by overall score, Communication, Skill and Problem Solving." },
+            { "text": "Open each candidate you are assessing. On the Transcript tab, read the Result on the Candidate tab." },
+            { "text": "Select a score on the Candidate tab to check the explanation and evidence behind it." },
+            { "text": "On the CV tab, read the CV analysis: Strengths, Improvements, Inconsistencies and the position fit verdict." },
+            { "text": "Open each completed interview and read the Interviewer report. It shows how the interview was run." },
+            { "text": "Use these information to decide whether to shortlist, hire or reject each candidate.", "roles": ["hiring_manager"] }
+          ]
+        },
+        {
+          "key": "insights",
+          "icon": "FileChartColumn",
+          "title": "Assess interviewers with Insights",
+          "role": "Hiring Manager",
+          "roles": ["hiring_manager"],
+          "intro": "Insights compares how each interviewer scores candidates, where bias flags were raised, and how consistent their scoring is.",
+          "steps": [
+            { "text": "Open Insights - Interviewers from the sidebar." },
+            { "text": "Use the Job filter to limit results to one job." },
+            { "text": "Use the Time frame buttons to change the time period." },
+            { "text": "The KPI cards show the average score, score variance, number of evaluated interviews and bias flags." },
+            { "text": "In the comparison table, click an interviewer's row to see their average score for each skill. High variance means uneven scoring." },
+            { "text": "Use the category buttons (All, Technical, Communication, Problem solving) to change the chart." },
+            { "text": "Switch between Table and Cards for a different view." },
+            { "text": "The bias incident log lists every interviewer and their flagged questions. Expand a name to read the questions if there are any." },
+            { "text": "To analyse how an interviewer ran a specific interview, open the candidate's completed interview and read the Interviewer report." }
+          ]
+        }
+      ]
+    },
+
+    {
+      "key": "admin",
+      "title": "Admin",
+      "icon": "ShieldCheck",
+      "summary": "Invite teammates and manage the company profile.",
+      "tasks": [
+        {
+          "key": "invite",
+          "icon": "Users",
+          "title": "Invite teammates",
+          "role": "Admin",
+          "roles": ["admin"],
+          "intro": "Invitation codes are one-time codes tied to a role. Whoever uses the code signs up with that role.",
+          "steps": [
+            { "text": "Open Admin - Invitations in the sidebar." },
+            { "text": "Click Generate codes." },
+            { "text": "Choose the role: Recruiter, Interviewer or Hiring Manager." },
+            { "text": "Choose how many codes you need, then generate them." },
+            { "text": "Copy each code and send it to the new user. Each code works once." },
+            { "text": "The new user opens the signup page, enters the code, and sets their password." },
+            { "text": "The invitations table lists every code, its role and whether it has been used." }
+          ]
+        },
+        {
+          "key": "company-profile",
+          "icon": "Building2",
+          "title": "Update the company profile",
+          "role": "Admin",
+          "roles": ["admin"],
+          "intro": "Company details appear on the signup and the profile pages. Admins are the only role that can change them.",
+          "steps": [
+            { "text": "Open Company Profile under Admin in the sidebar." },
+            { "text": "Click Edit Logo to upload a company logo. It appears on the left of the page." },
+            { "text": "Edit the company name and industry, the description, the email and contact number, and the website when needed." },
+            { "text": "Click Save Changes when all fields are up to date. A confirmation message appears when the save succeeds." }
+          ]
+        }
+      ]
+    }
+  ],
+
+  "troubleshooting": [
+    {
+      "title": "Microphone not detected or denied",
+      "text": "The status line reports Microphone access denied or No microphone found. Click the permissions icon in the address bar and allow the microphone for this site."
+    },
+    {
+      "title": "Candidate's voice is missing from the transcript",
+      "text": "Screen share was not started, or the share dialog did not include audio. Click Share screen again and tick the audio option in the browser's dialog (Share tab audio or Share system audio). Note: Some devices or browsers may only support audio sharing when you select a browser tab in the same window, rather than sharing your entire screen."
+    },
+    {
+      "title": "Screen share stops during the interview",
+      "text": "Stop screen share ends the share. Click Share screen again. Only the shared window's audio is captured, so share the window or tab where the candidate's voice comes from."
+    },
+    {
+      "title": "Lines show as Speaker 1, Speaker 2 instead of names",
+      "text": "The voices are not assigned yet. Click the speaker's avatar, choose Interviewer or Candidate, or type a custom name."
+    },
+    {
+      "title": "A bias warning looks wrong",
+      "text": "Warnings are advisory. Read the reason and the quote. If the question is fine, carry on. The warning is only kept as part of the interview record."
+    },
+    {
+      "title": "Profile shows no feedback or stats",
+      "text": "Feedback and stats come from the interviews you have run. If you have not completed any interviews yet, the cards will be empty. Complete an interview, then click Regenerate.",
+      "roles": ["interviewer", "hiring_manager"]
+    },
+    {
+      "title": "Start Interview button is missing or greyed out",
+      "text": "Only the interviewer assigned to the interview can start it, and only while it is Scheduled or In progress. Ask a Recruiter to assign you through the candidate's Edit popup.",
+      "roles": ["interviewer", "hiring_manager"]
+    },
+    {
+      "title": "Schedules page is empty",
+      "text": "Schedules only shows interviews assigned to you. If the Recruiter has not assigned you to an interview yet, the calendar stays empty and shows a message saying no interviews are scheduled.",
+      "roles": ["interviewer", "hiring_manager"]
+    },
+    {
+      "title": "Add Candidate is disabled",
+      "text": "The job has reached its capacity. Open the job edit popup and increase the hiring capacity then try again.",
+      "roles": ["admin", "recruiter"]
+    },
+    {
+      "title": "Add Candidate or Schedule fails for an admin account",
+      "text": "Adding a candidate and creating an interview are Recruiter actions on the server. If the save fails with a permission error, ask a Recruiter to make the change, or ask your admin to check your role.",
+      "roles": ["admin"]
+    }
+  ],
+
+  "limitations": [
+    {
+      "title": "Audio source",
+      "text": "The transcript only captures what the microphone and the shared window or tab can hear. If the candidate speaks through a device that is not shared, their words are not transcribed."
+    },
+    {
+      "title": "Speaker labels",
+      "text": "Automatic speaker detection is a starting point. Check the labels during the interview and correct them with the speaker popup if the system guessed wrong."
+    },
+    {
+      "title": "AI-generated content",
+      "text": "Scores, reports, bias flags and suggested questions are generated by AI. Treat them as prompts for your own judgement, not final decisions."
+    }
+  ]
+}

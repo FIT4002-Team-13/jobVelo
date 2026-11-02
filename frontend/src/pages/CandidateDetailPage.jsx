@@ -187,11 +187,9 @@ export default function CandidateDetailPage() {
         (i) => i.intv_status === 'in_progress' || i.intv_status === 'scheduled'
       )
       if (resumable) {
-        navigate(
-          resumable.intv_status === 'in_progress'
-            ? `/interview/${resumable.intv_id}/live`
-            : `/interview/${resumable.intv_id}`
-        )
+        // Both land on the candidate page - its Prep / Resume tab is the
+        // checkpoint before the live workspace.
+        navigate(`/interview/${resumable.intv_id}`)
         return
       }
 
@@ -262,7 +260,7 @@ export default function CandidateDetailPage() {
               assignedInterviewerId={interviewerUserId}
               onStartInterview={() => {
                 if (interview?.intv_status === 'in_progress') {
-                  navigate(`/interview/${interview.intv_id}/live`)
+                  navigate(`/interview/${interview.intv_id}`)
                   return
                 }
                 setStartTarget({

@@ -57,3 +57,29 @@ export const SECTION_COLORS = [
     pauseBg: 'bg-coral-100 hover:bg-coral-200 text-coral-600', timer: 'text-coral-600',
   },
 ]
+
+// A section keeps the colour stored on it (`color`, an index into
+// SECTION_COLORS) so it doesn't change when the plan is reordered. Plans saved
+// before colours were stored fall back to their position.
+export function sectionColor(section, index) {
+  const i = Number.isInteger(section?.color) ? section.color : index
+  return SECTION_COLORS[i % SECTION_COLORS.length]
+}
+
+// Gives any section without a colour one: the least-used colour so far,
+// preferring its position's colour on ties, so a fresh plan gets the same
+// sequence as before.
+export function withSectionColors(sections) {
+  const counts = SECTION_COLORS.map(() => 0)
+  sections.forEach((s) => {
+    if (Number.isInteger(s?.color)) counts[s.color % SECTION_COLORS.length]++
+  })
+  return sections.map((s, i) => {
+    if (Number.isInteger(s?.color)) return s
+    const min = Math.min(...counts)
+    const preferred = i % SECTION_COLORS.length
+    const color = counts[preferred] === min ? preferred : counts.indexOf(min)
+    counts[color]++
+    return { ...s, color }
+  })
+}

@@ -19,6 +19,7 @@ schema enforcement still happens - just one hop later.
 
 from __future__ import annotations
 
+import asyncio
 import json
 from datetime import UTC, datetime
 from typing import Any
@@ -28,6 +29,7 @@ from google.genai import types
 
 from config import settings
 from models.interviewer_feedback import GeneratedInterviewerFeedback
+from services.ai_usage import timed_gemini
 
 _FEEDBACK_CATEGORIES = {"questioning", "bias", "interruption", "time_management"}
 
@@ -41,6 +43,36 @@ def _get_client() -> genai.Client:
             raise RuntimeError("GEMINI_API_KEY not configured")
         _client = genai.Client(api_key=settings.gemini_api_key)
     return _client
+
+
+# Without a client-side limit a hung Gemini call holds the request open until
+# the proxy gives up. (CV analysis has its own 300 s cap in the route because
+# it runs as a background task and reads large PDFs.)
+_CALL_TIMEOUT_SECONDS = 90
+
+
+async def _generate_json(operation: str, prompt: str, *, temperature: float = 0.3):
+    """One text-only Gemini call asking for JSON, bounded by a timeout."""
+    try:
+        return await asyncio.wait_for(
+            timed_gemini(
+                operation,
+                settings.gemini_cv_model,
+                _get_client().aio.models.generate_content(
+                    model=settings.gemini_cv_model,
+                    contents=[types.Part.from_text(text=prompt)],
+                    config=types.GenerateContentConfig(
+                        temperature=temperature,
+                        response_mime_type="application/json",
+                    ),
+                ),
+            ),
+            timeout=_CALL_TIMEOUT_SECONDS,
+        )
+    except TimeoutError as e:
+        raise TimeoutError(
+            f"Gemini did not respond within {_CALL_TIMEOUT_SECONDS} seconds."
+        ) from e
 
 
 # ── Prompt ──────────────────────────────────────────────────────────────
@@ -194,12 +226,16 @@ async def analyse_cv(
     # that the Gemini API then rejects. Shape adherence comes from the
     # prompt's explicit schema block + response_mime_type="application/json",
     # and the route layer re-validates the result via Pydantic anyway.
-    res = await _get_client().aio.models.generate_content(
-        model=settings.gemini_cv_model,
-        contents=parts,
-        config=types.GenerateContentConfig(
-            temperature=0.2,
-            response_mime_type="application/json",
+    res = await timed_gemini(
+        "analyse_cv",
+        settings.gemini_cv_model,
+        _get_client().aio.models.generate_content(
+            model=settings.gemini_cv_model,
+            contents=parts,
+            config=types.GenerateContentConfig(
+                temperature=0.2,
+                response_mime_type="application/json",
+            ),
         ),
     )
 
@@ -262,14 +298,7 @@ SESSIONS:
 {joined}
 """
 
-    res = await _get_client().aio.models.generate_content(
-        model=settings.gemini_cv_model,
-        contents=[types.Part.from_text(text=prompt)],
-        config=types.GenerateContentConfig(
-            temperature=0.3,
-            response_mime_type="application/json",
-        ),
-    )
+    res = await _generate_json("generate_interviewer_feedback", prompt)
 
     raw = (res.text or "{}").strip()
     try:
@@ -323,14 +352,7 @@ async def generate_behavioural_suggestions(sessions: list[str]):
         {joined}
     """
 
-    res = await _get_client().aio.models.generate_content(
-        model=settings.gemini_cv_model,
-        contents=[types.Part.from_text(text=prompt)],
-        config=types.GenerateContentConfig(
-            temperature=0.3,
-            response_mime_type="application/json",
-        ),
-    )
+    res = await _generate_json("generate_behavioural_suggestions", prompt)
 
     raw = (res.text or "{}").strip()
     try:

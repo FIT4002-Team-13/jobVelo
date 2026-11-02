@@ -14,7 +14,7 @@ from datetime import UTC, datetime, timedelta
 from bson import ObjectId
 from fastapi import APIRouter, Depends, Query
 
-from database import get_db
+from database import INTERVIEW_SUMMARY, get_db
 from dependencies import get_current_comp_id, require_role
 
 router = APIRouter(prefix="/api/analytics", tags=["analytics"])
@@ -57,7 +57,7 @@ async def interview_consistency(
         cutoff = datetime.now(UTC) - timedelta(days=days)
         q["intv_date_time"] = {"$gte": cutoff}
 
-    interviews = [doc async for doc in db.interviews.find(q)]
+    interviews = [doc async for doc in db.interviews.find(q, INTERVIEW_SUMMARY)]
     if not interviews:
         return _empty()
 

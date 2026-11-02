@@ -1,11 +1,11 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { flex } from "../../styles/layout";
-import { initials, avatarColor, speakerColor } from "../../utils/avatar.js";
+import { initials, avatarColor, buildSpeakerColors } from "../../utils/avatar.js";
 import SpeakerAssignmentPopup from "./SpeakerAssignmentPopup.jsx";
 
 export { initials, avatarColor };
 
-export function TranscriptEntry({ entry, onNoteChange, highlighted, otherSpeaker, onAssignSpeaker, interviewerLabel, candidateLabel, }) {
+export function TranscriptEntry({ entry, onNoteChange, highlighted, color, onAssignSpeaker, interviewerLabel, candidateLabel, }) {
   const [editing, setEditing] = useState(false);
   const [assigningSpeaker, setAssigningSpeaker] = useState(false);
   const canAssignSpeaker = Boolean(entry.stream_id) && Boolean(onAssignSpeaker);
@@ -20,14 +20,14 @@ export function TranscriptEntry({ entry, onNoteChange, highlighted, otherSpeaker
         }`}
       >
         {canAssignSpeaker ? (
-          <button type="button" onClick={() => setAssigningSpeaker((open) => !open)} aria-label={`Change speaker for ${entry.speaker}`} title="Change speaker" className={`w-8 h-8 rounded-pill ${flex.rowCenter} text-white text-xs font-bold shrink-0 transition-transform hover:scale-110 hover:ring-2 hover:ring-primary-300 ${speakerColor(entry.speaker, otherSpeaker)}`}>
+          <button type="button" onClick={() => setAssigningSpeaker((open) => !open)} aria-label={`Change speaker for ${entry.speaker}`} title="Change speaker" className={`w-8 h-8 rounded-pill ${flex.rowCenter} text-white text-xs font-bold shrink-0 transition-transform hover:scale-110 hover:ring-2 hover:ring-primary-300 ${color}`}>
             {initials(entry.speaker)}
           </button>
         ) : (
           <div
             className={`w-8 h-8 rounded-pill ${
               flex.rowCenter
-            } text-white text-xs font-bold shrink-0 ${speakerColor(entry.speaker, otherSpeaker)}`}
+            } text-white text-xs font-bold shrink-0 ${color}`}
           >
             {initials(entry.speaker)}
           </div>
@@ -215,6 +215,11 @@ export function TranscriptPanel({
   candidateLabel,
   onAssignSpeaker
 }) {
+  const speakerColors = useMemo(
+    () => buildSpeakerColors(transcript, [interviewerLabel, candidateLabel]),
+    [transcript, interviewerLabel, candidateLabel]
+  );
+
   return (
     <div className="card-base relative isolate flex flex-col w-[48%] overflow-hidden p-0">
       <div className={`${flex.rowBetween} px-6 pt-1 pb-1 border-b border-neutral-100 shrink-0`}>
@@ -277,7 +282,7 @@ export function TranscriptPanel({
                   entry={entry}
                   highlighted={entry.id === highlightedEntryId}
                   onNoteChange={onNoteChange}
-                  otherSpeaker={entry.speaker === interviewerLabel ? candidateLabel : interviewerLabel}
+                  color={speakerColors.get(entry.speaker)}
                   onAssignSpeaker={onAssignSpeaker}
                   interviewerLabel={interviewerLabel}
                   candidateLabel={candidateLabel}

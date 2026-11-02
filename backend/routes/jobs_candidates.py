@@ -10,7 +10,7 @@ from __future__ import annotations
 from bson import ObjectId
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 
-from database import get_db
+from database import INTERVIEW_SUMMARY, fetch_capped, get_db
 from dependencies import get_current_comp_id, get_current_user
 from models.job_candidate import JobCandidateRowOut
 from routes.jobs import delete_cv_analyses_for_links
@@ -42,7 +42,9 @@ async def list_candidates_for_job(
     if not await db.jobs.find_one({"_id": oid, "comp_id": comp_id}, {"_id": 1}):
         raise HTTPException(status_code=404, detail="Job not found")
 
-    links = await db.job_candidates.find({"job_id": job_id}).to_list(length=500)
+    links = await fetch_capped(
+        db.job_candidates.find({"job_id": job_id}), 2000, "job candidates"
+    )
     if not links:
         return []
 
@@ -97,14 +99,16 @@ async def list_candidates_for_job(
         if ObjectId.is_valid(lnk.get("cand_id", ""))
     ]
     cand_docs = await db.candidates.find({"_id": {"$in": cand_oids}}).to_list(
-        length=500
+        length=2000
     )
     cands_by_id = {str(c["_id"]): c for c in cand_docs}
 
     # Bulk-fetch interviews for this job, keyed by cand_id. `completed_by_cand`
     # is a second index so the per-row "has a completed interview?" check
     # doesn't need its own query.
-    interviews = await db.interviews.find({"job_id": job_id}).to_list(length=500)
+    interviews = await db.interviews.find(
+        {"job_id": job_id}, INTERVIEW_SUMMARY
+    ).to_list(length=2000)
     interview_by_cand = {i.get("cand_id"): i for i in interviews}
     completed_by_cand = {
         i.get("cand_id"): i
@@ -118,7 +122,7 @@ async def list_candidates_for_job(
     if interview_ids:
         intv_user_links = await db.interview_users.find(
             {"intv_id": {"$in": interview_ids}}
-        ).to_list(length=500)
+        ).to_list(length=2000)
     user_id_by_intv = {
         lnk["intv_id"]: lnk["user_id"] for lnk in intv_user_links if lnk.get("intv_id")
     }
@@ -130,7 +134,7 @@ async def list_candidates_for_job(
         user_docs = await db.users.find(
             {"_id": {"$in": [ObjectId(uid) for uid in user_ids]}},
             {"password_hash": 0},
-        ).to_list(length=500)
+        ).to_list(length=2000)
         users_by_id = {str(u["_id"]): u for u in user_docs}
 
     out = []

@@ -1,8 +1,10 @@
 import { useState, useRef, useEffect } from "react";
 import { api } from "../lib/api.js";
+import { useToast } from "../components/common/ToastContext.jsx";
 import { formatTimer } from "../utils/time.js";
 
-export function useTranscript(id, { serverData, candidateName, userId, isCompleted, startTimeRef, timerRef, generateFollowUpRef }) {
+export function useTranscript(id, { serverData, candidateName, userId, isCompleted, startTimeRef, timerRef, generateFollowUpRef, autosave = true }) {
+  const toast = useToast();
   const [transcript, setTranscript] = useState([]);
   const [transcriptVisible, setTranscriptVisible] = useState(true);
   const [hasNewTranscriptUpdates, setHasNewTranscriptUpdates] = useState(false);
@@ -91,7 +93,11 @@ export function useTranscript(id, { serverData, candidateName, userId, isComplet
     }
   }, [serverData, id]);
 
+  // Only the live page records, so only it should autosave. A read-only view
+  // of an in-progress interview (the candidate page's Resume tab) has no
+  // running timer and would otherwise clobber intv_duration_seconds with 0.
   useEffect(() => {
+    if (!autosave) return undefined;
     const interval = setInterval(() => {
       if (!isCompleted && transcriptRef.current.length) {
         api
@@ -103,7 +109,7 @@ export function useTranscript(id, { serverData, candidateName, userId, isComplet
       }
     }, 30000);
     return () => clearInterval(interval);
-  }, [id, isCompleted]);
+  }, [id, isCompleted, autosave]);
 
   function syncCounterFromEntries(entries) {
     const maxId = entries.reduce((max, e) => {
@@ -189,7 +195,9 @@ export function useTranscript(id, { serverData, candidateName, userId, isComplet
       const updated = prev.map((e) => (e.id === entryId ? { ...e, comment: text || undefined } : e));
       localStorage.setItem(`transcript-${id}`, JSON.stringify(updated));
       if (isCompleted) {
-        api.updateInterview(id, { intv_transcript: updated }).catch(() => {});
+        api
+          .updateInterview(id, { intv_transcript: updated })
+          .catch(() => toast.error("Could not save your note. Check your connection."));
       }
       return updated;
     });
