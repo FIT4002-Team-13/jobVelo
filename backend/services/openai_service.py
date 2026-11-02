@@ -232,8 +232,6 @@ async def generate_similar_question(
     job_title: str, job_description: str, original_question: str, category: str
 ) -> SimilarQuestionResult:
     # Shorter timeout than the shared client: this is a quick single-question call.
-    completion = (
-        await _get_client()
     completion = await timed_openai(
         "generate_similar_question",
         _get_client()
