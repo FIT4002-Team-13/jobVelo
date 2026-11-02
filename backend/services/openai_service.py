@@ -222,18 +222,12 @@ async def generate_reactive_questions(
 async def generate_similar_question(
     job_title: str, job_description: str, original_question: str, category: str
 ) -> SimilarQuestionResult:
-    if not settings.openai_api_key:
-        raise RuntimeError("OPENAI_API_KEY not configured")
-
-    openai_client = AsyncOpenAI(
-        api_key=settings.openai_api_key,
-        timeout=60.0,
-        max_retries=1,
-    )
-
+    # Shorter timeout than the shared client: this is a quick single-question call.
     completion = await timed_openai(
         "generate_similar_question",
-        openai_client.beta.chat.completions.parse(
+        _get_client()
+        .with_options(timeout=60.0)
+        .beta.chat.completions.parse(
             model=settings.openai_question_model,
             messages=[
                 {

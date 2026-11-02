@@ -12,6 +12,7 @@ Endpoints:
 
 from __future__ import annotations
 
+import asyncio
 import calendar
 from datetime import UTC, datetime, timedelta
 from typing import Literal
@@ -22,8 +23,7 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from database import INTERVIEW_SUMMARY, get_db
 from dependencies import get_current_comp_id, get_current_user
-from services.queries import assigned_interview_ids
-from services.queries import company_job_ids as load_company_job_ids
+from services.queries import assigned_interview_ids, company_job_ids
 
 router = APIRouter(prefix="/api/interviewer-stats", tags=["interviewer-stats"])
 
@@ -151,21 +151,21 @@ async def _compute_interviewer_stats(
     caller's company, restricted to completed ones (`evaluated`/`completed`).
     """
     user_id_str = str(user["_id"])
-    assigned_ids, company_job_ids = (
+    assigned_ids, comp_job_ids = (
         await assigned_interview_ids(db, user_id_str),
-        await load_company_job_ids(db, comp_id),
+        await company_job_ids(db, comp_id),
     )
 
     now = datetime.now(UTC)
     interviews: list[dict] = []
     sessions: list[dict] = []  # {when, score}
 
-    if assigned_ids and company_job_ids:
+    if assigned_ids and comp_job_ids:
         interviews = (
             await db.interviews.find(
                 {
                     "_id": {"$in": assigned_ids},
-                    "job_id": {"$in": company_job_ids},
+                    "job_id": {"$in": comp_job_ids},
                     "intv_status": {"$in": ["evaluated", "completed"]},
                 },
                 INTERVIEW_SUMMARY,
@@ -281,7 +281,8 @@ async def get_interviewer_stats_report(
         or user.get("email")
         or "Interviewer"
     )
-    pdf_bytes = build_interviewer_stats_pdf(
+    pdf_bytes = await asyncio.to_thread(  # fpdf2 is CPU-bound; keep the event loop free
+        build_interviewer_stats_pdf,
         interviewer_name=interviewer_name,
         stats=stats,
         trend_heading=_TREND_HEADINGS[range],

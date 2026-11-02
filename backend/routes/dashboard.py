@@ -15,11 +15,11 @@ from datetime import UTC, datetime, timedelta
 
 from bson import ObjectId
 from fastapi import APIRouter, Depends
+from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from database import get_db
 from dependencies import get_current_comp_id, get_current_user
-from services.queries import assigned_interview_ids
-from services.queries import company_job_ids as load_company_job_ids
+from services.queries import assigned_interview_ids, company_job_ids
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
 
@@ -61,13 +61,13 @@ async def get_summary(
     # 1 + 2 run concurrently - neither depends on the other's result, and
     # each is its own round trip to Mongo. Sequentially awaiting them (the
     # old code did) just adds their latencies together for no reason.
-    assigned_intv_ids, company_job_ids = await asyncio.gather(
+    assigned_intv_ids, comp_job_ids = await asyncio.gather(
         assigned_interview_ids(db, user_id_str),
-        load_company_job_ids(db, comp_id),
+        company_job_ids(db, comp_id),
     )
 
     # Short-circuit when either set is empty - nothing the user can see.
-    if not assigned_intv_ids or not company_job_ids:
+    if not assigned_intv_ids or not comp_job_ids:
         return {
             "today_interviews": 0,
             "completed_interviews": 0,
@@ -81,7 +81,7 @@ async def get_summary(
 
     base_scope = {
         "_id": {"$in": assigned_intv_ids},
-        "job_id": {"$in": company_job_ids},
+        "job_id": {"$in": comp_job_ids},
     }
 
     today_count, completed_count, upcoming_count = await _gather(
@@ -115,7 +115,11 @@ async def get_summary(
 
 
 async def _gather(
-    db, *, today_query, completed_query, upcoming_query
+    db: AsyncIOMotorDatabase,
+    *,
+    today_query: dict,
+    completed_query: dict,
+    upcoming_query: dict,
 ) -> tuple[int, int, int]:
     """Run the three count queries concurrently - pulled out so the route
     body stays readable. All three hit `interviews` and are independent, so

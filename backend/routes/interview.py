@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from datetime import UTC, datetime, timedelta
 
 from bson import ObjectId
 from fastapi import APIRouter, Depends, HTTPException, Response, status
+from motor.motor_asyncio import AsyncIOMotorDatabase
 from pydantic import BaseModel, Field, ValidationError
 
 from database import fetch_capped, get_db
@@ -236,14 +238,18 @@ def interview_helper(interview: dict) -> InterviewOut:
     )
 
 
-async def _assigned_interviewer_id(db, intv_id: str) -> str | None:
+async def _assigned_interviewer_id(
+    db: AsyncIOMotorDatabase, intv_id: str
+) -> str | None:
     """The user_id assigned to run this interview (via the interview_users
     link), or None when no interviewer has been assigned yet."""
     link = await db.interview_users.find_one({"intv_id": str(intv_id)})
     return str(link["user_id"]) if link and link.get("user_id") else None
 
 
-async def _assert_assigned_interviewer(db, intv_id: str, user: dict) -> None:
+async def _assert_assigned_interviewer(
+    db: AsyncIOMotorDatabase, intv_id: str, user: dict
+) -> None:
     """Only the assigned interviewer may start / resume / complete an interview.
 
     The assigned interviewer owns the whole session. When the interview has no
@@ -480,7 +486,7 @@ async def get_interview_context(
     )
 
 
-async def _get_interviewer_name(db, intv_id: str) -> str | None:
+async def _get_interviewer_name(db: AsyncIOMotorDatabase, intv_id: str) -> str | None:
     """Look up the interviewer's display name via interview_users -> users.
 
     Mirrors the frontend's own fallback (`user?.full_name || "Interviewer"`
@@ -497,7 +503,7 @@ async def _get_interviewer_name(db, intv_id: str) -> str | None:
 
 
 async def _generate_reports(
-    db,
+    db: AsyncIOMotorDatabase,
     intv_id: str,
     final_entries: list,
     transcript_text: str,
@@ -600,7 +606,7 @@ async def _generate_reports(
 
 
 async def _persist_completion(
-    db,
+    db: AsyncIOMotorDatabase,
     intv_id: str,
     link_id: ObjectId,
     entries: list,
@@ -930,7 +936,8 @@ async def _report_pdf_response(intv_id: str, kind: str, user: dict) -> Response:
 
     interviewer_name = await _get_interviewer_name(db, intv_id)
 
-    pdf_bytes = build_interview_report_pdf(
+    pdf_bytes = await asyncio.to_thread(  # fpdf2 is CPU-bound; keep the event loop free
+        build_interview_report_pdf,
         kind=kind,
         report=report,
         candidate_name=(candidate or {}).get("cand_full_name"),
@@ -1050,6 +1057,7 @@ async def update_interview(
 async def get_transcript_pdf(
     intv_id: str, comp_id: ObjectId = Depends(get_current_comp_id)
 ) -> Response:
+    """Download the interview transcript as a PDF (company-scoped)."""
     db = get_db()
     if not ObjectId.is_valid(intv_id):
         raise HTTPException(
@@ -1105,7 +1113,8 @@ async def get_transcript_pdf(
             }
         )
 
-    pdf = build_transcript_pdf(
+    pdf = await asyncio.to_thread(
+        build_transcript_pdf,
         entries=transcript,
         candidate_name=(candidate or {}).get("cand_full_name"),
         job_title=job.get("title"),

@@ -5,6 +5,7 @@ import { page, card, modal } from '../styles/layout'
 import { useAuth } from '../lib/AuthContext.jsx'
 import { api } from '../lib/api.js'
 import { useAsync } from '../hooks/useAsync.js'
+import { initials as getInitials } from '../utils/avatar.js'
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -58,12 +59,6 @@ function formatTime(d) {
 
 function formatLongDate(d) {
   return d.toLocaleDateString('en-AU', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })
-}
-
-function getInitials(name = '') {
-  const safe = typeof name === 'string' ? name.trim() : ''
-  const initials = safe.split(/\s+/).filter(Boolean).slice(0, 2).map((p) => p[0].toUpperCase()).join('')
-  return initials || '--'
 }
 
 // 42 cells (6 weeks) starting the Monday on/before the 1st - a fixed-size
@@ -161,7 +156,7 @@ export default function SchedulesPage() {
     user?.userid ? () => api.listApplications({ user_id: user.userid }) : null,
     [user?.userid]
   )
-  const rows = Array.isArray(data) ? data : []
+  const rows = useMemo(() => (Array.isArray(data) ? data : []), [data])
 
   // Interviews with a real datetime, bucketed per local day and sorted by
   // time within the day.

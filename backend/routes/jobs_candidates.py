@@ -14,15 +14,10 @@ from database import INTERVIEW_SUMMARY, fetch_capped, get_db
 from dependencies import get_current_comp_id, get_current_user
 from models.job_candidate import JobCandidateRowOut
 from routes._pagination import Pagination
+from routes._scoping import validate_oid
 from routes.jobs import delete_cv_analyses_for_links
 
 router = APIRouter(prefix="/api/jobs", tags=["job candidates"])
-
-
-def _validate_oid(value: str, what: str = "job") -> ObjectId:
-    if not ObjectId.is_valid(value):
-        raise HTTPException(status_code=400, detail=f"Invalid {what} id")
-    return ObjectId(value)
 
 
 @router.get("/{job_id}/candidates", response_model=list[JobCandidateRowOut])
@@ -41,7 +36,7 @@ async def list_candidates_for_job(
     Tenant guard: 404s if the job belongs to a different company.
     """
     db = get_db()
-    oid = _validate_oid(job_id)
+    oid = validate_oid(job_id)
     if not await db.jobs.find_one({"_id": oid, "comp_id": comp_id}, {"_id": 1}):
         raise HTTPException(status_code=404, detail="Job not found")
 
@@ -225,7 +220,7 @@ async def remove_candidate_from_job(
     if not ObjectId.is_valid(jobcand_id):
         raise HTTPException(status_code=400, detail="Invalid jobcand_id")
 
-    oid = _validate_oid(job_id)
+    oid = validate_oid(job_id)
     if not await db.jobs.find_one({"_id": oid, "comp_id": comp_id}, {"_id": 1}):
         raise HTTPException(status_code=404, detail="Job not found")
 

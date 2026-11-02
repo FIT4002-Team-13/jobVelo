@@ -173,6 +173,8 @@ export function useInterviewSections(id, { serverData, timer, timerRef, intvStat
         })
         .catch(() => {});
     }
+    // One-shot init (guarded by hasInitializedRef) once server data arrives.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [serverData, intvStatus]);
 
   useEffect(() => {
@@ -182,6 +184,8 @@ export function useInterviewSections(id, { serverData, timer, timerRef, intvStat
       if (statesRef.current[i]?.status === "idle") startSection(i);
       else resumeSection(i);
     }
+    // startSection/resumeSection are recreated every render; only these two values should trigger it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isMicActive, pendingSection]);
 
   return {
