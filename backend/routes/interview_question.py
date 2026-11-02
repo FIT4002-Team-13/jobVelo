@@ -30,6 +30,7 @@ class ReactiveQuestionRequest(BaseModel):
     existing_questions: list[str] = Field(default_factory=list, max_length=40)
 
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/interview-questions", tags=["interview_questions"])
 logger = logging.getLogger(__name__)
 

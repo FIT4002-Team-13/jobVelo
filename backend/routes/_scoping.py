@@ -27,23 +27,6 @@ def validate_oid(value: str, what: str = "job") -> ObjectId:
     return ObjectId(value)
 
 
-async def assigned_interview_ids(
-    db: AsyncIOMotorDatabase, user_id_str: str
-) -> list[ObjectId]:
-    """Interviews this user is assigned to, via interview_users links."""
-    ids: list[ObjectId] = []
-    async for link in db.interview_users.find({"user_id": user_id_str}, {"intv_id": 1}):
-        intv_id = link.get("intv_id")
-        if intv_id and ObjectId.is_valid(intv_id):
-            ids.append(ObjectId(intv_id))
-    return ids
-
-
-async def company_job_ids(db: AsyncIOMotorDatabase, comp_id: ObjectId) -> list[str]:
-    """The caller's company's job ids (interviews don't carry comp_id directly)."""
-    return [str(j["_id"]) async for j in db.jobs.find({"comp_id": comp_id}, {"_id": 1})]
-
-
 async def job_in_company(
     db: AsyncIOMotorDatabase, job_id: str | None, comp_id: ObjectId
 ) -> bool:

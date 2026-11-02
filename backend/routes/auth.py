@@ -25,6 +25,7 @@ from database import get_db
 from dependencies import get_current_user
 from models.company import CompanyOut
 from models.user import AdminCreate, LoginRequest, LoginResponse, UserCreate, UserOut
+from routes._rate_limit import rate_limit
 from security import create_access_token, hash_password, verify_password
 from services.file_storage import delete_upload, save_upload
 
@@ -123,6 +124,7 @@ class CheckCodeResponse(BaseModel):
     response_model=SignupCompanyResponse,
     status_code=status.HTTP_201_CREATED,
     summary="Create a brand-new company and its first admin in one step.",
+    dependencies=[Depends(rate_limit("signup", 5))],
 )
 async def signup_company(
     # Company fields
@@ -232,6 +234,7 @@ async def signup_company(
     "/check-code/{code}",
     response_model=CheckCodeResponse,
     summary="Validate an invitation code before showing the signup form.",
+    dependencies=[Depends(rate_limit("check-code", 20))],
 )
 async def check_code(code: str) -> CheckCodeResponse:
     db = get_db()
@@ -258,6 +261,7 @@ async def check_code(code: str) -> CheckCodeResponse:
     response_model=UserOut,
     status_code=status.HTTP_201_CREATED,
     summary="Create a new user account using an invitation code.",
+    dependencies=[Depends(rate_limit("signup", 5))],
 )
 async def signup(payload: UserCreate) -> UserOut:
     """Invited-teammate signup.
@@ -327,6 +331,7 @@ async def signup(payload: UserCreate) -> UserOut:
     "/login",
     response_model=LoginResponse,
     summary="Exchange username/email + password for a JWT",
+    dependencies=[Depends(rate_limit("login", 10))],
 )
 async def login(payload: LoginRequest) -> LoginResponse:
     try:

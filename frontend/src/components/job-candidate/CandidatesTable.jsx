@@ -20,8 +20,7 @@ export default function CandidatesTable({
 }) {
   const isInterviewer = user?.role === 'interviewer'
   const isHiringManager = user?.role === 'hiring_manager'                    
-  const canManageCandidates =
-    user?.role === 'admin' || user?.role === 'recruiter'
+  const canManageCandidates = user?.role === 'recruiter'
 
   // Rankings always sorts by score, regardless of the Sort menu's key - the
   // menu itself is disabled on that tab (see the "Rankings are sorted by
