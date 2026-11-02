@@ -36,6 +36,7 @@ export function useAsync(fn, deps = []) {
     return () => { aliveRef.current = false }
     // `deps` is caller-provided and intentionally drives when this re-runs,
     // same contract as a manual useEffect(fn, deps) - not `reload` itself.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, deps)
 
   return { data, setData, loading, error, setError, reload }

@@ -14,8 +14,9 @@ from datetime import UTC, datetime, timedelta
 from bson import ObjectId
 from fastapi import APIRouter, Depends, Query
 
-from database import get_db
+from database import INTERVIEW_SUMMARY, get_db
 from dependencies import get_current_comp_id, require_role
+from services.queries import company_job_ids as load_company_job_ids
 
 router = APIRouter(prefix="/api/analytics", tags=["analytics"])
 
@@ -39,9 +40,7 @@ async def interview_consistency(
     db = get_db()
 
     # Resolve the company's job ids (interviews store job_id, not comp_id).
-    company_job_ids: list[str] = [
-        str(j["_id"]) async for j in db.jobs.find({"comp_id": comp_id}, {"_id": 1})
-    ]
+    company_job_ids = await load_company_job_ids(db, comp_id)
     if not company_job_ids:
         return _empty()
 
@@ -57,7 +56,7 @@ async def interview_consistency(
         cutoff = datetime.now(UTC) - timedelta(days=days)
         q["intv_date_time"] = {"$gte": cutoff}
 
-    interviews = [doc async for doc in db.interviews.find(q)]
+    interviews = [doc async for doc in db.interviews.find(q, INTERVIEW_SUMMARY)]
     if not interviews:
         return _empty()
 
@@ -79,22 +78,19 @@ async def interview_consistency(
         user_name[str(u["_id"])] = u.get("full_name") or u.get("username") or "Unknown"
 
     # job_candidates ratings: keyed by (cand_id, job_id).
-    pairs = list(
-        {(str(i.get("cand_id", "")), str(i.get("job_id", ""))) for i in interviews}
-    )
+    pairs = {(str(i.get("cand_id", "")), str(i.get("job_id", ""))) for i in interviews}
+    pairs = {(cand_id, jid) for cand_id, jid in pairs if cand_id and jid}
     jc_map: dict[tuple[str, str], dict] = {}
-    for cand_id, jid in pairs:
-        if not cand_id or not jid:
-            continue
-        doc = await db.job_candidates.find_one(
-            {"cand_id": cand_id, "job_id": jid},
-            {"ratings": 1, "status": 1},
-        )
-        if doc:
-            jc_map[(cand_id, jid)] = {
-                "ratings": doc.get("ratings") or {},
-                "status": doc.get("status"),
-            }
+    if pairs:
+        # One query for every pair; setdefault keeps the first match, as find_one did.
+        async for doc in db.job_candidates.find(
+            {"$or": [{"cand_id": c, "job_id": j} for c, j in pairs]},
+            {"cand_id": 1, "job_id": 1, "ratings": 1, "status": 1},
+        ):
+            jc_map.setdefault(
+                (doc.get("cand_id"), doc.get("job_id")),
+                {"ratings": doc.get("ratings") or {}, "status": doc.get("status")},
+            )
 
     # Aggregate per-interviewer data and team-wide scored rows.
     per_intv: dict[str, dict] = {}

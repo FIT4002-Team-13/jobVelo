@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { makeSorter } from '../components/job-candidate/TableControls'
 
 // Shared search -> filter -> sort -> (optional) paginate pipeline behind the
@@ -20,7 +20,16 @@ export function useTableControls(items, {
   const [filters, setFilters] = useState([])
   const [page, setPage] = useState(0)
 
-  const needle = search.trim().toLowerCase()
+  // The input stays instant (`search`); filtering + sorting run off a copy that
+  // settles 200 ms after the last keystroke, so typing doesn't re-filter and
+  // re-render the whole table on every character.
+  const [settledSearch, setSettledSearch] = useState('')
+  useEffect(() => {
+    const t = setTimeout(() => setSettledSearch(search), 200)
+    return () => clearTimeout(t)
+  }, [search])
+
+  const needle = settledSearch.trim().toLowerCase()
 
   const filtered = useMemo(
     () => items

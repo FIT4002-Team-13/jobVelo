@@ -4,11 +4,13 @@ from datetime import UTC, datetime
 from typing import Any
 
 from bson import ObjectId
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 
-from database import get_db
+from database import INTERVIEW_SUMMARY, fetch_capped, get_db
 from dependencies import get_current_comp_id, get_current_user, require_role
 from models.application import ApplicationRowOut, ApplicationUpdate
+from routes._pagination import Pagination
+from services.queries import company_job_ids as load_company_job_ids
 
 router = APIRouter(prefix="/api/applications", tags=["applications"])
 
@@ -32,10 +34,12 @@ def _safe_avg_score(job_candidate: dict[str, Any]) -> float | None:
 
 @router.get("", response_model=list[ApplicationRowOut])
 async def list_applications(
+    response: Response,
     user_id: str | None = Query(
         None,
         description="Deprecated - scope now derives from the JWT and this is ignored.",
     ),
+    page: Pagination = Depends(),
     user: dict = Depends(get_current_user),
     comp_id: ObjectId = Depends(get_current_comp_id),
 ) -> list[ApplicationRowOut]:
@@ -56,9 +60,7 @@ async def list_applications(
 
     # Set of the company's job ids - used to drop any application row whose
     # job belongs to a different company (defence-in-depth on the join below).
-    company_job_ids = {
-        str(j["_id"]) async for j in db.jobs.find({"comp_id": comp_id}, {"_id": 1})
-    }
+    company_job_ids = set(await load_company_job_ids(db, comp_id))
     if not company_job_ids:
         return []
 
@@ -77,7 +79,7 @@ async def list_applications(
         interviews = []
         if interview_oids:
             interviews = await db.interviews.find(
-                {"_id": {"$in": interview_oids}}
+                {"_id": {"$in": interview_oids}}, INTERVIEW_SUMMARY
             ).to_list(length=2000)
 
         assigned_pairs = {
@@ -102,11 +104,13 @@ async def list_applications(
         ).to_list(length=len(pair_filters))
     else:
         # Recruiter / admin / hiring manager: the whole company pipeline.
-        matched_job_candidates = await db.job_candidates.find(
-            {"job_id": {"$in": list(company_job_ids)}}
-        ).to_list(length=2000)
+        matched_job_candidates = await fetch_capped(
+            db.job_candidates.find({"job_id": {"$in": list(company_job_ids)}}),
+            2000,
+            "applications list",
+        )
         interviews = await db.interviews.find(
-            {"job_id": {"$in": list(company_job_ids)}}
+            {"job_id": {"$in": list(company_job_ids)}}, INTERVIEW_SUMMARY
         ).to_list(length=2000)
 
     if not matched_job_candidates:
@@ -236,7 +240,10 @@ async def list_applications(
         return dt if dt.tzinfo else dt.replace(tzinfo=UTC)
 
     rows.sort(key=_sort_key, reverse=True)
-    return rows
+    # Rows are assembled in Python (joins across five collections), so paging
+    # slices the finished, sorted list.
+    page.set_total(response, len(rows))
+    return page.slice(rows)
 
 
 @router.patch("/{application_id}")

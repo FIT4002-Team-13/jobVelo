@@ -12,7 +12,6 @@ Cross-tenant safety:
 
 from __future__ import annotations
 
-import json
 import logging
 from datetime import UTC, datetime
 
@@ -28,8 +27,8 @@ from models.job_candidate import (
     JobCandidatePlanUpdate,
     JobCandidateScoreUpdate,
 )
-from routes._scoping import link_in_company
-from services.openai_service import generate_interview_plan
+from routes._scoping import link_in_company, validate_oid
+from services.plan_generation import generate_and_store_plan
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/job-candidates", tags=["job_candidates"])
@@ -37,56 +36,7 @@ router = APIRouter(prefix="/api/job-candidates", tags=["job_candidates"])
 
 async def _auto_generate_plan(jobcand_id: str, job_id: str, cand_id: str) -> None:
     """Background: generate and persist an interview plan for a new job-candidate link."""
-    try:
-        db = get_db()
-        job = (
-            await db.jobs.find_one({"_id": ObjectId(job_id)})
-            if ObjectId.is_valid(job_id)
-            else None
-        )
-        cand = (
-            await db.candidates.find_one({"_id": ObjectId(cand_id)})
-            if ObjectId.is_valid(cand_id)
-            else None
-        )
-        jc = (
-            await db.job_candidates.find_one({"_id": ObjectId(jobcand_id)})
-            if ObjectId.is_valid(jobcand_id)
-            else None
-        )
-
-        job_title = (job or {}).get("title", "the role")
-        job_description = (job or {}).get("description")
-        candidate_name = (cand or {}).get("cand_full_name", "the candidate")
-
-        cv_analysis = None
-        if jc:
-            raw = jc.get("cv_analysis")
-            if isinstance(raw, str):
-                try:
-                    cv_analysis = json.loads(raw)
-                except json.JSONDecodeError:
-                    pass
-            elif isinstance(raw, dict):
-                cv_analysis = raw
-
-        sections = await generate_interview_plan(
-            job_title, job_description, candidate_name, cv_analysis
-        )
-        if sections:
-            await db.job_candidates.update_one(
-                {"_id": ObjectId(jobcand_id)},
-                {
-                    "$set": {
-                        "plan_sections": sections,
-                        "updated_at": datetime.now(UTC),
-                    }
-                },
-            )
-    except Exception:
-        logger.warning(
-            "Interview plan generation failed for jobcand %s", jobcand_id, exc_info=True
-        )
+    await generate_and_store_plan(get_db(), jobcand_id, job_id, cand_id)
 
 
 def job_candidate_helper(job_candidate: dict) -> JobCandidateOut:
@@ -107,12 +57,6 @@ def job_candidate_helper(job_candidate: dict) -> JobCandidateOut:
     )
 
 
-def _validate_oid(value: str, what: str) -> ObjectId:
-    if not ObjectId.is_valid(value):
-        raise HTTPException(status_code=400, detail=f"Invalid {what} id")
-    return ObjectId(value)
-
-
 @router.post("", response_model=JobCandidateOut, status_code=status.HTTP_201_CREATED)
 async def create_job_candidate(
     payload: JobCandidateCreate,
@@ -126,8 +70,8 @@ async def create_job_candidate(
     """
     db = get_db()
 
-    cand_oid = _validate_oid(payload.cand_id, "candidate")
-    job_oid = _validate_oid(payload.job_id, "job")
+    cand_oid = validate_oid(payload.cand_id, "candidate")
+    job_oid = validate_oid(payload.job_id, "job")
 
     # Both records must exist AND belong to the caller's company. Scoping the
     # find by comp_id means a user can't link across tenants even if they
@@ -297,7 +241,7 @@ async def get_job_candidate(
     comp_id: ObjectId = Depends(get_current_comp_id),
 ) -> JobCandidateOut:
     db = get_db()
-    oid = _validate_oid(jobcand_id, "job-candidate")
+    oid = validate_oid(jobcand_id, "job-candidate")
     job_candidate = await db.job_candidates.find_one({"_id": oid})
     if not job_candidate or not await _link_in_company(db, job_candidate, comp_id):
         raise HTTPException(
@@ -325,7 +269,7 @@ async def update_job_candidate_scores(
     the status - that's an explicit "undo" gesture.
     """
     db = get_db()
-    oid = _validate_oid(jobcand_id, "job-candidate")
+    oid = validate_oid(jobcand_id, "job-candidate")
 
     # Tenant guard: the link must belong to the caller's company.
     existing = await db.job_candidates.find_one({"_id": oid})
@@ -368,7 +312,7 @@ async def update_job_candidate_plan(
 ) -> JobCandidateOut:
     """Save or replace the AI-generated interview plan sections for a job-candidate link."""
     db = get_db()
-    oid = _validate_oid(jobcand_id, "job-candidate")
+    oid = validate_oid(jobcand_id, "job-candidate")
 
     existing = await db.job_candidates.find_one({"_id": oid})
     if not existing or not await _link_in_company(db, existing, comp_id):

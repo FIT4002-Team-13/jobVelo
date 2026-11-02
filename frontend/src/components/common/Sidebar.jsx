@@ -14,6 +14,8 @@ import {
 import logoFull from "../../assets/logo-final.png";
 import { useAuth } from "../../lib/AuthContext.jsx";
 import CommandPalette from "./CommandPalette.jsx";
+import { formatRole } from "../../utils/constants.js";
+import { initials } from "../../utils/avatar.js";
 
 // Platform-aware shortcut hint for the search bar (⌘K on Mac, Ctrl K elsewhere).
 const IS_MAC =
@@ -48,15 +50,7 @@ export default function Sidebar({ user: userProp }) {
   // Prefer the new full_name field; fall back to legacy `name` (mock user)
   // or username so a partially-migrated doc still shows something sensible.
   const displayName = user?.full_name || user?.name || user?.username || "";
-  const initials = displayName
-    ? displayName
-        .split(" ")
-        .filter(Boolean)
-        .map((n) => n[0])
-        .join("")
-        .slice(0, 2)
-        .toUpperCase()
-    : "?";
+  const avatarInitials = displayName ? initials(displayName) : "?";
   const roleLabel = formatRole(user?.role);
 
   const navItems = [
@@ -232,7 +226,7 @@ export default function Sidebar({ user: userProp }) {
           className="flex items-center gap-2.5 mb-3 p-2 rounded-lg cursor-pointer hover:bg-neutral-100 transition"
         >
           <div className="w-9 h-9 rounded-pill bg-primary-500 flex items-center justify-center text-white font-bold text-sm shrink-0">
-            {initials}
+            {avatarInitials}
           </div>
           <div>
             <div className="text-sm font-semibold text-neutral-800">
@@ -255,14 +249,4 @@ export default function Sidebar({ user: userProp }) {
       <CommandPalette />
     </aside>
   );
-}
-
-// "hiring_manager" -> "Hiring Manager", etc. Inline because Sidebar is the
-// only place that renders the role label right now.
-function formatRole(role) {
-  if (!role) return "";
-  return role
-    .split("_")
-    .map((w) => w[0].toUpperCase() + w.slice(1))
-    .join(" ");
 }

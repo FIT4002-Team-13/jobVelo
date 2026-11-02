@@ -1,6 +1,6 @@
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 
 from config import settings
@@ -8,6 +8,7 @@ from database import (
     close_mongo_connection,
     connect_to_mongo,
     ensure_indexes,
+    get_db,
     seed_mock_data,
 )
 from routes import (
@@ -63,12 +64,10 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["X-Total-Count"],
 )
 
 
-# Add routers here as features land:
-# from routes import auth, interview, cv
-# app.include_router(auth.router)
 app.include_router(auth.router)
 app.include_router(invitations.router)
 app.include_router(files.router)
@@ -95,3 +94,17 @@ app.include_router(behavioural_suggestions.router)
 @app.get("/api/health")
 async def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.get("/api/health/ready")
+async def ready() -> dict[str, str]:
+    """Readiness: 200 only when MongoDB answers. Point load balancers and
+    uptime monitors here; /api/health stays a cheap "process is up" check."""
+    try:
+        await get_db().command("ping")
+    except Exception as error:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Database unavailable",
+        ) from error
+    return {"status": "ready"}

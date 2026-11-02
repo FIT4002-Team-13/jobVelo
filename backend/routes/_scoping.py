@@ -17,24 +17,40 @@ from __future__ import annotations
 
 from bson import ObjectId
 from fastapi import HTTPException
+from motor.motor_asyncio import AsyncIOMotorDatabase
 
 
-async def job_in_company(db, job_id: str | None, comp_id: ObjectId) -> bool:
+def validate_oid(value: str, what: str = "job") -> ObjectId:
+    """Parse `value` as an ObjectId, or raise 400 naming the bad `what` id."""
+    if not ObjectId.is_valid(value):
+        raise HTTPException(status_code=400, detail=f"Invalid {what} id")
+    return ObjectId(value)
+
+
+async def job_in_company(
+    db: AsyncIOMotorDatabase, job_id: str | None, comp_id: ObjectId
+) -> bool:
     """True when `job_id` names a job in the caller's company."""
     if not job_id or not ObjectId.is_valid(job_id):
         return False
     return (
-        await db.jobs.find_one({"_id": ObjectId(job_id), "comp_id": comp_id}, {"_id": 1})
+        await db.jobs.find_one(
+            {"_id": ObjectId(job_id), "comp_id": comp_id}, {"_id": 1}
+        )
         is not None
     )
 
 
-async def link_in_company(db, link: dict, comp_id: ObjectId) -> bool:
+async def link_in_company(
+    db: AsyncIOMotorDatabase, link: dict, comp_id: ObjectId
+) -> bool:
     """True when a job_candidates `link` doc's job is in the caller's company."""
     return await job_in_company(db, link.get("job_id"), comp_id)
 
 
-async def interview_in_company(db, intv_id: str | None, comp_id: ObjectId) -> bool:
+async def interview_in_company(
+    db: AsyncIOMotorDatabase, intv_id: str | None, comp_id: ObjectId
+) -> bool:
     """True when an interview's job is in the caller's company."""
     if not intv_id or not ObjectId.is_valid(intv_id):
         return False
@@ -42,7 +58,9 @@ async def interview_in_company(db, intv_id: str | None, comp_id: ObjectId) -> bo
     return await job_in_company(db, (interview or {}).get("job_id"), comp_id)
 
 
-async def get_interview_in_company(db, intv_id: str, comp_id: ObjectId) -> dict:
+async def get_interview_in_company(
+    db: AsyncIOMotorDatabase, intv_id: str, comp_id: ObjectId
+) -> dict:
     """Fetch an interview, 400-ing a bad id and 404-ing one that's missing OR
     in a different company (404 not 403 so ids can't be probed)."""
     if not ObjectId.is_valid(intv_id):
@@ -53,7 +71,9 @@ async def get_interview_in_company(db, intv_id: str, comp_id: ObjectId) -> dict:
     return interview
 
 
-async def assert_jobcand_in_company(db, jobcand_id: str, comp_id: ObjectId) -> None:
+async def assert_jobcand_in_company(
+    db: AsyncIOMotorDatabase, jobcand_id: str, comp_id: ObjectId
+) -> None:
     """400 a bad jobcand_id; 404 one that's missing OR whose job belongs to a
     different company."""
     if not ObjectId.is_valid(jobcand_id):

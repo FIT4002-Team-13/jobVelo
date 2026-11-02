@@ -59,7 +59,9 @@ def group_speaker_words(words):
         end = getattr(word, "end", None)
 
         if not groups or groups[-1]["speaker_id"] != speaker_id:
-            groups.append({"speaker_id": speaker_id, "start": start, "end": end, "words": []})
+            groups.append(
+                {"speaker_id": speaker_id, "start": start, "end": end, "words": []}
+            )
         else:
             if end is not None:
                 groups[-1]["end"] = end
