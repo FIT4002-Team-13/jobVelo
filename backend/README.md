@@ -1,4 +1,4 @@
-# Jobvelo backend
+# jobVelo backend
 
 FastAPI + MongoDB (Motor). Setup, environment variables and test commands are in the [root README](../README.md). This file explains how the backend is organised.
 

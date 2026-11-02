@@ -1,4 +1,4 @@
-# Jobvelo frontend
+# jobVelo frontend
 
 React 18 + Vite + Tailwind CSS + React Router 6. Setup and commands are in the [root README](../README.md). This file explains how the frontend is organised.
 

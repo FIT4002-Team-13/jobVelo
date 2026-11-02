@@ -1,6 +1,6 @@
-# FIT4002 - Jobvelo
+# FIT4002 - jobVelo
 
-**Jobvelo: Real-Time Interview Intelligence System** is an AI-powered interview assistance platform designed to help recruiters and interviewers conduct more structured, consistent, and effective interviews. Developed for Well Crafted Apps, jobVelo streamlines the recruitment process by combining candidate analysis, real-time interview assistance, and AI-driven evaluation in one platform.
+**jobVelo: Real-Time Interview Intelligence System** is an AI-powered interview assistance platform designed to help recruiters and interviewers conduct more structured, consistent, and effective interviews. Developed for Well Crafted Apps, jobVelo streamlines the recruitment process by combining candidate analysis, real-time interview assistance, and AI-driven evaluation in one platform.
 
 Recruiters add jobs and candidates, an AI analyses each CV against the role, and interviewers run live interviews with real-time transcription, suggested follow-up questions, timed interview sections and bias warnings. After interviews, it offers structured candidate evaluations, performance summaries, and comparison tools to support fairer, evidence-based hiring decisions.
 
