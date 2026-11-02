@@ -93,9 +93,11 @@ async def _recent_completed_interview_ids(db, user_id: str) -> list[str]:
     ).to_list(length=200)
 
     completed.sort(
-        key=lambda d: d.get("intv_updated_at")
-        or d.get("intv_created_at")
-        or datetime.min.replace(tzinfo=UTC),
+        key=lambda d: (
+            d.get("intv_updated_at")
+            or d.get("intv_created_at")
+            or datetime.min.replace(tzinfo=UTC)
+        ),
         reverse=True,
     )
     return [str(d["_id"]) for d in completed[:_MAX_SESSIONS]]

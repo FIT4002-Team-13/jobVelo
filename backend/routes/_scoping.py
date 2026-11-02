@@ -24,7 +24,9 @@ async def job_in_company(db, job_id: str | None, comp_id: ObjectId) -> bool:
     if not job_id or not ObjectId.is_valid(job_id):
         return False
     return (
-        await db.jobs.find_one({"_id": ObjectId(job_id), "comp_id": comp_id}, {"_id": 1})
+        await db.jobs.find_one(
+            {"_id": ObjectId(job_id), "comp_id": comp_id}, {"_id": 1}
+        )
         is not None
     )
 

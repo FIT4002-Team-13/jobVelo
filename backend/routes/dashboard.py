@@ -18,6 +18,8 @@ from fastapi import APIRouter, Depends
 
 from database import get_db
 from dependencies import get_current_comp_id, get_current_user
+from services.queries import assigned_interview_ids
+from services.queries import company_job_ids as load_company_job_ids
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
 
@@ -60,8 +62,8 @@ async def get_summary(
     # each is its own round trip to Mongo. Sequentially awaiting them (the
     # old code did) just adds their latencies together for no reason.
     assigned_intv_ids, company_job_ids = await asyncio.gather(
-        _assigned_interview_ids(db, user_id_str),
-        _company_job_ids(db, comp_id),
+        assigned_interview_ids(db, user_id_str),
+        load_company_job_ids(db, comp_id),
     )
 
     # Short-circuit when either set is empty - nothing the user can see.
@@ -110,21 +112,6 @@ async def get_summary(
         "completed_interviews": completed_count,
         "upcoming_interviews": upcoming_count,
     }
-
-
-async def _assigned_interview_ids(db, user_id_str: str) -> list[ObjectId]:
-    """Interviews this user is assigned to, via interview_users links."""
-    ids: list[ObjectId] = []
-    async for link in db.interview_users.find({"user_id": user_id_str}, {"intv_id": 1}):
-        intv_id = link.get("intv_id")
-        if intv_id and ObjectId.is_valid(intv_id):
-            ids.append(ObjectId(intv_id))
-    return ids
-
-
-async def _company_job_ids(db, comp_id: ObjectId) -> list[str]:
-    """The caller's company's job ids (interviews don't carry comp_id directly)."""
-    return [str(j["_id"]) async for j in db.jobs.find({"comp_id": comp_id}, {"_id": 1})]
 
 
 async def _gather(

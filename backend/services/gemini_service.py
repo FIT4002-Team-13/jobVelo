@@ -29,6 +29,7 @@ from google.genai import types
 
 from config import settings
 from models.interviewer_feedback import GeneratedInterviewerFeedback
+from services.ai_limits import call_with_retry
 from services.ai_usage import timed_gemini
 
 _FEEDBACK_CATEGORIES = {"questioning", "bias", "interruption", "time_management"}
@@ -55,17 +56,19 @@ async def _generate_json(operation: str, prompt: str, *, temperature: float = 0.
     """One text-only Gemini call asking for JSON, bounded by a timeout."""
     try:
         return await asyncio.wait_for(
-            timed_gemini(
-                operation,
-                settings.gemini_cv_model,
-                _get_client().aio.models.generate_content(
-                    model=settings.gemini_cv_model,
-                    contents=[types.Part.from_text(text=prompt)],
-                    config=types.GenerateContentConfig(
-                        temperature=temperature,
-                        response_mime_type="application/json",
+            call_with_retry(
+                lambda: timed_gemini(
+                    operation,
+                    settings.gemini_cv_model,
+                    _get_client().aio.models.generate_content(
+                        model=settings.gemini_cv_model,
+                        contents=[types.Part.from_text(text=prompt)],
+                        config=types.GenerateContentConfig(
+                            temperature=temperature,
+                            response_mime_type="application/json",
+                        ),
                     ),
-                ),
+                )
             ),
             timeout=_CALL_TIMEOUT_SECONDS,
         )
@@ -226,17 +229,19 @@ async def analyse_cv(
     # that the Gemini API then rejects. Shape adherence comes from the
     # prompt's explicit schema block + response_mime_type="application/json",
     # and the route layer re-validates the result via Pydantic anyway.
-    res = await timed_gemini(
-        "analyse_cv",
-        settings.gemini_cv_model,
-        _get_client().aio.models.generate_content(
-            model=settings.gemini_cv_model,
-            contents=parts,
-            config=types.GenerateContentConfig(
-                temperature=0.2,
-                response_mime_type="application/json",
+    res = await call_with_retry(
+        lambda: timed_gemini(
+            "analyse_cv",
+            settings.gemini_cv_model,
+            _get_client().aio.models.generate_content(
+                model=settings.gemini_cv_model,
+                contents=parts,
+                config=types.GenerateContentConfig(
+                    temperature=0.2,
+                    response_mime_type="application/json",
+                ),
             ),
-        ),
+        )
     )
 
     # response_schema constrains generation but doesn't give us a typed

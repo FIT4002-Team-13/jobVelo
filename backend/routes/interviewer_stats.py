@@ -22,6 +22,8 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from database import INTERVIEW_SUMMARY, get_db
 from dependencies import get_current_comp_id, get_current_user
+from services.queries import assigned_interview_ids
+from services.queries import company_job_ids as load_company_job_ids
 
 router = APIRouter(prefix="/api/interviewer-stats", tags=["interviewer-stats"])
 
@@ -134,21 +136,6 @@ def _build_score_trend(
     return points, range_label
 
 
-async def _assigned_interview_ids(
-    db: AsyncIOMotorDatabase, user_id_str: str
-) -> list[ObjectId]:
-    ids: list[ObjectId] = []
-    async for link in db.interview_users.find({"user_id": user_id_str}, {"intv_id": 1}):
-        intv_id = link.get("intv_id")
-        if intv_id and ObjectId.is_valid(intv_id):
-            ids.append(ObjectId(intv_id))
-    return ids
-
-
-async def _company_job_ids(db: AsyncIOMotorDatabase, comp_id: ObjectId) -> list[str]:
-    return [str(j["_id"]) async for j in db.jobs.find({"comp_id": comp_id}, {"_id": 1})]
-
-
 async def _compute_interviewer_stats(
     db: AsyncIOMotorDatabase,
     user: dict,
@@ -165,8 +152,8 @@ async def _compute_interviewer_stats(
     """
     user_id_str = str(user["_id"])
     assigned_ids, company_job_ids = (
-        await _assigned_interview_ids(db, user_id_str),
-        await _company_job_ids(db, comp_id),
+        await assigned_interview_ids(db, user_id_str),
+        await load_company_job_ids(db, comp_id),
     )
 
     now = datetime.now(UTC)
